@@ -91,8 +91,9 @@ class SemsSensor(Entity):
             # filter5 = dict(filter4)
 
             for key, value in filter4['inverter'][0]['invert_full'].items():
-                self._attributes[key] = value
-                _LOGGER.debug("Updated attribute %s: %s", key, value)
+                if(key is not None and value is not None):
+                    self._attributes[key] = value
+                    _LOGGER.debug("Updated attribute %s: %s", key, value)
         except Exception as exception:
             _LOGGER.error(
                 "Unable to fetch data from SEMS. %s", exception)
