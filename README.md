@@ -9,9 +9,12 @@ sensor:
   - platform: sems
     username: 'XXXX'
     password: 'XXXX'
+    scan_interval: 60
 ```
 
-Use the credentials you use to login to https://www.semsportal.com/.
+Use the credentials you use to login to https://www.semsportal.com/. 
+
+`scan_interval` controls how often the sensor updates/scrapes. By default this seems to be every 60 seconds.
 
 
 Reuses code from https://github.com/Sprk-nl/goodwe_sems_portal_scraper.
