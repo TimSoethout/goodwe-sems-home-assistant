@@ -1,22 +1,28 @@
+"""
+Support for power production statistics from Goodwe SEMS web portal.
+
+For more details about this platform, please refer to the documentation at
+https://github.com/TimSoethout/goodwe-sems-home-assistant
+"""
+
 import json
 import logging
-import requests
-
-import voluptuous as vol
 
 from bs4 import BeautifulSoup
+import requests
+import voluptuous as vol
 
-from homeassistant.helpers.entity import Entity
 from homeassistant.components.sensor import PLATFORM_SCHEMA
-from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.entity import Entity
 
 REQUIREMENTS = ['BeautifulSoup4==4.7.0']
 
 # Validation of the user's configuration
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_USERNAME): cv.string,
-    vol.Required(CONF_PASSWORD): cv.string,
+    vol.Required(CONF_PASSWORD): cv.string
 })
 
 _LOGGER = logging.getLogger(__name__)
