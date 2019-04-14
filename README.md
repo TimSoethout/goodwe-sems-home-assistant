@@ -2,7 +2,9 @@
 
 ## Setup
 
-Crude sensor for Home Assistant that scrapes from GoodWe SEMS portal. Put `sems.py` in `custom_components/sensor` in your Home Assistant config dir. And update configuration.
+Crude sensor for Home Assistant that scrapes from GoodWe SEMS portal. Put `sensor.py` in `custom_components/sems/` in your Home Assistant config dir.
+For example by running `../custom_components$ git clone git@github.com:TimSoethout/goodwe-sems-home-assistant.git sems`.
+And update configuration.
 
 Example entry in `configuration.yaml`:
 
