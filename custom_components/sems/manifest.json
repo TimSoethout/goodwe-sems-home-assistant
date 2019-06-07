@@ -1,1 +1,8 @@
-
+{
+	"domain": "sems",
+	"name": "Goodwe SEMS Scraper",
+	"documentation": "https://github.com/TimSoethout/goodwe-sems-home-assistant",
+	"dependencies": [],
+	"codeowners": ["@TimSoethout"],
+	"requirements": ["beautifulsoup4==4.7.1"]
+}
