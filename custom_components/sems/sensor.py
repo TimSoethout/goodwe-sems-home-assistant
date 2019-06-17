@@ -17,7 +17,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
 
-REQUIREMENTS = ['BeautifulSoup4==4.7.0']
+#REQUIREMENTS = ['BeautifulSoup4==4.7.0']
 
 # Validation of the user's configuration
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
