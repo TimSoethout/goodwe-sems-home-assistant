@@ -25,7 +25,8 @@ Use the credentials you use to login to https://www.semsportal.com/.
 
 ## HACS
 
-Note: The repository folder structure is changed in order to be compatible with (HACS)[https://custom-components.github.io/hacs/], see https://custom-components.github.io/hacs/#add-custom-repos on how to add it to HACS.
+Note: The repository folder structure is changed in order to be compatible with [HACS](https://custom-components.github.io/hacs/), see [here](https://custom-components.github.io/hacs/#add-custom-repos ) how to add this as custom repo to HACS.
+It is also [under submission](https://github.com/custom-components/hacs/pull/111) to be included by default in HACS.
 
 ## Screenies
 
