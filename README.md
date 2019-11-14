@@ -7,7 +7,7 @@ Crude sensor for Home Assistant that scrapes from GoodWe SEMS portal. Copy all t
 - `__init__.py`
 - `manifest.json`
 
-And update configuration. The ID of your Power Station can be retrieved by loggin in to the SEMS Portal with your credentials:
+And update configuration. The ID of your Power Station can be retrieved by logging in to the SEMS Portal with your credentials:
 https://www.semsportal.com
 
 After login you'll see the ID in your URL. E.g.:
