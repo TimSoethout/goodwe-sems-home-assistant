@@ -62,7 +62,7 @@ class SemsSensor(Entity):
         """Get the latest data from the SEMS API and updates the state."""
         _LOGGER.debug("update called.")
         try:
-        # Get our Authentication Token from SEMS API
+        # Get our Authentication Token from SEMS Portal API
             _LOGGER.debug("SEMS - Getting API token")
 
             # Prepare Login Headers to retrieve Authentication Token
