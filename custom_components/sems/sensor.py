@@ -12,15 +12,17 @@ import requests
 import voluptuous as vol
 
 from homeassistant.components.sensor import PLATFORM_SCHEMA
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, CONF_ID
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
+
+CONF_STATION_ID = "station_id"
 
 # Validation of the user's configuration
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_USERNAME): cv.string,
     vol.Required(CONF_PASSWORD): cv.string,
-    vol.Required(CONF_ID): cv.string
+    vol.Required(CONF_STATION_ID): cv.string
 })
 
 _LOGGER = logging.getLogger(__name__)
@@ -97,7 +99,7 @@ class SemsSensor(Entity):
                 'token': '{"version":"v2.1.0","client":"ios","language":"en","timestamp":"'+str(requestTimestamp)+'","uid":"'+requestUID+'","token":"'+requestToken+'"}',
             }
 
-            data = '{"powerStationId":"'+self._config.get(CONF_ID)+'"}'            
+            data = '{"powerStationId":"'+self._config.get(CONF_STATION_ID)+'"}'            
 
             response = requests.post(_PowerStationURL, headers=headers, data=data)
 
