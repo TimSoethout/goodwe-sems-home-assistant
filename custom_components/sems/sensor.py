@@ -8,7 +8,6 @@ https://github.com/TimSoethout/goodwe-sems-home-assistant
 import json
 import logging
 
-from bs4 import BeautifulSoup
 import requests
 import voluptuous as vol
 
@@ -17,17 +16,19 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
 
-#REQUIREMENTS = ['BeautifulSoup4==4.7.0']
+CONF_STATION_ID = "station_id"
 
 # Validation of the user's configuration
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_USERNAME): cv.string,
-    vol.Required(CONF_PASSWORD): cv.string
+    vol.Required(CONF_PASSWORD): cv.string,
+    vol.Required(CONF_STATION_ID): cv.string
 })
 
 _LOGGER = logging.getLogger(__name__)
 
-_URL = 'https://www.semsportal.com/home/login'
+_URL = 'https://www.semsportal.com/api/v1/Common/CrossLogin'
+_PowerStationURL = 'https://www.semsportal.com//api/v1/PowerStation/GetMonitorDetailByPowerstationId'
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
     """Setup the GoodWe SEMS portal scraper platform."""
@@ -63,34 +64,51 @@ class SemsSensor(Entity):
         """Get the latest data from the SEMS API and updates the state."""
         _LOGGER.debug("update called.")
         try:
-            login_data = dict(account=self._config.get(CONF_USERNAME), pwd=self._config.get(CONF_PASSWORD))
+        # Get our Authentication Token from SEMS Portal API
+            _LOGGER.debug("SEMS - Getting API token")
 
-            session_requests = requests.session()
-            response = session_requests.post(_URL, data=login_data)
+            # Prepare Login Headers to retrieve Authentication Token
+            login_headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'token': '{"version":"v2.1.0","client":"ios","language":"en"}',
+            }
 
-            htmlresponse = json.loads(response.text).get('data').get('redirect') # Convert response to dict
-            url = "https://www.semsportal.com" + htmlresponse
+            # Prepare Login Data to retrieve Authentication Token
+            login_data = '{"account":"'+self._config.get(CONF_USERNAME)+'","pwd":"'+self._config.get(CONF_PASSWORD)+'"}'
 
-            result = session_requests.get(url, headers=dict(referer=url))
-            htmlcontent = result.content # transform the result to html content
+            # Make POST request to retrieve Authentication Token from SEMS API
+            login_response = requests.post(_URL, headers=login_headers, data=login_data )
 
-            _LOGGER.debug("HTML content received")
+            # Process response as JSON
+            jsonResponse = json.loads(login_response.text)
 
-            soup = BeautifulSoup(htmlcontent, 'html.parser')
+            # Get all the details from our response, needed to make the next POST request (the one that really fetches the data)
+            requestTimestamp = jsonResponse["data"]["timestamp"]
+            requestUID = jsonResponse["data"]["uid"]
+            requestToken = jsonResponse["data"]["token"]
 
-            _LOGGER.debug("HTML content parsed")
-            _LOGGER.debug("update finished. result=%s", soup)
+            _LOGGER.debug("SEMS - API Token recieved: "+ requestToken)
+        # Get the status of our SEMS Power Station
+            _LOGGER.debug("SEMS - Making Power Station Status API Call")
 
-            # Filtering
-            # data = soup.find_all("script")[19].string
-            filter1 = str(soup).split("var pw_info = ")[1]
-            filter2 = str(filter1).split("var pw_id = ")[0]
-            filter3 = filter2.split(";")[0]
+            # Prepare Power Station status Headers
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'token': '{"version":"v2.1.0","client":"ios","language":"en","timestamp":"'+str(requestTimestamp)+'","uid":"'+requestUID+'","token":"'+requestToken+'"}',
+            }
 
-            filter4 = json.loads(filter3)
-            # filter5 = dict(filter4)
+            data = '{"powerStationId":"'+self._config.get(CONF_STATION_ID)+'"}'            
 
-            for key, value in filter4['inverter'][0]['invert_full'].items():
+            response = requests.post(_PowerStationURL, headers=headers, data=data)
+
+            # Process response as JSON
+            jsonResponseFinal = json.loads(response.text)
+
+            _LOGGER.debug("REST Response Recieved")
+
+            for key, value in jsonResponseFinal["data"]["inverter"][0]["invert_full"].items():
                 if(key is not None and value is not None):
                     self._attributes[key] = value
                     _LOGGER.debug("Updated attribute %s: %s", key, value)
