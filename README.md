@@ -24,6 +24,16 @@ sensor:
     password: 'XXXX'
     station_id : '12345678-1234-1234-1234-123456789012'
     scan_interval: 60
+
+# Optional/example
+# A template to ease access to the data as "sensor.pv_outputpower" etc.
+  - platform: template
+    sensors:
+      pv_outputpower:
+        value_template: '{{ states.sensor.sems_portal.attributes.outputpower }}'
+        unit_of_measurement: 'W'
+        friendly_name: "Power output"
+
 ```
 
 Use the credentials you use to login to https://www.semsportal.com/. 
