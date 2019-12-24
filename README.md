@@ -25,7 +25,8 @@ sensor:
     station_id : '12345678-1234-1234-1234-123456789012'
     scan_interval: 60
 
-# create a template to access the data as "sensor.pv_outputpower"
+# Optional/example
+# A template to ease access to the data as "sensor.pv_outputpower" etc.
   - platform: template
     sensors:
       pv_outputpower:
