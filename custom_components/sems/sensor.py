@@ -28,7 +28,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 _LOGGER = logging.getLogger(__name__)
 
 _URL = 'https://www.semsportal.com/api/v1/Common/CrossLogin'
-_PowerStationURL = 'https://www.semsportal.com//api/v1/PowerStation/GetMonitorDetailByPowerstationId'
+_PowerStationURL = 'https://www.semsportal.com/api/v1/PowerStation/GetMonitorDetailByPowerstationId'
+_RequestTimeout = 30 # seconds
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
     """Setup the GoodWe SEMS portal scraper platform."""
@@ -78,7 +79,7 @@ class SemsSensor(Entity):
             login_data = '{"account":"'+self._config.get(CONF_USERNAME)+'","pwd":"'+self._config.get(CONF_PASSWORD)+'"}'
 
             # Make POST request to retrieve Authentication Token from SEMS API
-            login_response = requests.post(_URL, headers=login_headers, data=login_data )
+            login_response = requests.post(_URL, headers=login_headers, data=login_data, timeout=_RequestTimeout)
 
             # Process response as JSON
             jsonResponse = json.loads(login_response.text)
@@ -101,7 +102,7 @@ class SemsSensor(Entity):
 
             data = '{"powerStationId":"'+self._config.get(CONF_STATION_ID)+'"}'            
 
-            response = requests.post(_PowerStationURL, headers=headers, data=data)
+            response = requests.post(_PowerStationURL, headers=headers, data=data, timeout=_RequestTimeout)
 
             # Process response as JSON
             jsonResponseFinal = json.loads(response.text)
