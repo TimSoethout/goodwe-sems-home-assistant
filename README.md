@@ -1,4 +1,11 @@
-# Goodwe SEMS scraper for Home Assistant
+# Goodwe SEMS integration for Home Assistant
+
+## Easiest install method via HACS
+
+The repository folder structure is compatible with [HACS](https://custom-components.github.io/hacs/) and is included by default in HACS.
+
+Install HACS via: https://hacs.xyz/docs/installation/manual.
+Then search for "SEMS" in the Integrations tab (under Community).
 
 ## Setup
 
@@ -39,11 +46,6 @@ sensor:
 Use the credentials you use to login to https://www.semsportal.com/. 
 
 `scan_interval` controls how often the sensor updates/scrapes. By default this seems to be every 60 seconds.
-
-## HACS
-
-Note: The repository folder structure is changed in order to be compatible with [HACS](https://custom-components.github.io/hacs/), see [here](https://custom-components.github.io/hacs/#add-custom-repos ) how to add this as custom repo to HACS.
-It is also [under submission](https://github.com/custom-components/hacs/pull/111) to be included by default in HACS.
 
 ## Screenies
 

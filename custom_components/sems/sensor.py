@@ -32,7 +32,7 @@ _PowerStationURL = 'https://www.semsportal.com/api/v1/PowerStation/GetMonitorDet
 _RequestTimeout = 30 # seconds
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
-    """Setup the GoodWe SEMS portal scraper platform."""
+    """Setup the GoodWe SEMS API sensor platform."""
     # Add devices
     add_devices([SemsSensor("SEMS Portal", config)], True)
 
