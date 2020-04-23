@@ -39,7 +39,27 @@ sensor:
       pv_outputpower:
         value_template: '{{ states.sensor.sems_portal.attributes.outputpower }}'
         unit_of_measurement: 'W'
-        friendly_name: "Power output"
+        friendly_name: "PV Power output"
+      pv_temperature:
+        value_template: '{{ states.sensor.sems_portal.attributes.tempperature }}'
+        unit_of_measurement: 'C'
+        friendly_name: "PV Temperature"
+      pv_eday:
+        value_template: '{{ states.sensor.sems_portal.attributes.eday }}'
+        unit_of_measurement: 'kWh'
+        friendly_name: "PV energy day"
+      pv_etotal:
+        value_template: '{{ states.sensor.sems_portal.attributes.etotal }}'
+        unit_of_measurement: 'kWh'
+        friendly_name: "PV energy total"
+      pv_iday:
+        value_template: '{{ states.sensor.sems_portal.attributes.iday }}'
+        unit_of_measurement: '€'
+        friendly_name: "PV income day"
+      pv_itotal:
+        value_template: '{{ states.sensor.sems_portal.attributes.itotal }}'
+        unit_of_measurement: '€'
+        friendly_name: "PV income total"
 
 ```
 
