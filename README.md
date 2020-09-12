@@ -2,7 +2,7 @@
 
 ## Easiest install method via HACS
 
-The repository folder structure is compatible with [HACS](https://custom-components.github.io/hacs/) and is included by default in HACS.
+The repository folder structure is compatible with [HACS](https://hacs.xyz) and is included by default in HACS.
 
 Install HACS via: https://hacs.xyz/docs/installation/manual.
 Then search for "SEMS" in the Integrations tab (under Community).
