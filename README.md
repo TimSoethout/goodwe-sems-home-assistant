@@ -64,6 +64,16 @@ sensor:
         value_template: '{{ states.sensor.sems_portal.attributes.pmeter }}'
         unit_of_measurement: 'W'
         friendly_name: "PV spare"
+      # battery soc
+      pv_soc:
+        value_template: '{{ states.sensor.sems_portal.attributes.soc }}'
+        unit_of_measurement: '%'
+        friendly_name: "Battery power"
+      # PV output power only
+      pv_outputpower:
+        value_template: '{{ states.sensor.sems_portal.attributes.outputpower }}'
+        unit_of_measurement: 'W'
+        friendly_name: "PV Power output"
 ```
 
 Use the credentials you use to login to https://www.semsportal.com/. 
