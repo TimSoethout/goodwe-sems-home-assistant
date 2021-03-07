@@ -4,5 +4,6 @@
 	"documentation": "https://github.com/TimSoethout/goodwe-sems-home-assistant",
 	"dependencies": [],
 	"codeowners": ["@TimSoethout"],
-	"requirements": []
+	"requirements": [],
+	"version": "v1.0.0"
 }
