@@ -2,7 +2,7 @@
 
 ## Easiest install method via HACS
 
-The repository folder structure is compatible with [HACS](https://custom-components.github.io/hacs/) and is included by default in HACS.
+The repository folder structure is compatible with [HACS](https://hacs.xyz) and is included by default in HACS.
 
 Install HACS via: https://hacs.xyz/docs/installation/manual.
 Then search for "SEMS" in the Integrations tab (under Community).
@@ -60,7 +60,20 @@ sensor:
         value_template: '{{ states.sensor.sems_portal.attributes.itotal }}'
         unit_of_measurement: '€'
         friendly_name: "PV income total"
-
+      pv_excess:
+        value_template: '{{ states.sensor.sems_portal.attributes.pmeter }}'
+        unit_of_measurement: 'W'
+        friendly_name: "PV spare"
+      # battery soc
+      pv_soc:
+        value_template: '{{ states.sensor.sems_portal.attributes.soc }}'
+        unit_of_measurement: '%'
+        friendly_name: "Battery power"
+      # PV output power only
+      pv_outputpower:
+        value_template: '{{ states.sensor.sems_portal.attributes.outputpower }}'
+        unit_of_measurement: 'W'
+        friendly_name: "PV Power output"
 ```
 
 Use the credentials you use to login to https://www.semsportal.com/. 
