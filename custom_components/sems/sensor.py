@@ -34,7 +34,10 @@ _RequestTimeout = 30 # seconds
 def setup_platform(hass, config, add_devices, discovery_info=None):
     """Setup the GoodWe SEMS API sensor platform."""
     # Add devices
+# TODO first try and connect. collect inverters + add sensor for each of them...
+
     add_devices([SemsSensor("SEMS Portal", config)], True)
+    _LOGGER.info("SEMS Portal Sensor added for " + config.get(CONF_STATION_ID))
 
 class SemsSensor(Entity):
     """Representation of the SEMS portal."""
@@ -89,7 +92,7 @@ class SemsSensor(Entity):
             requestUID = jsonResponse["data"]["uid"]
             requestToken = jsonResponse["data"]["token"]
 
-            _LOGGER.debug("SEMS - API Token recieved: "+ requestToken)
+            _LOGGER.debug("SEMS - API Token received: "+ requestToken)
         # Get the status of our SEMS Power Station
             _LOGGER.debug("SEMS - Making Power Station Status API Call")
 
@@ -107,7 +110,8 @@ class SemsSensor(Entity):
             # Process response as JSON
             jsonResponseFinal = json.loads(response.text)
 
-            _LOGGER.debug("REST Response Recieved")
+            _LOGGER.debug("REST Response Received")
+            _LOGGER.debug(jsonResponseFinal)
 
             for key, value in jsonResponseFinal["data"]["inverter"][0]["invert_full"].items():
                 if(key is not None and value is not None):
