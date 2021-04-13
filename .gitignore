@@ -1,0 +1,6 @@
+*.pyc
+
+.vscode
+example.json
+
+.DS_Store
