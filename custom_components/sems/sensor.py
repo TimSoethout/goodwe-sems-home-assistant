@@ -5,14 +5,9 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
-import json
 import logging
 
-import requests
-import voluptuous as vol
 from datetime import timedelta
-from typing import NamedTuple
-import async_timeout
 
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -20,10 +15,8 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.const import DEVICE_CLASS_POWER, POWER_WATT
-import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
 from .const import DOMAIN, CONF_STATION_ID
-
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,56 +81,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     )
 
 
-# async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-#     # assuming API object stored here by __init__.py
-#     # api = hass.data[DOMAIN][entry.entry_id]
-
-#     async def async_update_data():
-#         """Fetch data from API endpoint.
-
-#         This is the place to pre-process the data to lookup tables
-#         so entities can quickly look up their data.
-#         """
-#         try:
-#             # Note: asyncio.TimeoutError and aiohttp.ClientError are already
-#             # handled by the data update coordinator.
-#             # async with async_timeout.timeout(10):
-#             token = getLoginToken(config.get(CONF_USERNAME),
-#                                   config.get(CONF_PASSWORD))
-#             inverters = getData(token, config)
-#             # found = []
-#             data = {}
-#             for inverter in inverters:
-#                 name = inverter["invert_full"]["name"]
-#                 sn = inverter["invert_full"]["sn"]
-#                 _LOGGER.debug("Found inverter attribute %s %s", name, sn)
-#                 # TODO: construct name instead of serial number: goodwe_plantname_invertername
-#                 data[sn] = inverter["invert_full"]
-#             return data
-#         # except ApiError as err:
-#         except Exception as err:
-#             # logging.exception("Something awful happened!")
-#             raise UpdateFailed(f"Error communicating with API: {err}")
-
-#     coordinator = DataUpdateCoordinator(
-#         hass,
-#         _LOGGER,
-#         # Name of the data. For logging purposes.
-#         name="SEMS Portal",
-#         update_method=async_update_data,
-#         # Polling interval. Will only be polled if there are subscribers.
-#         update_interval=timedelta(seconds=60),
-#     )
-
-#     # Fetch initial data so we have data when entities subscribe
-#     await coordinator.async_refresh()
-
-#     # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
-
-#     async_add_entities(SemsSensor(coordinator, sn) for sn, ent
-#                        in coordinator.data.items())
-
-
 class SemsSensor(CoordinatorEntity, Entity):
     """SemsSensor using CoordinatorEntity.
 
@@ -168,8 +111,7 @@ class SemsSensor(CoordinatorEntity, Entity):
         """Return the name of the sensor."""
         # return self._powerstation_id
         #  TODO: construct name instead of serial number: goodwe_plantname_invertername
-        return f"GoodWe-{self.coordinator.data[self._powerstation_id]['name']}-{self.coordinator.data[self._powerstation_id]['sn']}"
-        # return self.coordinator.data[self._powerstation_id]["sn"]
+        return f"Inverter {self.coordinator.data[self._powerstation_id]['name']}"
 
     @property
     def unique_id(self) -> str:
@@ -183,7 +125,11 @@ class SemsSensor(CoordinatorEntity, Entity):
         # _LOGGER.debug(
         #     "state, self data: %s", self.coordinator.data[self._powerstation_id]
         # )
-        return self.coordinator.data[self._powerstation_id]["pac"]
+        return (
+            self.coordinator.data[self._powerstation_id]["pac"]
+            if self.coordinator.data[self._powerstation_id]["status"] == 1
+            else 0
+        )
 
     # For backwards compatibility
     @property

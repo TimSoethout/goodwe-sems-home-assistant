@@ -1,6 +1,12 @@
-# Goodwe SEMS integration for Home Assistant
+# Goodwe SEMS API integration for Home Assistant
+
+{% if prerelease %}
+### NB!: This is a Beta version!
+{% endif %}
 
 ## Easiest install method via HACS
+
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
 
 The repository folder structure is compatible with [HACS](https://hacs.xyz) and is included by default in HACS.
 
@@ -76,7 +82,7 @@ sensor:
         friendly_name: "PV Power output"
 ```
 
-Use the credentials you use to login to https://www.semsportal.com/. 
+Use the credentials you use to login to https://www.semsportal.com/.
 
 `scan_interval` controls how often the sensor updates/scrapes. By default this seems to be every 60 seconds.
 

@@ -26,8 +26,6 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up sems from a config entry."""
-    # TODO Store an API object for your platforms to access
-    # TODO maybe make dynamic/object instance?
     hass.data[DOMAIN][entry.entry_id] = SemsApi(
         hass, entry.data["username"], entry.data["password"]
     )

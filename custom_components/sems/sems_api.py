@@ -2,10 +2,7 @@ import json
 import logging
 
 import requests
-import voluptuous as vol
-from datetime import timedelta
 from typing import NamedTuple
-import async_timeout
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,23 +17,6 @@ class SemsApiToken(NamedTuple):
     requestTimestamp: str
     requestUID: str
     requestToken: str
-
-
-# class SemsApiHub:
-#     """ SemsApiHub """
-
-#     def __init__(self, station_id: str) -> None:
-#         """Initialize."""
-#         self.station_id = station_id
-
-#     def authenticate(self, username: str, password: str) -> bool:
-#         """Test if we can authenticate with the host."""
-#         try:
-#             token = self.getLoginToken(username, password)
-#             return True
-#         except Exception as exception:
-#             _LOGGER.exception("SEMS Authentication exception " + exception)
-#             return False
 
 
 class SemsApi:
@@ -140,14 +120,7 @@ class SemsApi:
             # Process response as JSON
             jsonResponseFinal = json.loads(response.text)
 
-            # _LOGGER.debug("Data REST Response Received: %s", jsonResponseFinal)
-            # _LOGGER.debug(jsonResponseFinal["data"]["inverter"])
-
             # return list of all inverters
             return jsonResponseFinal["data"]["inverter"]
-            # for key, value in jsonResponseFinal["data"]["inverter"][0]["invert_full"].items():
-            # if(key is not None and value is not None):
-            # self._attributes[key] = value/
-            # _LOGGER.debug("Updated attribute %s: %s", key, value)
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from SEMS. %s", exception)
