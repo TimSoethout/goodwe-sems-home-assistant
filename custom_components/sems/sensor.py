@@ -1,5 +1,5 @@
 """
-Support for power production statistics from Goodwe SEMS API.
+Support for power production statistics from GoodWe SEMS API.
 
 For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
@@ -45,8 +45,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             for inverter in inverters:
                 name = inverter["invert_full"]["name"]
                 powerstation_id = inverter["invert_full"]["powerstation_id"]
-                _LOGGER.debug("Found inverter attribute %s %s", name, powerstation_id)
-                data[powerstation_id] = inverter["invert_full"]
+                sn = inverter["invert_full"]["sn"]
+                _LOGGER.debug("Found inverter attribute %s %s", name, sn)
+                data[sn] = inverter["invert_full"]
             # _LOGGER.debug("Resulting data: %s", data)
             return data
         # except ApiError as err:
@@ -91,12 +92,12 @@ class SemsSensor(CoordinatorEntity, Entity):
       available
     """
 
-    def __init__(self, coordinator, powerstation_id):
+    def __init__(self, coordinator, sn):
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
         self.coordinator = coordinator
-        self._powerstation_id = powerstation_id
-        _LOGGER.debug("Creating SemsSensor with id %s", self._powerstation_id)
+        self.sn = sn
+        _LOGGER.debug("Creating SemsSensor with id %s", self.sn)
 
     @property
     def device_class(self):
@@ -109,25 +110,23 @@ class SemsSensor(CoordinatorEntity, Entity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        # return self._powerstation_id
-        #  TODO: construct name instead of serial number: goodwe_plantname_invertername
-        return f"Inverter {self.coordinator.data[self._powerstation_id]['name']}"
+        return f"Inverter {self.coordinator.data[self.sn]['name']}"
 
     @property
     def unique_id(self) -> str:
-        return self.coordinator.data[self._powerstation_id]['sn']
+        return self.coordinator.data[self.sn]['sn']
 
     @property
     def state(self):
         """Return the state of the device."""
         # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        # _LOGGER.debug("self._powerstation_id: %s", self._powerstation_id)
+        # _LOGGER.debug("self.sn: %s", self.sn)
         # _LOGGER.debug(
-        #     "state, self data: %s", self.coordinator.data[self._powerstation_id]
+        #     "state, self data: %s", self.coordinator.data[self.sn]
         # )
         return (
-            self.coordinator.data[self._powerstation_id]["pac"]
-            if self.coordinator.data[self._powerstation_id]["status"] == 1
+            self.coordinator.data[self.sn]["pac"]
+            if self.coordinator.data[self.sn]["status"] == 1
             else 0
         )
 
@@ -135,18 +134,14 @@ class SemsSensor(CoordinatorEntity, Entity):
     @property
     def device_state_attributes(self):
         """Return the state attributes of the monitored installation."""
-        data = self.coordinator.data[self._powerstation_id]
+        data = self.coordinator.data[self.sn]
         # _LOGGER.debug("state, self data: %s", data.items())
         return {k: v for k, v in data.items() if k is not None and v is not None}
-        # for key, value in data.items:
-        #     if(key is not None and value is not None):
-        #         _LOGGER.debug("Returning attribute %s: %s", key, value)
-        #         yield key, value
 
     @property
     def is_on(self):
         """Return entity status."""
-        self.coordinator.data[self._powerstation_id]["status"]
+        self.coordinator.data[self.sn]["status"]
 
     @property
     def should_poll(self):
