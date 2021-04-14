@@ -1,4 +1,4 @@
-# Goodwe SEMS API integration for Home Assistant
+# GoodWe SEMS API integration for Home Assistant
 
 {% if prerelease %}
 ### NB!: This is a Beta version!
