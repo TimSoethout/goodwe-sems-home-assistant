@@ -11,7 +11,7 @@
         "step": {
             "user": {
                 "data": {
-                    "station_id": "Station ID",
+                    "powerstation_id": "Power Station ID",
                     "password": "Password",
                     "username": "Username"
                 }

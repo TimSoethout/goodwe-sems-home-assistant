@@ -40,7 +40,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     # Return info that you want to store in the config entry.
     return {
-        "station_id": data["station_id"],
+        "powerstation_id": data["powerstation_id"],
         "username": data["username"],
         "password": data["password"],
     }
@@ -71,7 +71,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         else:
-            return self.async_create_entry(title=info["station_id"], data=user_input)
+            return self.async_create_entry(title=info["powerstation_id"], data=user_input)
 
         return self.async_show_form(
             step_id="user", data_schema=SEMS_CONFIG_SCHEMA, errors=errors

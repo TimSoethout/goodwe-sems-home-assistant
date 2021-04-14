@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "data": {
-          "station_id": "[%key:common::config_flow::data::station_id%]",
+          "station_id": "[%key:common::config_flow::data::powerstation_id%]",
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]"
         }
