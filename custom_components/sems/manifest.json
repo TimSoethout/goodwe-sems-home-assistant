@@ -1,8 +1,9 @@
 {
   "domain": "sems",
-  "name": "Goodwe SEMS API",
+  "name": "GoodWe SEMS API",
   "config_flow": true,
   "documentation": "https://github.com/TimSoethout/goodwe-sems-home-assistant",
+  "issue_tracker": "https://github.com/TimSoethout/goodwe-sems-home-assistant/issues",
 	"requirements": [],
   "dependencies": [],
   "codeowners": ["@TimSoethout"],
