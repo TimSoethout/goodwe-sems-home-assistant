@@ -115,7 +115,7 @@ class SemsSensor(CoordinatorEntity, Entity):
 
     @property
     def unique_id(self) -> str:
-        return self._powerstation_id
+        return self.coordinator.data[self._powerstation_id]['sn']
 
     @property
     def state(self):
