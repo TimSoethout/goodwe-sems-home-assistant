@@ -92,6 +92,18 @@ Use the credentials you use to login to https://www.semsportal.com/.
 
 ![Detail window](images/sems-details.png)
 
+## Debug info
+
+Add the last line in `configuration.yaml` in the relevant part of `logger`:
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.sems: debug
+```
+
 ## Credits
 
 Reuses code from https://github.com/Sprk-nl/goodwe_sems_portal_scraper.
+Generous contributions done by various helpful community members.
