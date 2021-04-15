@@ -6,17 +6,17 @@ from typing import NamedTuple
 
 _LOGGER = logging.getLogger(__name__)
 
-_LoginURL = "https://www.semsportal.com/api/v1/Common/CrossLogin"
+_LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _PowerStationURL = (
-    "https://www.semsportal.com/api/v1/PowerStation/GetMonitorDetailByPowerstationId"
+    "https://eu.semsportal.com/api/v2/PowerStation/GetMonitorDetailByPowerstationId"
 )
 _RequestTimeout = 60  # seconds
 
-
-class SemsApiToken(NamedTuple):
-    requestTimestamp: str
-    requestUID: str
-    requestToken: str
+_DefaultHeaders = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "token": '{"version":"","client":"web","language":"en"}',
+}
 
 
 class SemsApi:
@@ -44,40 +44,28 @@ class SemsApi:
             # Get our Authentication Token from SEMS Portal API
             _LOGGER.debug("SEMS - Getting API token")
 
-            # Prepare Login Headers to retrieve Authentication Token
-            login_headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "token": '{"version":"","client":"web","language":"en"}',
-            }
-
             # Prepare Login Data to retrieve Authentication Token
-            login_data = (
-                '{"account":"'
-                + userName
-                + '","pwd":"'
-                + password
-                + '", "agreement_agreement": 1}'
-            )
+            # Dict won't work here somehow, so this magic string creation must do.
+            login_data = '{"account":"' + userName + '","pwd":"' + password + '"}'
 
             # Make POST request to retrieve Authentication Token from SEMS API
             login_response = requests.post(
                 _LoginURL,
-                headers=login_headers,
+                headers=_DefaultHeaders,
                 data=login_data,
                 timeout=_RequestTimeout,
             )
-            # _LOGGER.debug("Login Response: %s", login_response)
+            _LOGGER.debug("Login Response: %s", login_response)
+            # _LOGGER.debug("Login Response text: %s", login_response.text)
+
+            login_response.raise_for_status()
 
             # Process response as JSON
-            jsonResponse = json.loads(login_response.text)
+            jsonResponse = login_response.json()  # json.loads(login_response.text)
             _LOGGER.debug("Login JSON response %s", jsonResponse)
             # Get all the details from our response, needed to make the next POST request (the one that really fetches the data)
-            requestTimestamp = jsonResponse["data"]["timestamp"]
-            requestUID = jsonResponse["data"]["uid"]
-            requestToken = jsonResponse["data"]["token"]
+            token = json.dumps(jsonResponse["data"])
 
-            token = SemsApiToken(requestTimestamp, requestUID, requestToken)
             _LOGGER.debug("SEMS - API Token received: %s", token)
             return token
         except Exception as exception:
@@ -100,13 +88,7 @@ class SemsApi:
             headers = {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "token": '{"version":"","client":"web","language":"en","timestamp":"'
-                + str(self._token.requestTimestamp)
-                + '","uid":"'
-                + self._token.requestUID
-                + '","token":"'
-                + self._token.requestToken
-                + '"}',
+                "token": self._token,
             }
 
             _LOGGER.debug("Querying for : %s", stationId)
