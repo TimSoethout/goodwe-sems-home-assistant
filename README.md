@@ -1,5 +1,8 @@
 # GoodWe SEMS API integration for Home Assistant
 
+[![Paypal-shield]](https://www.paypal.com/donate?business=9NWEEX4P6998J&currency_code=EUR)
+<a href="https://www.buymeacoffee.com/TimSoethout" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="20"></a>
+
 Integration for Home Assistant that retrieves PV data from GoodWe SEMS API.
 
 {% if prerelease %}
