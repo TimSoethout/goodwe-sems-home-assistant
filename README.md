@@ -85,9 +85,9 @@ Replace `$NAME` with your inverter name.
 
 ![Detail window](images/sems-details.webp)
 
-![Detail window](images/search-integration.webp)
+![Add as Integration](images/search-integration.webp)
 
-![Detail window](images/integration-flow.webp)
+![Integration configuration flow](images/integration-flow.webp)
 
 ## Debug info
 
