@@ -44,7 +44,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             data = {}
             for inverter in inverters:
                 name = inverter["invert_full"]["name"]
-                powerstation_id = inverter["invert_full"]["powerstation_id"]
+                # powerstation_id = inverter["invert_full"]["powerstation_id"]
                 sn = inverter["invert_full"]["sn"]
                 _LOGGER.debug("Found inverter attribute %s %s", name, sn)
                 data[sn] = inverter["invert_full"]
@@ -114,7 +114,7 @@ class SemsSensor(CoordinatorEntity, Entity):
 
     @property
     def unique_id(self) -> str:
-        return self.coordinator.data[self.sn]['sn']
+        return self.coordinator.data[self.sn]["sn"]
 
     @property
     def state(self):

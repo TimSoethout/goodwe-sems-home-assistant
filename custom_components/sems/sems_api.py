@@ -2,7 +2,6 @@ import json
 import logging
 
 import requests
-from typing import NamedTuple
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -10,7 +9,7 @@ _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _PowerStationURL = (
     "https://eu.semsportal.com/api/v2/PowerStation/GetMonitorDetailByPowerstationId"
 )
-_RequestTimeout = 60  # seconds
+_RequestTimeout = 30  # seconds
 
 _DefaultHeaders = {
     "Content-Type": "application/json",
@@ -20,7 +19,7 @@ _DefaultHeaders = {
 
 
 class SemsApi:
-    """ Interface to the SEMS API """
+    """Interface to the SEMS API."""
 
     def __init__(self, hass, username, password):
         """Init dummy hub."""
@@ -62,7 +61,7 @@ class SemsApi:
 
             # Process response as JSON
             jsonResponse = login_response.json()  # json.loads(login_response.text)
-            _LOGGER.debug("Login JSON response %s", jsonResponse)
+            # _LOGGER.debug("Login JSON response %s", jsonResponse)
             # Get all the details from our response, needed to make the next POST request (the one that really fetches the data)
             token = json.dumps(jsonResponse["data"])
 
@@ -72,17 +71,18 @@ class SemsApi:
             _LOGGER.error("Unable to fetch login token from SEMS API. %s", exception)
             return None
 
-    def getData(self, stationId):
+    def getData(self, powerStationId, renewToken=False):
         """Get the latest data from the SEMS API and updates the state."""
-        _LOGGER.debug("update called.")
         try:
             # Get the status of our SEMS Power Station
             _LOGGER.debug("SEMS - Making Power Station Status API Call")
-
-            # if self._token is None:
-            # _LOGGER.debug("API token not set, fetching")
-            # always relogin for now.
-            self._token = self.getLoginToken(self._username, self._password)
+            if self._token is None or renewToken:
+                _LOGGER.debug(
+                    "API token not set (%s) or new token requested (%s), fetching",
+                    self._token,
+                    renewToken,
+                )
+                self._token = self.getLoginToken(self._username, self._password)
 
             # Prepare Power Station status Headers
             headers = {
@@ -91,18 +91,23 @@ class SemsApi:
                 "token": self._token,
             }
 
-            _LOGGER.debug("Querying for : %s", stationId)
+            _LOGGER.debug("Querying SEMS API for power station id: %s", powerStationId)
 
-            data = '{"powerStationId":"' + stationId + '"}'
+            data = '{"powerStationId":"' + powerStationId + '"}'
 
             response = requests.post(
                 _PowerStationURL, headers=headers, data=data, timeout=_RequestTimeout
             )
-
-            # Process response as JSON
-            jsonResponseFinal = json.loads(response.text)
+            jsonResponse = response.json()
+            # try again and renew token is unsuccessful
+            if jsonResponse["msg"] != "success" or jsonResponse["data"] is None:
+                _LOGGER.debug(
+                    "Query not successful (%s), retrying with new token",
+                    jsonResponse["msg"],
+                )
+                return self.getData(powerStationId, True)
 
             # return list of all inverters
-            return jsonResponseFinal["data"]["inverter"]
+            return jsonResponse["data"]["inverter"]
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from SEMS. %s", exception)
