@@ -42,6 +42,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             # found = []
             # _LOGGER.debug("Found inverters: %s", inverters)
             data = {}
+            if inverters is None:
+                # something went wrong, probably token could not be fetched
+                raise UpdateFailed(
+                    "Error communicating with API, probably token could not be fetched, see debug logs"
+                )
             for inverter in inverters:
                 name = inverter["invert_full"]["name"]
                 # powerstation_id = inverter["invert_full"]["powerstation_id"]
