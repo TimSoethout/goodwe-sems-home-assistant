@@ -129,24 +129,27 @@ class SemsSensor(CoordinatorEntity, Entity):
         # _LOGGER.debug(
         #     "state, self data: %s", self.coordinator.data[self.sn]
         # )
-        return (
-            self.coordinator.data[self.sn]["pac"]
-            if self.coordinator.data[self.sn]["status"] == 1
-            else 0
-        )
+        data = self.coordinator.data[self.sn]
+        return data["pac"] if data["status"] == 1 else 0
+
+    def statusText(self, status) -> str:
+        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
+        return labels[status] if status in labels else "Unknown"
 
     # For backwards compatibility
     @property
-    def device_state_attributes(self):
+    def extra_state_attributes(self):
         """Return the state attributes of the monitored installation."""
         data = self.coordinator.data[self.sn]
         # _LOGGER.debug("state, self data: %s", data.items())
-        return {k: v for k, v in data.items() if k is not None and v is not None}
+        attributes = {k: v for k, v in data.items() if k is not None and v is not None}
+        attributes["statusText"] = self.statusText(data["status"])
+        return attributes
 
     @property
-    def is_on(self):
+    def is_on(self) -> bool:
         """Return entity status."""
-        self.coordinator.data[self.sn]["status"]
+        self.coordinator.data[self.sn]["status"] == 1
 
     @property
     def should_poll(self):
