@@ -71,11 +71,16 @@ class SemsApi:
             _LOGGER.error("Unable to fetch login token from SEMS API. %s", exception)
             return None
 
-    def getData(self, powerStationId, renewToken=False):
+    def getData(self, powerStationId, renewToken=False, maxTokenRetries=2):
         """Get the latest data from the SEMS API and updates the state."""
         try:
             # Get the status of our SEMS Power Station
             _LOGGER.debug("SEMS - Making Power Station Status API Call")
+            if maxTokenRetries <= 0:
+                _LOGGER.info(
+                    "SEMS - Maximum token fetch tries reached, aborting for now"
+                )
+                return {}
             if self._token is None or renewToken:
                 _LOGGER.debug(
                     "API token not set (%s) or new token requested (%s), fetching",
@@ -102,10 +107,13 @@ class SemsApi:
             # try again and renew token is unsuccessful
             if jsonResponse["msg"] != "success" or jsonResponse["data"] is None:
                 _LOGGER.debug(
-                    "Query not successful (%s), retrying with new token",
+                    "Query not successful (%s), retrying with new token, %s retries remaining",
                     jsonResponse["msg"],
+                    maxTokenRetries,
                 )
-                return self.getData(powerStationId, True)
+                return self.getData(
+                    powerStationId, True, maxTokenRetries=maxTokenRetries - 1
+                )
 
             # return list of all inverters
             return jsonResponse["data"]["inverter"]
