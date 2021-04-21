@@ -3,18 +3,21 @@ import logging
 
 import requests
 
+from homeassistant import exceptions
+
 _LOGGER = logging.getLogger(__name__)
 
-_LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
+# _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
+_LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
 _PowerStationURL = (
-    "https://eu.semsportal.com/api/v2/PowerStation/GetMonitorDetailByPowerstationId"
+    "https://www.semsportal.com/api/v2/PowerStation/GetMonitorDetailByPowerstationId"
 )
 _RequestTimeout = 30  # seconds
 
 _DefaultHeaders = {
     "Content-Type": "application/json",
     "Accept": "application/json",
-    "token": '{"version":"","client":"web","language":"en"}',
+    "token": '{"version":"","client":"ios","language":"en"}',
 }
 
 
@@ -46,6 +49,7 @@ class SemsApi:
             # Prepare Login Data to retrieve Authentication Token
             # Dict won't work here somehow, so this magic string creation must do.
             login_data = '{"account":"' + userName + '","pwd":"' + password + '"}'
+            # login_data = {"account": userName, "pwd": password}
 
             # Make POST request to retrieve Authentication Token from SEMS API
             login_response = requests.post(
@@ -80,7 +84,7 @@ class SemsApi:
                 _LOGGER.info(
                     "SEMS - Maximum token fetch tries reached, aborting for now"
                 )
-                return {}
+                raise OutOfRetries
             if self._token is None or renewToken:
                 _LOGGER.debug(
                     "API token not set (%s) or new token requested (%s), fetching",
@@ -119,3 +123,7 @@ class SemsApi:
             return jsonResponse["data"]["inverter"]
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from SEMS. %s", exception)
+
+
+class OutOfRetries(exceptions.HomeAssistantError):
+    """Error to indicate too many error attempts."""
