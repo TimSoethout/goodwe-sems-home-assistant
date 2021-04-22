@@ -5,10 +5,6 @@
 
 Integration for Home Assistant that retrieves PV data from GoodWe SEMS API.
 
-{% if prerelease %}
-### NB!: This is a Beta version!
-{% endif %}
-
 ## Setup
 
 ### Easiest install method via HACS
