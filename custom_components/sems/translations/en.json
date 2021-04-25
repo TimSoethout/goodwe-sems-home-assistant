@@ -13,7 +13,8 @@
                 "data": {
                     "powerstation_id": "Power Station ID",
                     "password": "Password",
-                    "username": "Username"
+                    "username": "Username",
+                    "scan_interval": "Update Interval (seconds)"
                 }
             }
         }
