@@ -5,11 +5,14 @@ import asyncio
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.const import (
+    CONF_PASSWORD,
+    CONF_USERNAME,
+)
 
 from .const import DOMAIN
 from .sems_api import SemsApi
 
-# TODO List the platforms that you want to support.
 # For your initial PR, limit it to 1 platform.
 PLATFORMS = ["sensor"]
 
@@ -27,7 +30,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up sems from a config entry."""
     hass.data[DOMAIN][entry.entry_id] = SemsApi(
-        hass, entry.data["username"], entry.data["password"]
+        hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
     )
 
     for platform in PLATFORMS:

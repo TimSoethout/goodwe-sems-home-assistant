@@ -14,9 +14,9 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
-from homeassistant.const import DEVICE_CLASS_POWER, POWER_WATT
+from homeassistant.const import DEVICE_CLASS_POWER, POWER_WATT, CONF_SCAN_INTERVAL
 from homeassistant.helpers.entity import Entity
-from .const import DOMAIN, CONF_STATION_ID
+from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,9 +24,13 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Add sensors for passed config_entry in HA."""
     # _LOGGER.debug("hass.data[DOMAIN] %s", hass.data[DOMAIN])
-    # _LOGGER.debug("config_entry %s", config_entry.data)
     semsApi = hass.data[DOMAIN][config_entry.entry_id]
     stationId = config_entry.data[CONF_STATION_ID]
+
+    # _LOGGER.debug("config_entry %s", config_entry.data)
+    update_interval = timedelta(
+        seconds=config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    )
 
     async def async_update_data():
         """Fetch data from API endpoint.
@@ -67,7 +71,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         name="SEMS API",
         update_method=async_update_data,
         # Polling interval. Will only be polled if there are subscribers.
-        update_interval=timedelta(seconds=60),
+        update_interval=update_interval,
     )
 
     #
