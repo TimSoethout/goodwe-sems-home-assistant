@@ -100,6 +100,16 @@ logger:
 
 * Sometimes the SEMS API is a bit slow, so time-out messages may occur in the log as `[ERROR]`. The component should continue to work normally and try fetch again the next minute.
 
+## Development setup
+
+- Setup HA development environment using https://developers.home-assistant.io/docs/development_environment
+- clone this repo in config directory:
+  - `cd core/config`
+  - `git clone git@github.com:TimSoethout/goodwe-sems-home-assistant.git`
+- go to terminal in remote VSCode environment
+- `cd core/config/custom_components`
+- `ln -s ../goodwe-sems-home-assistant/custom_components/sems sems`
+
 ## Credits
 
 Inspired by https://github.com/Sprk-nl/goodwe_sems_portal_scraper and https://github.com/bouwew/sems2mqtt .
