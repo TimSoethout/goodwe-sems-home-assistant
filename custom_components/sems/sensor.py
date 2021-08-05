@@ -259,7 +259,7 @@ class SemsStatisticsSensor(CoordinatorEntity, Entity):
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self.sn)
             },
-            "name": self.name,
+            # "name": self.name,
             "manufacturer": "GoodWe",
             "model": data["model_type"],
             "sw_version": data["firmwareversion"],
