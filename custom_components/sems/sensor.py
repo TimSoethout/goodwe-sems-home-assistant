@@ -5,6 +5,8 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
+from homeassistant.core import HomeAssistant
+import homeassistant
 import logging
 
 from datetime import timedelta
@@ -14,9 +16,7 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
-from homeassistant.components.sensor import (
-    STATE_CLASS_MEASUREMENT,
-)
+from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, SensorEntity
 from homeassistant.const import (
     DEVICE_CLASS_POWER,
     POWER_WATT,
@@ -24,6 +24,7 @@ from homeassistant.const import (
     DEVICE_CLASS_ENERGY,
     ENERGY_KILO_WATT_HOUR,
 )
+from homeassistant.util.dt import utc_from_timestamp
 from homeassistant.helpers.entity import Entity
 from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
 
@@ -104,7 +105,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     )
 
 
-class SemsSensor(CoordinatorEntity, Entity):
+class SemsSensor(CoordinatorEntity, SensorEntity):
     """SemsSensor using CoordinatorEntity.
 
     The CoordinatorEntity class provides:
@@ -207,7 +208,7 @@ class SemsSensor(CoordinatorEntity, Entity):
         await self.coordinator.async_request_refresh()
 
 
-class SemsStatisticsSensor(CoordinatorEntity, Entity):
+class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
     """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
 
     def __init__(self, coordinator, sn):
@@ -269,7 +270,7 @@ class SemsStatisticsSensor(CoordinatorEntity, Entity):
     @property
     def last_reset(self):
         """Last reset property, used by Metered entities / Long Term Statistics"""
-        return homeassistant.util.dt.utc_from_timestamp(0)
+        return utc_from_timestamp(0)
 
     @property
     def state_class(self):
