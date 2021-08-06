@@ -38,7 +38,7 @@ Note that changed to `configuration.yaml` are no longer necessary and can be rem
 
 
 ### Extra (optional) templates to easy access data as sensors
-Replace `$NAME` with your inverter name.
+Replace `$NAME` with your inverter entity id.
 ```yaml
   - platform: template
     sensors:
