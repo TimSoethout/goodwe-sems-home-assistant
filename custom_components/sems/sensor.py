@@ -5,6 +5,8 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
+from homeassistant.core import HomeAssistant
+import homeassistant
 import logging
 
 from datetime import timedelta
@@ -14,7 +16,15 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
-from homeassistant.const import DEVICE_CLASS_POWER, POWER_WATT, CONF_SCAN_INTERVAL
+from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, SensorEntity
+from homeassistant.const import (
+    DEVICE_CLASS_POWER,
+    POWER_WATT,
+    CONF_SCAN_INTERVAL,
+    DEVICE_CLASS_ENERGY,
+    ENERGY_KILO_WATT_HOUR,
+)
+from homeassistant.util.dt import utc_from_timestamp
 from homeassistant.helpers.entity import Entity
 from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
 
@@ -89,9 +99,13 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     async_add_entities(
         SemsSensor(coordinator, ent) for idx, ent in enumerate(coordinator.data)
     )
+    async_add_entities(
+        SemsStatisticsSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data)
+    )
 
 
-class SemsSensor(CoordinatorEntity, Entity):
+class SemsSensor(CoordinatorEntity, SensorEntity):
     """SemsSensor using CoordinatorEntity.
 
     The CoordinatorEntity class provides:
@@ -156,7 +170,7 @@ class SemsSensor(CoordinatorEntity, Entity):
         self.coordinator.data[self.sn]["status"] == 1
 
     @property
-    def should_poll(self):
+    def should_poll(self) -> bool:
         """No need to poll. Coordinator notifies entity of updates."""
         return False
 
@@ -164,6 +178,104 @@ class SemsSensor(CoordinatorEntity, Entity):
     def available(self):
         """Return if entity is available."""
         return self.coordinator.last_update_success
+
+    @property
+    def device_info(self):
+        # _LOGGER.debug("self.device_state_attributes: %s", self.device_state_attributes)
+        return {
+            "identifiers": {
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self.sn)
+            },
+            "name": self.name,
+            "manufacturer": "GoodWe",
+            "model": self.extra_state_attributes["model_type"],
+            "sw_version": self.extra_state_attributes["firmwareversion"],
+            # "via_device": (DOMAIN, self.api.bridgeid),
+        }
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+    async def async_update(self):
+        """Update the entity.
+
+        Only used by the generic entity update service.
+        """
+        await self.coordinator.async_request_refresh()
+
+
+class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
+    """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
+
+    def __init__(self, coordinator, sn):
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator)
+        self.coordinator = coordinator
+        self.sn = sn
+        _LOGGER.debug("Creating SemsStatisticsSensor with id %s", self.sn)
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_ENERGY
+
+    @property
+    def unit_of_measurement(self):
+        return ENERGY_KILO_WATT_HOUR
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"Inverter {self.coordinator.data[self.sn]['name']} Energy"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self.coordinator.data[self.sn]['sn']}-energy"
+
+    @property
+    def state(self):
+        """Return the state of the device."""
+        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
+        # _LOGGER.debug("self.sn: %s", self.sn)
+        # _LOGGER.debug(
+        #     "state, self data: %s", self.coordinator.data[self.sn]
+        # )
+        data = self.coordinator.data[self.sn]
+        return data["etotal"]
+
+    @property
+    def should_poll(self) -> bool:
+        """No need to poll. Coordinator notifies entity of updates."""
+        return False
+
+    @property
+    def device_info(self):
+        # _LOGGER.debug("self.device_state_attributes: %s", self.device_state_attributes)
+        data = self.coordinator.data[self.sn]
+        return {
+            "identifiers": {
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self.sn)
+            },
+            # "name": self.name,
+            "manufacturer": "GoodWe",
+            "model": data["model_type"],
+            "sw_version": data["firmwareversion"],
+            # "via_device": (DOMAIN, self.api.bridgeid),
+        }
+
+    @property
+    def last_reset(self):
+        """Last reset property, used by Metered entities / Long Term Statistics"""
+        return utc_from_timestamp(0)
+
+    @property
+    def state_class(self):
+        """used by Metered entities / Long Term Statistics"""
+        return STATE_CLASS_MEASUREMENT
 
     async def async_added_to_hass(self):
         """When entity is added to hass."""
