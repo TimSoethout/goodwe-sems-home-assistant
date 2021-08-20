@@ -189,8 +189,8 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
             },
             "name": self.name,
             "manufacturer": "GoodWe",
-            "model": self.extra_state_attributes["model_type"],
-            "sw_version": self.extra_state_attributes["firmwareversion"],
+            "model": self.extra_state_attributes.get("model_type", "unknown"),
+            "sw_version": self.extra_state_attributes.get("firmwareversion", "unknown"),
             # "via_device": (DOMAIN, self.api.bridgeid),
         }
 
@@ -262,8 +262,8 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
             },
             # "name": self.name,
             "manufacturer": "GoodWe",
-            "model": data["model_type"],
-            "sw_version": data["firmwareversion"],
+            "model": data.get("model_type", "unknown"),
+            "sw_version": data.get("firmwareversion", "unknown"),
             # "via_device": (DOMAIN, self.api.bridgeid),
         }
 
