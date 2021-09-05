@@ -42,10 +42,6 @@ Replace `$NAME` with your inverter entity id.
 ```yaml
   - platform: template
     sensors:
-      pv_outputpower:
-        value_template: '{{ states.sensor.inverter_$NAME.attributes.outputpower }}'
-        unit_of_measurement: 'W'
-        friendly_name: "PV Power output"
       pv_temperature:
         value_template: '{{ states.sensor.inverter_$NAME.attributes.tempperature }}'
         unit_of_measurement: 'C'
@@ -76,6 +72,8 @@ Replace `$NAME` with your inverter entity id.
         unit_of_measurement: '%'
         friendly_name: "Battery power"
 ```
+
+Note that `states.sensor.inverter_$NAME.state` contains the power output in `W`. 
 
 ## Screenies
 
