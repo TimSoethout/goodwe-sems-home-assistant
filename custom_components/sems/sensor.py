@@ -24,7 +24,6 @@ from homeassistant.const import (
     DEVICE_CLASS_ENERGY,
     ENERGY_KILO_WATT_HOUR,
 )
-from homeassistant.util.dt import utc_from_timestamp
 from homeassistant.helpers.entity import Entity
 from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
 
@@ -266,11 +265,6 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
             "sw_version": data.get("firmwareversion", "unknown"),
             # "via_device": (DOMAIN, self.api.bridgeid),
         }
-
-    @property
-    def last_reset(self):
-        """Last reset property, used by Metered entities / Long Term Statistics"""
-        return utc_from_timestamp(0)
 
     @property
     def state_class(self):
