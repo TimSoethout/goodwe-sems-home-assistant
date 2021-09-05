@@ -16,7 +16,7 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
-from homeassistant.components.sensor import STATE_CLASS_MEASUREMENT, SensorEntity
+from homeassistant.components.sensor import STATE_CLASS_TOTAL_INCREASING, SensorEntity
 from homeassistant.const import (
     DEVICE_CLASS_POWER,
     POWER_WATT,
@@ -275,7 +275,7 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
     @property
     def state_class(self):
         """used by Metered entities / Long Term Statistics"""
-        return STATE_CLASS_MEASUREMENT
+        return STATE_CLASS_TOTAL_INCREASING
 
     async def async_added_to_hass(self):
         """When entity is added to hass."""
