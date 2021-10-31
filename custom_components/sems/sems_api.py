@@ -119,8 +119,7 @@ class SemsApi:
                     powerStationId, True, maxTokenRetries=maxTokenRetries - 1
                 )
 
-            # return list of all inverters
-            return jsonResponse["data"]["inverter"]
+            return jsonResponse["data"]
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from SEMS. %s", exception)
 
