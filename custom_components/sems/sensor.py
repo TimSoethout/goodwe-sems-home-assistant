@@ -336,7 +336,7 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Import Energy"
+        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Import"
 
     @property
     def unique_id(self) -> str:
@@ -345,18 +345,28 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     @property
     def state(self):
         """Return the state of the device."""
-        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        # _LOGGER.debug("self.sn: %s", self.sn)
-        # _LOGGER.debug(
-        #     "state, self data: %s", self.coordinator.data[self.sn]
-        # )
         data = self.coordinator.data[self.sn]
-        return data["TotalBuy"]
+        return data["Totals_buy"]
+    def statusText(self, status) -> str:
+        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
+        return labels[status] if status in labels else "Unknown"
+
 
     @property
     def should_poll(self) -> bool:
         """No need to poll. Coordinator notifies entity of updates."""
         return False
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self.sn)
+            },
+            "name": "Homekit",
+            "manufacturer": "GoodWe",
+        }
 
     @property
     def state_class(self):
@@ -397,7 +407,7 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Export Energy"
+        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Export"
 
     @property
     def unique_id(self) -> str:
@@ -406,18 +416,27 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     @property
     def state(self):
         """Return the state of the device."""
-        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        # _LOGGER.debug("self.sn: %s", self.sn)
-        # _LOGGER.debug(
-        #     "state, self data: %s", self.coordinator.data[self.sn]
-        # )
         data = self.coordinator.data[self.sn]
-        return data["TotalSell"]
+        return data["Totals_sell"]
+    def statusText(self, status) -> str:
+        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
+        return labels[status] if status in labels else "Unknown"
 
     @property
     def should_poll(self) -> bool:
         """No need to poll. Coordinator notifies entity of updates."""
         return False
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, self.sn)
+            },
+            "name": "Homekit",
+            "manufacturer": "GoodWe",
+        }
 
     @property
     def state_class(self):
