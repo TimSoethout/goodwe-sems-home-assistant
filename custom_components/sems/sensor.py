@@ -72,9 +72,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 data[sn] = inverter["invert_full"]
 
             hasPowerflow = result["hasPowerflow"]
+            hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
 
             if hasPowerflow:
-                powerflow = result["powerflow"]
+                if hasEnergeStatisticsCharts:
+                    StatisticsCharts = { f"Charts_{key}": val for key, val in result["energeStatisticsCharts"].items() }
+                    StatisticsTotals = { f"Totals_{key}": val for key, val in result["energeStatisticsTotals"].items() }
+                    powerflow = { **result["powerflow"],  **StatisticsCharts, **StatisticsTotals }
+                else:
+                    powerflow = result["powerflow"]
+
                 powerflow["sn"] = result["homKit"]["sn"]
                 #_LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
                 data["homeKit"] = powerflow
@@ -119,7 +126,14 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         SemsPowerflowSensor(coordinator, ent)
         for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
     )
-
+    async_add_entities(
+        SemsTotalImportSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
+    async_add_entities(
+        SemsTotalExportSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
 
 class SemsSensor(CoordinatorEntity, SensorEntity):
     """SemsSensor using CoordinatorEntity.
@@ -301,6 +315,127 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
         """
         await self.coordinator.async_request_refresh()
 
+class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
+    """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
+
+    def __init__(self, coordinator, sn):
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator)
+        self.coordinator = coordinator
+        self.sn = sn
+        _LOGGER.debug("Creating SemsStatisticsSensor with id %s", self.sn)
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_ENERGY
+
+    @property
+    def unit_of_measurement(self):
+        return ENERGY_KILO_WATT_HOUR
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Import Energy"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self.coordinator.data[self.sn]['sn']}-import-energy"
+
+    @property
+    def state(self):
+        """Return the state of the device."""
+        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
+        # _LOGGER.debug("self.sn: %s", self.sn)
+        # _LOGGER.debug(
+        #     "state, self data: %s", self.coordinator.data[self.sn]
+        # )
+        data = self.coordinator.data[self.sn]
+        return data["TotalBuy"]
+
+    @property
+    def should_poll(self) -> bool:
+        """No need to poll. Coordinator notifies entity of updates."""
+        return False
+
+    @property
+    def state_class(self):
+        """used by Metered entities / Long Term Statistics"""
+        return STATE_CLASS_TOTAL_INCREASING
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+    async def async_update(self):
+        """Update the entity.
+
+        Only used by the generic entity update service.
+        """
+        await self.coordinator.async_request_refresh()
+
+class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
+    """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
+
+    def __init__(self, coordinator, sn):
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator)
+        self.coordinator = coordinator
+        self.sn = sn
+        _LOGGER.debug("Creating SemsStatisticsSensor with id %s", self.sn)
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_ENERGY
+
+    @property
+    def unit_of_measurement(self):
+        return ENERGY_KILO_WATT_HOUR
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Export Energy"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self.coordinator.data[self.sn]['sn']}-export-energy"
+
+    @property
+    def state(self):
+        """Return the state of the device."""
+        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
+        # _LOGGER.debug("self.sn: %s", self.sn)
+        # _LOGGER.debug(
+        #     "state, self data: %s", self.coordinator.data[self.sn]
+        # )
+        data = self.coordinator.data[self.sn]
+        return data["TotalSell"]
+
+    @property
+    def should_poll(self) -> bool:
+        """No need to poll. Coordinator notifies entity of updates."""
+        return False
+
+    @property
+    def state_class(self):
+        """used by Metered entities / Long Term Statistics"""
+        return STATE_CLASS_TOTAL_INCREASING
+
+    async def async_added_to_hass(self):
+        """When entity is added to hass."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+    async def async_update(self):
+        """Update the entity.
+
+        Only used by the generic entity update service.
+        """
+        await self.coordinator.async_request_refresh()
 
 class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
     """SemsPowerflowSensor using CoordinatorEntity.
