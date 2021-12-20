@@ -9,9 +9,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
-_PowerStationURL = (
-    "https://www.semsportal.com/api/v2/PowerStation/GetMonitorDetailByPowerstationId"
-)
+_PowerStationURLPart = "/v2/PowerStation/GetMonitorDetailByPowerstationId"
 _RequestTimeout = 30  # seconds
 
 _DefaultHeaders = {
@@ -67,10 +65,12 @@ class SemsApi:
             jsonResponse = login_response.json()  # json.loads(login_response.text)
             # _LOGGER.debug("Login JSON response %s", jsonResponse)
             # Get all the details from our response, needed to make the next POST request (the one that really fetches the data)
-            token = json.dumps(jsonResponse["data"])
+            # Also store the api url send with the authentication request for later use
+            tokenDict = jsonResponse["data"]
+            tokenDict["api"] = jsonResponse["api"]
 
-            _LOGGER.debug("SEMS - API Token received: %s", token)
-            return token
+            _LOGGER.debug("SEMS - API Token received: %s", tokenDict)
+            return tokenDict
         except Exception as exception:
             _LOGGER.error("Unable to fetch login token from SEMS API. %s", exception)
             return None
@@ -97,15 +97,20 @@ class SemsApi:
             headers = {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "token": self._token,
+                "token": json.dumps(self._token),
             }
 
-            _LOGGER.debug("Querying SEMS API for power station id: %s", powerStationId)
+            powerStationURL = self._token["api"] + _PowerStationURLPart
+            _LOGGER.debug(
+                "Querying SEMS API (%s) for power station id: %s",
+                powerStationURL,
+                powerStationId,
+            )
 
             data = '{"powerStationId":"' + powerStationId + '"}'
 
             response = requests.post(
-                _PowerStationURL, headers=headers, data=data, timeout=_RequestTimeout
+                powerStationURL, headers=headers, data=data, timeout=_RequestTimeout
             )
             jsonResponse = response.json()
             # try again and renew token is unsuccessful
