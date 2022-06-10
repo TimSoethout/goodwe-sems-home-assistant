@@ -36,6 +36,11 @@ Fill in the required configuration and it should find your inverters.
 
 Note that changed to `configuration.yaml` are no longer necessary and can be removed.
 
+### Recommended: use visitor account to login with this integration
+
+Create via the official app, or via the web portal:
+Login to www.semsportal.com, go to https://semsportal.com/powerstation/stationInfonew. Create a new visitor account. 
+Login to the visitor account once to accept the EULA. Now you should be able to use it in this component.
 
 ### Extra (optional) templates to easy access data as sensors
 Replace `$NAME` with your inverter entity id.
