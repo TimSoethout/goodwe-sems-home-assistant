@@ -84,6 +84,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
                 powerflow["sn"] = result["homKit"]["sn"]
                 #_LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
+                # This seems more accurate than the Chart_sum
+                powerflow["all_time_generation"] = result["kpi"]["total_power"]
+
                 data["homeKit"] = powerflow
 
             #_LOGGER.debug("Resulting data: %s", data)
