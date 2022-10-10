@@ -349,7 +349,7 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     def state(self):
         """Return the state of the device."""
         data = self.coordinator.data[self.sn]
-        return data["Totals_buy"]
+        return data["Charts_buy"]
     def statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
         return labels[status] if status in labels else "Unknown"
@@ -420,7 +420,7 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     def state(self):
         """Return the state of the device."""
         data = self.coordinator.data[self.sn]
-        return data["Totals_sell"]
+        return data["Charts_sell"]
     def statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
         return labels[status] if status in labels else "Unknown"
