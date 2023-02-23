@@ -14,7 +14,7 @@ Integration for Home Assistant that retrieves PV data from GoodWe SEMS API.
 The repository folder structure is compatible with [HACS](https://hacs.xyz) and is included by default in HACS.
 
 Install HACS via: https://hacs.xyz/docs/installation/manual.
-Then search for "SEMS" in the Integrations tab (under Community).
+Then search for "SEMS" in the Integrations tab (under Community). Click `HACS` > `Integrations` > `Explore and Download Repositories` > search for `SEMS` > click the result > `Download`.
 
 ### Manual Setup
 
