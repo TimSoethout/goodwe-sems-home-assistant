@@ -5,18 +5,11 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
-from homeassistant.core import HomeAssistant
-import homeassistant
 import logging
-
 from datetime import timedelta
+from decimal import Decimal
 
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-    UpdateFailed,
-)
-from homeassistant.components.sensor import STATE_CLASS_TOTAL_INCREASING, SensorEntity
+from homeassistant.components.sensor import STATE_CLASS_TOTAL_INCREASING, SensorEntity, STATE_CLASS_MEASUREMENT
 from homeassistant.const import (
     DEVICE_CLASS_POWER,
     POWER_WATT,
@@ -24,7 +17,12 @@ from homeassistant.const import (
     DEVICE_CLASS_ENERGY,
     ENERGY_KILO_WATT_HOUR,
 )
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+    UpdateFailed,
+)
+
 from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
@@ -119,14 +117,22 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
     async_add_entities(
-        SemsSensor(coordinator, ent) for idx, ent in enumerate(coordinator.data)
+        SemsSensor(coordinator, ent) for idx, ent in enumerate(coordinator.data) if ent != "homeKit"
     )
     async_add_entities(
         SemsStatisticsSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data)
+        for idx, ent in enumerate(coordinator.data) if ent != "homeKit"
     )
     async_add_entities(
-        SemsPowerflowSensor(coordinator, ent)
+        SemsPowerflowSensor(coordinator, ent, "HomeKit Load", "load")
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
+    async_add_entities(
+        SemsPowerflowSensor(coordinator, ent, "HomeKit PV", "pv")
+        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+    )
+    async_add_entities(
+        SemsPowerflowSensor(coordinator, ent, "HomeKit Grid", "grid")
         for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
     )
     async_add_entities(
@@ -137,6 +143,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         SemsTotalExportSensor(coordinator, ent)
         for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
     )
+
 
 class SemsSensor(CoordinatorEntity, SensorEntity):
     """SemsSensor using CoordinatorEntity.
@@ -160,8 +167,24 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
         return DEVICE_CLASS_POWER
 
     @property
-    def unit_of_measurement(self):
+    def native_unit_of_measurement(self):
         return POWER_WATT
+
+    @property
+    def native_value(self):
+        """Return the state of the device."""
+        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
+        # _LOGGER.debug("self.sn: %s", self.sn)
+        # _LOGGER.debug(
+        #     "state, self data: %s", self.coordinator.data[self.sn]
+        # )
+        data = self.coordinator.data[self.sn]
+        pac = Decimal(data["pac"])
+        return pac if data["status"] == 1 else 0
+
+    @property
+    def suggested_display_precision(self):
+        return 2
 
     @property
     def name(self) -> str:
@@ -171,17 +194,6 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
     @property
     def unique_id(self) -> str:
         return self.coordinator.data[self.sn]["sn"]
-
-    @property
-    def state(self):
-        """Return the state of the device."""
-        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        # _LOGGER.debug("self.sn: %s", self.sn)
-        # _LOGGER.debug(
-        #     "state, self data: %s", self.coordinator.data[self.sn]
-        # )
-        data = self.coordinator.data[self.sn]
-        return data["pac"] if data["status"] == 1 else 0
 
     def statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
@@ -200,7 +212,7 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
     @property
     def is_on(self) -> bool:
         """Return entity status."""
-        self.coordinator.data[self.sn]["status"] == 1
+        return self.coordinator.data[self.sn]["status"] == 1
 
     @property
     def should_poll(self) -> bool:
@@ -256,8 +268,23 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
         return DEVICE_CLASS_ENERGY
 
     @property
-    def unit_of_measurement(self):
+    def native_unit_of_measurement(self):
         return ENERGY_KILO_WATT_HOUR
+
+    @property
+    def native_value(self):
+        """Return the state of the device."""
+        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
+        # _LOGGER.debug("self.sn: %s", self.sn)
+        # _LOGGER.debug(
+        #     "state, self data: %s", self.coordinator.data[self.sn]
+        # )
+        data = self.coordinator.data[self.sn]
+        return Decimal(data["etotal"])
+
+    @property
+    def suggested_display_precision(self):
+        return 2
 
     @property
     def name(self) -> str:
@@ -268,16 +295,7 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
     def unique_id(self) -> str:
         return f"{self.coordinator.data[self.sn]['sn']}-energy"
 
-    @property
-    def state(self):
-        """Return the state of the device."""
-        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        # _LOGGER.debug("self.sn: %s", self.sn)
-        # _LOGGER.debug(
-        #     "state, self data: %s", self.coordinator.data[self.sn]
-        # )
-        data = self.coordinator.data[self.sn]
-        return data["etotal"]
+
 
     @property
     def should_poll(self) -> bool:
@@ -318,6 +336,7 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
         """
         await self.coordinator.async_request_refresh()
 
+
 class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
 
@@ -333,8 +352,18 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
         return DEVICE_CLASS_ENERGY
 
     @property
-    def unit_of_measurement(self):
+    def native_unit_of_measurement(self):
         return ENERGY_KILO_WATT_HOUR
+
+    @property
+    def native_value(self):
+        """Return the state of the device."""
+        data = self.coordinator.data[self.sn]
+        return Decimal(data["Charts_buy"])
+
+    @property
+    def suggested_display_precision(self):
+        return 2
 
     @property
     def name(self) -> str:
@@ -345,11 +374,7 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     def unique_id(self) -> str:
         return f"{self.coordinator.data[self.sn]['sn']}-import-energy"
 
-    @property
-    def state(self):
-        """Return the state of the device."""
-        data = self.coordinator.data[self.sn]
-        return data["Charts_buy"]
+
     def statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
         return labels[status] if status in labels else "Unknown"
@@ -389,6 +414,7 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
         """
         await self.coordinator.async_request_refresh()
 
+
 class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
 
@@ -404,8 +430,17 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
         return DEVICE_CLASS_ENERGY
 
     @property
-    def unit_of_measurement(self):
+    def native_unit_of_measurement(self):
         return ENERGY_KILO_WATT_HOUR
+
+    @property
+    def native_value(self):
+        data = self.coordinator.data[self.sn]
+        return Decimal(data["Charts_sell"])
+
+    @property
+    def suggested_display_precision(self):
+        return 2
 
     @property
     def name(self) -> str:
@@ -416,11 +451,6 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     def unique_id(self) -> str:
         return f"{self.coordinator.data[self.sn]['sn']}-export-energy"
 
-    @property
-    def state(self):
-        """Return the state of the device."""
-        data = self.coordinator.data[self.sn]
-        return data["Charts_sell"]
     def statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
         return labels[status] if status in labels else "Unknown"
@@ -469,70 +499,55 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
       available
     """
 
-    def __init__(self, coordinator, sn):
+    def __init__(self, coordinator, sn, name, key):
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
+        self._name = name
+        self._key = key
         self.coordinator = coordinator
-        self.sn = sn
+        self._sn = sn
 
     @property
     def device_class(self):
         return DEVICE_CLASS_POWER
 
     @property
-    def unit_of_measurement(self):
+    def native_unit_of_measurement(self):
         return POWER_WATT
+
+    @property
+    def native_value(self):
+        powerflow = self.coordinator.data[self._sn]
+        wats_string = powerflow[self._key]
+        wats = 0
+        if wats_string:
+            wats_string = wats_string.replace('(W)', '')
+            wats = int(wats_string)
+        return wats
+
+    @property
+    def state_class(self):
+        """used by Metered entities / Long Term Statistics"""
+        return STATE_CLASS_MEASUREMENT
 
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']}"
+        return f"{self._name} {self.coordinator.data[self._sn]['sn']}"
 
     @property
     def unique_id(self) -> str:
-        return self.coordinator.data[self.sn]["sn"]
-
-    @property
-    def state(self):
-        """Return the state of the device."""
-        data = self.coordinator.data[self.sn]
-        load = data["load"]
-
-        if load:
-            load = load.replace('(W)', '')
-
-        return load if data["gridStatus"] == 1 else 0
+        if self._key == '':
+            return self.coordinator.data[self._sn]["sn"]
+        return f"{self.coordinator.data[self._sn]['sn']}-{self._key}"
 
     def statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
         return labels[status] if status in labels else "Unknown"
-
-    # For backwards compatibility
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the monitored installation."""
-        data = self.coordinator.data[self.sn]
-
-        attributes = {k: v for k, v in data.items() if k is not None and v is not None}
-
-        attributes["pv"] = data["pv"].replace('(W)', '')
-        attributes["bettery"] = data["bettery"].replace('(W)', '')
-        attributes["load"] = data["load"].replace('(W)', '')
-        attributes["grid"] = data["grid"].replace('(W)', '')
-
-        attributes["statusText"] = self.statusText(data["gridStatus"])
-
-        if data['loadStatus'] == -1 :
-            attributes['PowerFlowDirection'] = 'Export %s' % data['grid']
-        if data['loadStatus'] == 1 :
-            attributes['PowerFlowDirection'] = 'Import %s' % data['grid']
-
-        return attributes
-
     @property
     def is_on(self) -> bool:
         """Return entity status."""
-        self.coordinator.data[self.sn]["gridStatus"] == 1
+        return self.coordinator.data[self._sn][self._key + "Status"] == 1
 
     @property
     def should_poll(self) -> bool:
@@ -549,7 +564,7 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
         return {
             "identifiers": {
                 # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.sn)
+                (DOMAIN, self._sn)
             },
             "name": "Homekit",
             "manufacturer": "GoodWe",
