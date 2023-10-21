@@ -180,7 +180,7 @@ async def async_setup_entry(
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, serial_number)
             },
-            name=name,
+            name=f"Inverter {name}",
             manufacturer="GoodWe",
             model=device_data.get("model_type", "unknown"),
             sw_version=device_data.get("firmwareversion", "unknown"),
@@ -201,7 +201,7 @@ async def async_setup_entry(
                 Sensor(
                     coordinator,
                     device_info,
-                    serial_number,
+                    serial_number, # backwards compatibility otherwise would be f"{serial_number}-power"
                     f"Inverter {inverter['name']} Power",
                     path_to_inverter + ["pac"],
                     Decimal,
@@ -397,10 +397,11 @@ async def async_setup_entry(
 
     if "hasPowerflow" in data and data["hasPowerflow"] and "powerflow" in data:
         serial_number = data[GOODWE_SPELLING.homeKit]["sn"]
+        serial_backwards_compatibility = "homeKit"  # the old code uses homeKit for the serial number
         device_info = DeviceInfo(
             identifiers={
                 # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, serial_number)
+                (DOMAIN, serial_backwards_compatibility)
             },
             name="HomeKit",
             manufacturer="GoodWe",
@@ -410,7 +411,7 @@ async def async_setup_entry(
                 Sensor(
                     coordinator,
                     device_info,
-                    f"{serial_number}",
+                    f"{serial_number}",  # backwards compatibility otherwise would be f"{serial_number}-load"
                     f"HomeKit Load",
                     ["powerflow", "load"],
                     Decimal,
