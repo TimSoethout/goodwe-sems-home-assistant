@@ -3,9 +3,7 @@
 DOMAIN = "sems"
 
 import voluptuous as vol
-import homeassistant.helpers.config_validation as cv
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, CONF_SCAN_INTERVAL
-from datetime import timedelta
 
 CONF_STATION_ID = "powerstation_id"
 
@@ -22,3 +20,19 @@ SEMS_CONFIG_SCHEMA = vol.Schema(
         ): int,  # , default=DEFAULT_SCAN_INTERVAL
     }
 )
+
+API_UPDATE_ERROR_MSG = "Error communicating with API, probably token could not be fetched, see debug logs"
+
+AC_EMPTY = 6553.5
+AC_CURRENT_EMPTY = 6553.5
+AC_FEQ_EMPTY = 655.35
+
+class GOODWE_SPELLING:
+    battery = "bettery"
+    homeKit = "homKit"
+    temperature = "tempperature"
+    hasEnergyStatisticsCharts = "hasEnergeStatisticsCharts"
+    energyStatisticsCharts = "energeStatisticsCharts"
+    energyStatisticsTotals = "energeStatisticsTotals"
+    thisMonthTotalE = "thismonthetotle"
+    lastMonthTotalE = "lastmonthetotle"
