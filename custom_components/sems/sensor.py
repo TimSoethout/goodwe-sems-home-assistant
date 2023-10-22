@@ -329,7 +329,7 @@ async def async_setup_entry(
                     coordinator,
                     device_info,
                     f"{serial_number}-vac{idx}",
-                    f"Inverter {inverter['name']} {idx} AC Voltage",
+                    f"Inverter {inverter['name']} Grid {idx} AC Voltage",
                     path_to_inverter + [f"vac{idx}"],
                     Decimal,
                     SensorDeviceClass.VOLTAGE,
