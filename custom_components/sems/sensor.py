@@ -185,8 +185,7 @@ async def async_setup_entry(
             model=device_data.get("model_type", "unknown"),
             sw_version=device_data.get("firmwareversion", "unknown"),
         )
-        async_add_entities(
-            [
+        sensors = [
                 Sensor(
                     coordinator,
                     device_info,
@@ -296,7 +295,7 @@ async def async_setup_entry(
                     SensorStateClass.TOTAL,
                 ),
             ]
-            + [
+        inverter_strings = [
                 Sensor(
                     coordinator,
                     device_info,
@@ -307,24 +306,8 @@ async def async_setup_entry(
                     SensorDeviceClass.VOLTAGE,
                     ELECTRIC_POTENTIAL_VOLT,
                     SensorStateClass.MEASUREMENT,
-                )
-                for idx in range(1, 5)
-            ]
-            + [
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-ipv{idx}",
-                    f"Inverter {inverter['name']} PV String {idx} Current",
-                    path_to_inverter + [f"ipv{idx}"],
-                    Decimal,
-                    SensorDeviceClass.CURRENT,
-                    ELECTRIC_CURRENT_AMPERE,
-                    SensorStateClass.MEASUREMENT,
-                )
-                for idx in range(1, 5)
-            ]
-            + [
+                ) for idx in range(1, 5)]
+        inverter_strings += [
                 Sensor(
                     coordinator,
                     device_info,
@@ -336,10 +319,8 @@ async def async_setup_entry(
                     ELECTRIC_POTENTIAL_VOLT,
                     SensorStateClass.MEASUREMENT,
                     AC_EMPTY,
-                )
-                for idx in range(1, 4)
-            ]
-            + [
+                ) for idx in range(1, 4) ]
+        grids = [
                 Sensor(
                     coordinator,
                     device_info,
@@ -351,10 +332,8 @@ async def async_setup_entry(
                     ELECTRIC_CURRENT_AMPERE,
                     SensorStateClass.MEASUREMENT,
                     AC_CURRENT_EMPTY,
-                )
-                for idx in range(1, 4)
-            ]
-            + [
+                ) for idx in range(1, 4) ]
+        grids += [
                 Sensor(
                     coordinator,
                     device_info,
@@ -366,10 +345,8 @@ async def async_setup_entry(
                     FREQUENCY_HERTZ,
                     SensorStateClass.MEASUREMENT,
                     AC_FEQ_EMPTY,
-                )
-                for idx in range(1, 4)
-            ]
-            + [
+                ) for idx in range(1, 4)]
+        batteries = [
                 Sensor(
                     coordinator,
                     device_info,
@@ -393,7 +370,7 @@ async def async_setup_entry(
                     SensorStateClass.MEASUREMENT,
                 ),
             ]
-        )
+        async_add_entities(sensors + inverter_strings + grids + batteries)
 
     if "hasPowerflow" in data and data["hasPowerflow"] and "powerflow" in data:
         serial_number = data[GOODWE_SPELLING.homeKit]["sn"]
