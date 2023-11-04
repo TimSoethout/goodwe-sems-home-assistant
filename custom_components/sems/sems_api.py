@@ -1,15 +1,12 @@
-import json
 import logging
 
 import requests
-
 from homeassistant import exceptions
 
 _LOGGER = logging.getLogger(__name__)
 
-# _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
-_PowerStationURLPart = "/v2/PowerStation/GetMonitorDetailByPowerstationId"
+_PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
 _RequestTimeout = 30  # seconds
 
 _DefaultHeaders = {
