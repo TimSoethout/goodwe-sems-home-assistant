@@ -52,9 +52,15 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def get_value_from_path(data, path):
+    """
+    Get value from a nested dictionary.
+    """
     value = data
-    for key in path:
-        value = value[key]
+    try:
+        for key in path:
+            value = value[key]
+    except KeyError:
+        return None
     return value
 
 
@@ -103,6 +109,349 @@ class Sensor(CoordinatorEntity, SensorEntity):
     @property
     def suggested_display_precision(self):
         return 2
+
+
+class SensorOptions:
+    def __init__(
+        self,
+        device_info: DeviceInfo,
+        unique_id: str,
+        name: str,
+        value_path: List[str],
+        device_class: Optional[SensorDeviceClass] = None,
+        native_unit_of_measurement: Optional[str] = None,
+        state_class: Optional[SensorStateClass] = None,
+        empty_value=None,
+        data_type_converter=Decimal,
+    ):
+        self.device_info = device_info
+        self.unique_id = unique_id
+        self.name = name
+        self.value_path = value_path
+        self.device_class = device_class
+        self.native_unit_of_measurement = native_unit_of_measurement
+        self.state_class = state_class
+        self.empty_value = empty_value
+        self.data_type_converter = data_type_converter
+
+    def __str__(self):
+        return f"SensorOptions(device_info={self.device_info}, unique_id={self.unique_id}, name={self.name}, value_path={self.value_path}, device_class={self.device_class}, native_unit_of_measurement={self.native_unit_of_measurement}, state_class={self.state_class}, empty_value={self.empty_value}, data_type_converter={self.data_type_converter})"
+
+
+def sensor_options_for_data(data) -> List[SensorOptions]:
+    sensors: List[SensorOptions] = []
+    try:
+        currency = data["kpi"]["currency"]
+    except KeyError:
+        currency = None
+
+    for idx, inverter in enumerate(data["inverter"]):
+        serial_number = inverter["sn"]
+        path_to_inverter = ["inverter", idx, "invert_full"]
+        name = inverter.get("name", "unknown")
+        device_data = get_value_from_path(data, path_to_inverter)
+        device_info = DeviceInfo(
+            identifiers={
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, serial_number)
+            },
+            name=f"Inverter {name}",
+            manufacturer="GoodWe",
+            model=device_data.get("model_type", "unknown"),
+            sw_version=device_data.get("firmwareversion", "unknown"),
+        )
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-capacity",
+                f"Inverter {inverter['name']} Capacity",
+                path_to_inverter + ["capacity"],
+                SensorDeviceClass.POWER,
+                POWER_KILO_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                serial_number,  # backwards compatibility otherwise would be f"{serial_number}-power"
+                f"Inverter {inverter['name']} Power",
+                path_to_inverter + ["pac"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-energy",
+                f"Inverter {inverter['name']} Energy",
+                path_to_inverter + ["etotal"],
+                SensorDeviceClass.ENERGY,
+                ENERGY_KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-hour-total",
+                f"Inverter {inverter['name']} Total Hours",
+                path_to_inverter + ["hour_total"],
+                state_class=SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-temperature",
+                f"Inverter {inverter['name']} Temperature",
+                path_to_inverter + [GOODWE_SPELLING.temperature],
+                SensorDeviceClass.TEMPERATURE,
+                TEMP_CELSIUS,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-eday ",
+                f"Inverter {inverter['name']} Energy Today",
+                path_to_inverter + ["eday"],
+                SensorDeviceClass.ENERGY,
+                ENERGY_KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-{GOODWE_SPELLING.thisMonthTotalE}",
+                f"Inverter {inverter['name']} Energy This Month",
+                path_to_inverter + [GOODWE_SPELLING.thisMonthTotalE],
+                SensorDeviceClass.ENERGY,
+                ENERGY_KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-{GOODWE_SPELLING.lastMonthTotalE}",
+                f"Inverter {inverter['name']} Energy Last Month",
+                path_to_inverter + [GOODWE_SPELLING.lastMonthTotalE],
+                SensorDeviceClass.ENERGY,
+                ENERGY_KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-iday",
+                f"Inverter {inverter['name']} Income Today",
+                path_to_inverter + ["iday"],
+                SensorDeviceClass.MONETARY,
+                currency,
+                SensorStateClass.TOTAL,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-itotal",
+                f"Inverter {inverter['name']} Income Total",
+                path_to_inverter + ["itotal"],
+                SensorDeviceClass.MONETARY,
+                currency,
+                SensorStateClass.TOTAL,
+            ),
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-vpv{idx}",
+                f"Inverter {inverter['name']} PV String {idx} Voltage",
+                path_to_inverter + [f"vpv{idx}"],
+                SensorDeviceClass.VOLTAGE,
+                ELECTRIC_POTENTIAL_VOLT,
+                SensorStateClass.MEASUREMENT,
+            )
+            for idx in range(1, 5)
+            if get_value_from_path(data, path_to_inverter + [f"vpv{idx}"]) is not None
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-ipv{idx}",
+                f"Inverter {inverter['name']} PV String {idx} Current",
+                path_to_inverter + [f"ipv{idx}"],
+                SensorDeviceClass.CURRENT,
+                ELECTRIC_CURRENT_AMPERE,
+                SensorStateClass.MEASUREMENT,
+            )
+            for idx in range(1, 5)
+            if get_value_from_path(data, path_to_inverter + [f"ipv{idx}"]) is not None
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-vac{idx}",
+                f"Inverter {inverter['name']} Grid {idx} AC Voltage",
+                path_to_inverter + [f"vac{idx}"],
+                SensorDeviceClass.VOLTAGE,
+                ELECTRIC_POTENTIAL_VOLT,
+                SensorStateClass.MEASUREMENT,
+                AC_EMPTY,
+            )
+            for idx in range(1, 4)
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-iac{idx}",
+                f"Inverter {inverter['name']} Grid {idx} AC Current",
+                path_to_inverter + [f"iac{idx}"],
+                SensorDeviceClass.CURRENT,
+                ELECTRIC_CURRENT_AMPERE,
+                SensorStateClass.MEASUREMENT,
+                AC_CURRENT_EMPTY,
+            )
+            for idx in range(1, 4)
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-fac{idx}",
+                f"Inverter {inverter['name']} Grid {idx} AC Frequency",
+                path_to_inverter + [f"fac{idx}"],
+                SensorDeviceClass.FREQUENCY,
+                FREQUENCY_HERTZ,
+                SensorStateClass.MEASUREMENT,
+                AC_FEQ_EMPTY,
+            )
+            for idx in range(1, 4)
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-vbattery1",
+                f"Inverter {inverter['name']} Battery Voltage",
+                path_to_inverter + ["vbattery1"],
+                SensorDeviceClass.VOLTAGE,
+                ELECTRIC_POTENTIAL_VOLT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-ibattery1",
+                f"Inverter {inverter['name']} Battery Current",
+                path_to_inverter + ["ibattery1"],
+                SensorDeviceClass.CURRENT,
+                ELECTRIC_CURRENT_AMPERE,
+                SensorStateClass.MEASUREMENT,
+            ),
+        ]
+
+    if "hasPowerflow" in data and data["hasPowerflow"] and "powerflow" in data:
+        serial_number = "powerflow"
+        serial_backwards_compatibility = (
+            "homeKit"  # the old code uses homeKit for the serial number
+        )
+        device_info = DeviceInfo(
+            identifiers={
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, serial_backwards_compatibility)
+            },
+            name="HomeKit",
+            manufacturer="GoodWe",
+        )
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}",  # backwards compatibility otherwise would be f"{serial_number}-load"
+                f"HomeKit Load",
+                ["powerflow", "load"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-pv",
+                f"HomeKit PV",
+                ["powerflow", "pv"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-grid",
+                f"HomeKit Grid",
+                ["powerflow", "grid"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-battery",
+                f"HomeKit Battery",
+                ["powerflow", GOODWE_SPELLING.battery],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-genset",
+                f"HomeKit generator",
+                ["powerflow", "genset"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-soc",
+                f"HomeKit State of Charge",
+                ["powerflow", "soc"],
+                SensorDeviceClass.BATTERY,
+                PERCENTAGE,
+                SensorStateClass.MEASUREMENT,
+            ),
+        ]
+        if (
+            GOODWE_SPELLING.hasEnergyStatisticsCharts in data
+            and data[GOODWE_SPELLING.hasEnergyStatisticsCharts]
+        ):
+            if data[GOODWE_SPELLING.energyStatisticsCharts]:
+                sensors += [
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-import-energy",
+                        f"Sems Import",
+                        [GOODWE_SPELLING.energyStatisticsCharts, "buy"],
+                        SensorDeviceClass.ENERGY,
+                        ENERGY_KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-export-energy",
+                        f"Sems Export",
+                        [GOODWE_SPELLING.energyStatisticsCharts, "sell"],
+                        SensorDeviceClass.ENERGY,
+                        ENERGY_KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                ]
+            if data[GOODWE_SPELLING.energyStatisticsTotals]:
+                sensors += [
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-import-energy-total",
+                        f"Sems Total Import",
+                        [GOODWE_SPELLING.energyStatisticsTotals, "buy"],
+                        SensorDeviceClass.ENERGY,
+                        ENERGY_KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-export-energy-total",
+                        f"Sems Total Export",
+                        [GOODWE_SPELLING.energyStatisticsTotals, "sell"],
+                        SensorDeviceClass.ENERGY,
+                        ENERGY_KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                ]
+    return sensors
 
 
 async def async_setup_entry(
@@ -165,349 +514,21 @@ async def async_setup_entry(
 
     data = coordinator.data
 
-    try:
-        currency = data["kpi"]["currency"]
-    except KeyError:
-        currency = None
-
-    for idx, inverter in enumerate(data["inverter"]):
-        serial_number = inverter["sn"]
-        path_to_inverter = ["inverter", idx, "invert_full"]
-        name = inverter.get("name", "unknown")
-        device_data = get_value_from_path(coordinator.data, path_to_inverter)
-        device_info = DeviceInfo(
-            identifiers={
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, serial_number)
-            },
-            name=f"Inverter {name}",
-            manufacturer="GoodWe",
-            model=device_data.get("model_type", "unknown"),
-            sw_version=device_data.get("firmwareversion", "unknown"),
+    sensor_options: List[SensorOptions] = sensor_options_for_data(data)
+    sensors: List[Sensor] = []
+    for sensor_option in sensor_options:
+        sensors.append(
+            Sensor(
+                coordinator,
+                sensor_option.device_info,
+                sensor_option.unique_id,
+                sensor_option.name,
+                sensor_option.value_path,
+                sensor_option.data_type_converter,
+                sensor_option.device_class,
+                sensor_option.native_unit_of_measurement,
+                sensor_option.state_class,
+                sensor_option.empty_value,
+            )
         )
-        sensors = [
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-capacity",
-                    f"Inverter {inverter['name']} Capacity",
-                    path_to_inverter + ["capacity"],
-                    Decimal,
-                    SensorDeviceClass.POWER,
-                    POWER_KILO_WATT,
-                    SensorStateClass.MEASUREMENT,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    serial_number, # backwards compatibility otherwise would be f"{serial_number}-power"
-                    f"Inverter {inverter['name']} Power",
-                    path_to_inverter + ["pac"],
-                    Decimal,
-                    SensorDeviceClass.POWER,
-                    POWER_WATT,
-                    SensorStateClass.MEASUREMENT,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-energy",
-                    f"Inverter {inverter['name']} Energy",
-                    path_to_inverter + ["etotal"],
-                    Decimal,
-                    SensorDeviceClass.ENERGY,
-                    ENERGY_KILO_WATT_HOUR,
-                    SensorStateClass.TOTAL_INCREASING,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-hour-total",
-                    f"Inverter {inverter['name']} Total Hours",
-                    path_to_inverter + ["hour_total"],
-                    Decimal,
-                    state_class=SensorStateClass.TOTAL_INCREASING,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-temperature",
-                    f"Inverter {inverter['name']} Temperature",
-                    path_to_inverter + [GOODWE_SPELLING.temperature],
-                    Decimal,
-                    SensorDeviceClass.TEMPERATURE,
-                    TEMP_CELSIUS,
-                    SensorStateClass.MEASUREMENT,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-eday ",
-                    f"Inverter {inverter['name']} Energy Today",
-                    path_to_inverter + ["eday"],
-                    Decimal,
-                    SensorDeviceClass.ENERGY,
-                    ENERGY_KILO_WATT_HOUR,
-                    SensorStateClass.TOTAL_INCREASING,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-{GOODWE_SPELLING.thisMonthTotalE}",
-                    f"Inverter {inverter['name']} Energy This Month",
-                    path_to_inverter + [GOODWE_SPELLING.thisMonthTotalE],
-                    Decimal,
-                    SensorDeviceClass.ENERGY,
-                    ENERGY_KILO_WATT_HOUR,
-                    SensorStateClass.TOTAL_INCREASING,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-{GOODWE_SPELLING.lastMonthTotalE}",
-                    f"Inverter {inverter['name']} Energy Last Month",
-                    path_to_inverter + [GOODWE_SPELLING.lastMonthTotalE],
-                    Decimal,
-                    SensorDeviceClass.ENERGY,
-                    ENERGY_KILO_WATT_HOUR,
-                    SensorStateClass.TOTAL_INCREASING,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-iday",
-                    f"Inverter {inverter['name']} Income Today",
-                    path_to_inverter + ["iday"],
-                    Decimal,
-                    SensorDeviceClass.MONETARY,
-                    currency,
-                    SensorStateClass.TOTAL,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-itotal",
-                    f"Inverter {inverter['name']} Income Total",
-                    path_to_inverter + ["itotal"],
-                    Decimal,
-                    SensorDeviceClass.MONETARY,
-                    currency,
-                    SensorStateClass.TOTAL,
-                ),
-            ]
-        inverter_strings = [
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-vpv{idx}",
-                    f"Inverter {inverter['name']} PV String {idx} Voltage",
-                    path_to_inverter + [f"vpv{idx}"],
-                    Decimal,
-                    SensorDeviceClass.VOLTAGE,
-                    ELECTRIC_POTENTIAL_VOLT,
-                    SensorStateClass.MEASUREMENT,
-                ) for idx in range(1, 5)]
-        inverter_strings += [
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-vac{idx}",
-                    f"Inverter {inverter['name']} Grid {idx} AC Voltage",
-                    path_to_inverter + [f"vac{idx}"],
-                    Decimal,
-                    SensorDeviceClass.VOLTAGE,
-                    ELECTRIC_POTENTIAL_VOLT,
-                    SensorStateClass.MEASUREMENT,
-                    AC_EMPTY,
-                ) for idx in range(1, 4) ]
-        grids = [
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-iac{idx}",
-                    f"Inverter {inverter['name']} Grid {idx} AC Current",
-                    path_to_inverter + [f"iac{idx}"],
-                    Decimal,
-                    SensorDeviceClass.CURRENT,
-                    ELECTRIC_CURRENT_AMPERE,
-                    SensorStateClass.MEASUREMENT,
-                    AC_CURRENT_EMPTY,
-                ) for idx in range(1, 4) ]
-        grids += [
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-fac{idx}",
-                    f"Inverter {inverter['name']} Grid {idx} AC Frequency",
-                    path_to_inverter + [f"fac{idx}"],
-                    Decimal,
-                    SensorDeviceClass.FREQUENCY,
-                    FREQUENCY_HERTZ,
-                    SensorStateClass.MEASUREMENT,
-                    AC_FEQ_EMPTY,
-                ) for idx in range(1, 4)]
-        batteries = [
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-vbattery1",
-                    f"Inverter {inverter['name']} Battery Voltage",
-                    path_to_inverter + ["vbattery1"],
-                    Decimal,
-                    SensorDeviceClass.VOLTAGE,
-                    ELECTRIC_POTENTIAL_VOLT,
-                    SensorStateClass.MEASUREMENT,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-ibattery1",
-                    f"Inverter {inverter['name']} Battery Current",
-                    path_to_inverter + ["ibattery1"],
-                    Decimal,
-                    SensorDeviceClass.CURRENT,
-                    ELECTRIC_CURRENT_AMPERE,
-                    SensorStateClass.MEASUREMENT,
-                ),
-            ]
-        async_add_entities(sensors + inverter_strings + grids + batteries)
-
-    if "hasPowerflow" in data and data["hasPowerflow"] and "powerflow" in data:
-        serial_number = data[GOODWE_SPELLING.homeKit]["sn"]
-        serial_backwards_compatibility = "homeKit"  # the old code uses homeKit for the serial number
-        device_info = DeviceInfo(
-            identifiers={
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, serial_backwards_compatibility)
-            },
-            name="HomeKit",
-            manufacturer="GoodWe",
-        )
-        async_add_entities(
-            [
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}",  # backwards compatibility otherwise would be f"{serial_number}-load"
-                    f"HomeKit Load",
-                    ["powerflow", "load"],
-                    Decimal,
-                    SensorDeviceClass.POWER,
-                    POWER_WATT,
-                    SensorStateClass.MEASUREMENT,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-pv",
-                    f"HomeKit PV",
-                    ["powerflow", "pv"],
-                    Decimal,
-                    SensorDeviceClass.POWER,
-                    POWER_WATT,
-                    SensorStateClass.MEASUREMENT,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-grid",
-                    f"HomeKit Grid",
-                    ["powerflow", "grid"],
-                    Decimal,
-                    SensorDeviceClass.POWER,
-                    POWER_WATT,
-                    SensorStateClass.MEASUREMENT,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-battery",
-                    f"HomeKit Battery",
-                    ["powerflow", GOODWE_SPELLING.battery],
-                    Decimal,
-                    SensorDeviceClass.POWER,
-                    POWER_WATT,
-                    SensorStateClass.MEASUREMENT,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-genset",
-                    f"HomeKit generator",
-                    ["powerflow", "genset"],
-                    Decimal,
-                    SensorDeviceClass.POWER,
-                    POWER_WATT,
-                    SensorStateClass.MEASUREMENT,
-                ),
-                Sensor(
-                    coordinator,
-                    device_info,
-                    f"{serial_number}-soc",
-                    f"HomeKit State of Charge",
-                    ["powerflow", "soc"],
-                    Decimal,
-                    SensorDeviceClass.BATTERY,
-                    PERCENTAGE,
-                    SensorStateClass.MEASUREMENT,
-                ),
-            ]
-        )
-        if (
-            GOODWE_SPELLING.hasEnergyStatisticsCharts in data
-            and data[GOODWE_SPELLING.hasEnergyStatisticsCharts]
-        ):
-            if data[GOODWE_SPELLING.energyStatisticsCharts]:
-                async_add_entities(
-                    [
-                        Sensor(
-                            coordinator,
-                            device_info,
-                            f"{serial_number}-import-energy",
-                            f"Sems Import",
-                            [GOODWE_SPELLING.energyStatisticsCharts, "buy"],
-                            Decimal,
-                            SensorDeviceClass.ENERGY,
-                            ENERGY_KILO_WATT_HOUR,
-                            SensorStateClass.TOTAL_INCREASING,
-                        ),
-                        Sensor(
-                            coordinator,
-                            device_info,
-                            f"{serial_number}-export-energy",
-                            f"Sems Export",
-                            [GOODWE_SPELLING.energyStatisticsCharts, "sell"],
-                            Decimal,
-                            SensorDeviceClass.ENERGY,
-                            ENERGY_KILO_WATT_HOUR,
-                            SensorStateClass.TOTAL_INCREASING,
-                        ),
-                    ]
-                )
-            if data[GOODWE_SPELLING.energyStatisticsTotals]:
-                async_add_entities(
-                    [
-                        Sensor(
-                            coordinator,
-                            device_info,
-                            f"{serial_number}-import-energy-total",
-                            f"Sems Total Import",
-                            [GOODWE_SPELLING.energyStatisticsTotals, "buy"],
-                            Decimal,
-                            SensorDeviceClass.ENERGY,
-                            ENERGY_KILO_WATT_HOUR,
-                            SensorStateClass.TOTAL_INCREASING,
-                        ),
-                        Sensor(
-                            coordinator,
-                            device_info,
-                            f"{serial_number}-export-energy-total",
-                            f"Sems Total Export",
-                            [GOODWE_SPELLING.energyStatisticsTotals, "sell"],
-                            Decimal,
-                            SensorDeviceClass.ENERGY,
-                            ENERGY_KILO_WATT_HOUR,
-                            SensorStateClass.TOTAL_INCREASING,
-                        ),
-                    ]
-                )
+    async_add_entities(sensors)
