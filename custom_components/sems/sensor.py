@@ -335,6 +335,84 @@ def sensor_options_for_data(data) -> List[SensorOptions]:
                 SensorStateClass.MEASUREMENT,
             ),
         ]
+        battery_count = get_value_from_path(data, path_to_inverter + ["battery_count"])
+        if battery_count is not None:
+            for idx in range(0, battery_count):
+                path_to_battery = path_to_inverter + ["more_batterys", idx]
+                sensors += [
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-pbattery",
+                        f"Inverter {inverter['name']} Battery {idx} Power",
+                        path_to_battery + ["pbattery"],
+                        SensorDeviceClass.POWER,
+                        POWER_WATT,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-vbattery",
+                        f"Inverter {inverter['name']} Battery {idx} Voltage",
+                        path_to_battery + ["vbattery"],
+                        SensorDeviceClass.VOLTAGE,
+                        ELECTRIC_POTENTIAL_VOLT,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-ibattery",
+                        f"Inverter {inverter['name']} Battery {idx} Current",
+                        path_to_battery + ["ibattery"],
+                        SensorDeviceClass.CURRENT,
+                        ELECTRIC_CURRENT_AMPERE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-soc",
+                        f"Inverter {inverter['name']} Battery {idx} State of Charge",
+                        path_to_battery + ["soc"],
+                        SensorDeviceClass.BATTERY,
+                        PERCENTAGE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-soh",
+                        f"Inverter {inverter['name']} Battery {idx} State of Health",
+                        path_to_battery + ["soh"],
+                        SensorDeviceClass.BATTERY,
+                        PERCENTAGE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-bms_temperature",
+                        f"Inverter {inverter['name']} Battery {idx} BMS Temperature",
+                        path_to_battery + ["bms_temperature"],
+                        SensorDeviceClass.TEMPERATURE,
+                        TEMP_CELSIUS,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-bms_discharge_i_max",
+                        f"Inverter {inverter['name']} Battery {idx} BMS Discharge Max Current",
+                        path_to_battery + ["bms_discharge_i_max"],
+                        SensorDeviceClass.CURRENT,
+                        ELECTRIC_CURRENT_AMPERE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-bms_charge_i_max",
+                        f"Inverter {inverter['name']} Battery {idx} BMS Charge Max Current",
+                        path_to_battery + ["bms_charge_i_max"],
+                        SensorDeviceClass.CURRENT,
+                        ELECTRIC_CURRENT_AMPERE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                ]
 
     if "hasPowerflow" in data and data["hasPowerflow"] and "powerflow" in data:
         serial_number = "powerflow"
