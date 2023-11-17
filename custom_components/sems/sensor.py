@@ -31,6 +31,10 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_registry import (
+    async_entries_for_config_entry as entities_for_config_entry,
+    async_get as async_get_entity_registry,
+)
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
@@ -138,7 +142,24 @@ class SensorOptions:
         return f"SensorOptions(device_info={self.device_info}, unique_id={self.unique_id}, name={self.name}, value_path={self.value_path}, device_class={self.device_class}, native_unit_of_measurement={self.native_unit_of_measurement}, state_class={self.state_class}, empty_value={self.empty_value}, data_type_converter={self.data_type_converter})"
 
 
-def sensor_options_for_data(data) -> List[SensorOptions]:
+def get_home_kit_sn(data):
+    return get_value_from_path(data, [GOODWE_SPELLING.homeKit, "sn"])
+
+
+def get_has_existing_homekit_entity(data, hass, config_entry) -> bool:
+    home_kit_sn = get_home_kit_sn(data)
+    if home_kit_sn is not None:
+        ent_reg = async_get_entity_registry(hass)
+        entities = entities_for_config_entry(ent_reg, config_entry.entry_id)
+        for entity in entities:
+            if entity.unique_id == home_kit_sn:
+                return True
+    return False
+
+
+def sensor_options_for_data(
+    data, has_existing_homekit_entity=False
+) -> List[SensorOptions]:
     sensors: List[SensorOptions] = []
     try:
         currency = data["kpi"]["currency"]
@@ -415,7 +436,9 @@ def sensor_options_for_data(data) -> List[SensorOptions]:
                 ]
 
     if "hasPowerflow" in data and data["hasPowerflow"] and "powerflow" in data:
-        serial_number = "powerflow"
+        inverter_serial_number = get_home_kit_sn(data)
+        if not has_existing_homekit_entity or inverter_serial_number is None:
+            inverter_serial_number = "powerflow"
         serial_backwards_compatibility = (
             "homeKit"  # the old code uses homeKit for the serial number
         )
@@ -592,7 +615,13 @@ async def async_setup_entry(
 
     data = coordinator.data
 
-    sensor_options: List[SensorOptions] = sensor_options_for_data(data)
+    has_existing_homekit_entity = get_has_existing_homekit_entity(data, hass, config_entry)
+
+    _LOGGER.warning("has_existing_homekit_entity: %s", has_existing_homekit_entity)
+
+    sensor_options: List[SensorOptions] = sensor_options_for_data(
+        data, has_existing_homekit_entity
+    )
     sensors: List[Sensor] = []
     for sensor_option in sensor_options:
         sensors.append(
