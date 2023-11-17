@@ -5,38 +5,565 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
-from homeassistant.core import HomeAssistant
-import homeassistant
 import logging
-
+import re
 from datetime import timedelta
+from decimal import Decimal
+from typing import List, Callable, Optional
 
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorDeviceClass,
+    SensorStateClass,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import (
+    POWER_WATT,
+    CONF_SCAN_INTERVAL,
+    ENERGY_KILO_WATT_HOUR,
+    TEMP_CELSIUS,
+    ELECTRIC_POTENTIAL_VOLT,
+    ELECTRIC_CURRENT_AMPERE,
+    FREQUENCY_HERTZ,
+    PERCENTAGE,
+    POWER_KILO_WATT,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_registry import (
+    async_entries_for_config_entry as entities_for_config_entry,
+    async_get as async_get_entity_registry,
+)
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
     UpdateFailed,
 )
-from homeassistant.components.sensor import STATE_CLASS_TOTAL_INCREASING, SensorEntity
-from homeassistant.const import (
-    DEVICE_CLASS_POWER,
-    POWER_WATT,
-    CONF_SCAN_INTERVAL,
-    DEVICE_CLASS_ENERGY,
-    ENERGY_KILO_WATT_HOUR,
+
+from .const import (
+    DOMAIN,
+    CONF_STATION_ID,
+    DEFAULT_SCAN_INTERVAL,
+    API_UPDATE_ERROR_MSG,
+    GOODWE_SPELLING,
+    AC_EMPTY,
+    AC_CURRENT_EMPTY,
+    AC_FEQ_EMPTY,
 )
-from homeassistant.helpers.entity import Entity
-from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+def get_value_from_path(data, path):
+    """
+    Get value from a nested dictionary.
+    """
+    value = data
+    try:
+        for key in path:
+            value = value[key]
+    except KeyError:
+        return None
+    return value
+
+
+class Sensor(CoordinatorEntity, SensorEntity):
+    str_clean_regex = re.compile(r"(\d+\.?\d*)")
+
+    def __init__(
+        self,
+        coordinator,
+        device_info: DeviceInfo,
+        unique_id: str,
+        name: str,
+        value_path: List[str],
+        data_type_converter: Callable,
+        device_class: Optional[SensorDeviceClass] = None,
+        native_unit_of_measurement: Optional[str] = None,
+        state_class: Optional[SensorStateClass] = None,
+        empty_value=None,
+    ):
+        super().__init__(coordinator)
+        self._value_path = value_path
+        self._data_type_converter = data_type_converter
+        self._empty_value = empty_value
+
+        self._attr_unique_id = unique_id
+        self._attr_name = name
+        self._attr_native_unit_of_measurement = native_unit_of_measurement
+        self._attr_device_class = device_class
+        self._attr_state_class = state_class
+        self._attr_device_info = device_info
+
+    def _get_native_value_from_coordinator(self):
+        return get_value_from_path(self.coordinator.data, self._value_path)
+
+    @property
+    def native_value(self):
+        """Return the state of the device."""
+        value = get_value_from_path(self.coordinator.data, self._value_path)
+        if isinstance(value, str):
+            value = self.str_clean_regex.search(value).group(1)
+        if self._empty_value is not None and self._empty_value == value:
+            value = 0
+        typed_value = self._data_type_converter(value)
+        return typed_value
+
+    @property
+    def suggested_display_precision(self):
+        return 2
+
+
+class SensorOptions:
+    def __init__(
+        self,
+        device_info: DeviceInfo,
+        unique_id: str,
+        name: str,
+        value_path: List[str],
+        device_class: Optional[SensorDeviceClass] = None,
+        native_unit_of_measurement: Optional[str] = None,
+        state_class: Optional[SensorStateClass] = None,
+        empty_value=None,
+        data_type_converter=Decimal,
+    ):
+        self.device_info = device_info
+        self.unique_id = unique_id
+        self.name = name
+        self.value_path = value_path
+        self.device_class = device_class
+        self.native_unit_of_measurement = native_unit_of_measurement
+        self.state_class = state_class
+        self.empty_value = empty_value
+        self.data_type_converter = data_type_converter
+
+    def __str__(self):
+        return f"SensorOptions(device_info={self.device_info}, unique_id={self.unique_id}, name={self.name}, value_path={self.value_path}, device_class={self.device_class}, native_unit_of_measurement={self.native_unit_of_measurement}, state_class={self.state_class}, empty_value={self.empty_value}, data_type_converter={self.data_type_converter})"
+
+
+def get_home_kit_sn(data):
+    return get_value_from_path(data, [GOODWE_SPELLING.homeKit, "sn"])
+
+
+def get_has_existing_homekit_entity(data, hass, config_entry) -> bool:
+    home_kit_sn = get_home_kit_sn(data)
+    if home_kit_sn is not None:
+        ent_reg = async_get_entity_registry(hass)
+        entities = entities_for_config_entry(ent_reg, config_entry.entry_id)
+        for entity in entities:
+            if entity.unique_id == home_kit_sn:
+                return True
+    return False
+
+
+def sensor_options_for_data(
+    data, has_existing_homekit_entity=False
+) -> List[SensorOptions]:
+    sensors: List[SensorOptions] = []
+    try:
+        currency = data["kpi"]["currency"]
+    except KeyError:
+        currency = None
+
+    for idx, inverter in enumerate(data["inverter"]):
+        serial_number = inverter["sn"]
+        path_to_inverter = ["inverter", idx, "invert_full"]
+        name = inverter.get("name", "unknown")
+        device_data = get_value_from_path(data, path_to_inverter)
+        device_info = DeviceInfo(
+            identifiers={
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, serial_number)
+            },
+            name=f"Inverter {name}",
+            manufacturer="GoodWe",
+            model=device_data.get("model_type", "unknown"),
+            sw_version=device_data.get("firmwareversion", "unknown"),
+        )
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-capacity",
+                f"Inverter {inverter['name']} Capacity",
+                path_to_inverter + ["capacity"],
+                SensorDeviceClass.POWER,
+                POWER_KILO_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                serial_number,  # backwards compatibility otherwise would be f"{serial_number}-power"
+                f"Inverter {inverter['name']} Power",
+                path_to_inverter + ["pac"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-energy",
+                f"Inverter {inverter['name']} Energy",
+                path_to_inverter + ["etotal"],
+                SensorDeviceClass.ENERGY,
+                ENERGY_KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-hour-total",
+                f"Inverter {inverter['name']} Total Hours",
+                path_to_inverter + ["hour_total"],
+                state_class=SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-temperature",
+                f"Inverter {inverter['name']} Temperature",
+                path_to_inverter + [GOODWE_SPELLING.temperature],
+                SensorDeviceClass.TEMPERATURE,
+                TEMP_CELSIUS,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-eday ",
+                f"Inverter {inverter['name']} Energy Today",
+                path_to_inverter + ["eday"],
+                SensorDeviceClass.ENERGY,
+                ENERGY_KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-{GOODWE_SPELLING.thisMonthTotalE}",
+                f"Inverter {inverter['name']} Energy This Month",
+                path_to_inverter + [GOODWE_SPELLING.thisMonthTotalE],
+                SensorDeviceClass.ENERGY,
+                ENERGY_KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-{GOODWE_SPELLING.lastMonthTotalE}",
+                f"Inverter {inverter['name']} Energy Last Month",
+                path_to_inverter + [GOODWE_SPELLING.lastMonthTotalE],
+                SensorDeviceClass.ENERGY,
+                ENERGY_KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-iday",
+                f"Inverter {inverter['name']} Income Today",
+                path_to_inverter + ["iday"],
+                SensorDeviceClass.MONETARY,
+                currency,
+                SensorStateClass.TOTAL,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-itotal",
+                f"Inverter {inverter['name']} Income Total",
+                path_to_inverter + ["itotal"],
+                SensorDeviceClass.MONETARY,
+                currency,
+                SensorStateClass.TOTAL,
+            ),
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-vpv{idx}",
+                f"Inverter {inverter['name']} PV String {idx} Voltage",
+                path_to_inverter + [f"vpv{idx}"],
+                SensorDeviceClass.VOLTAGE,
+                ELECTRIC_POTENTIAL_VOLT,
+                SensorStateClass.MEASUREMENT,
+            )
+            for idx in range(1, 5)
+            if get_value_from_path(data, path_to_inverter + [f"vpv{idx}"]) is not None
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-ipv{idx}",
+                f"Inverter {inverter['name']} PV String {idx} Current",
+                path_to_inverter + [f"ipv{idx}"],
+                SensorDeviceClass.CURRENT,
+                ELECTRIC_CURRENT_AMPERE,
+                SensorStateClass.MEASUREMENT,
+            )
+            for idx in range(1, 5)
+            if get_value_from_path(data, path_to_inverter + [f"ipv{idx}"]) is not None
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-vac{idx}",
+                f"Inverter {inverter['name']} Grid {idx} AC Voltage",
+                path_to_inverter + [f"vac{idx}"],
+                SensorDeviceClass.VOLTAGE,
+                ELECTRIC_POTENTIAL_VOLT,
+                SensorStateClass.MEASUREMENT,
+                AC_EMPTY,
+            )
+            for idx in range(1, 4)
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-iac{idx}",
+                f"Inverter {inverter['name']} Grid {idx} AC Current",
+                path_to_inverter + [f"iac{idx}"],
+                SensorDeviceClass.CURRENT,
+                ELECTRIC_CURRENT_AMPERE,
+                SensorStateClass.MEASUREMENT,
+                AC_CURRENT_EMPTY,
+            )
+            for idx in range(1, 4)
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-fac{idx}",
+                f"Inverter {inverter['name']} Grid {idx} AC Frequency",
+                path_to_inverter + [f"fac{idx}"],
+                SensorDeviceClass.FREQUENCY,
+                FREQUENCY_HERTZ,
+                SensorStateClass.MEASUREMENT,
+                AC_FEQ_EMPTY,
+            )
+            for idx in range(1, 4)
+        ]
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}-vbattery1",
+                f"Inverter {inverter['name']} Battery Voltage",
+                path_to_inverter + ["vbattery1"],
+                SensorDeviceClass.VOLTAGE,
+                ELECTRIC_POTENTIAL_VOLT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-ibattery1",
+                f"Inverter {inverter['name']} Battery Current",
+                path_to_inverter + ["ibattery1"],
+                SensorDeviceClass.CURRENT,
+                ELECTRIC_CURRENT_AMPERE,
+                SensorStateClass.MEASUREMENT,
+            ),
+        ]
+        battery_count = get_value_from_path(data, path_to_inverter + ["battery_count"])
+        if battery_count is not None:
+            for idx in range(0, battery_count):
+                path_to_battery = path_to_inverter + ["more_batterys", idx]
+                sensors += [
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-pbattery",
+                        f"Inverter {inverter['name']} Battery {idx} Power",
+                        path_to_battery + ["pbattery"],
+                        SensorDeviceClass.POWER,
+                        POWER_WATT,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-vbattery",
+                        f"Inverter {inverter['name']} Battery {idx} Voltage",
+                        path_to_battery + ["vbattery"],
+                        SensorDeviceClass.VOLTAGE,
+                        ELECTRIC_POTENTIAL_VOLT,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-ibattery",
+                        f"Inverter {inverter['name']} Battery {idx} Current",
+                        path_to_battery + ["ibattery"],
+                        SensorDeviceClass.CURRENT,
+                        ELECTRIC_CURRENT_AMPERE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-soc",
+                        f"Inverter {inverter['name']} Battery {idx} State of Charge",
+                        path_to_battery + ["soc"],
+                        SensorDeviceClass.BATTERY,
+                        PERCENTAGE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-soh",
+                        f"Inverter {inverter['name']} Battery {idx} State of Health",
+                        path_to_battery + ["soh"],
+                        SensorDeviceClass.BATTERY,
+                        PERCENTAGE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-bms_temperature",
+                        f"Inverter {inverter['name']} Battery {idx} BMS Temperature",
+                        path_to_battery + ["bms_temperature"],
+                        SensorDeviceClass.TEMPERATURE,
+                        TEMP_CELSIUS,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-bms_discharge_i_max",
+                        f"Inverter {inverter['name']} Battery {idx} BMS Discharge Max Current",
+                        path_to_battery + ["bms_discharge_i_max"],
+                        SensorDeviceClass.CURRENT,
+                        ELECTRIC_CURRENT_AMPERE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-{idx}-bms_charge_i_max",
+                        f"Inverter {inverter['name']} Battery {idx} BMS Charge Max Current",
+                        path_to_battery + ["bms_charge_i_max"],
+                        SensorDeviceClass.CURRENT,
+                        ELECTRIC_CURRENT_AMPERE,
+                        SensorStateClass.MEASUREMENT,
+                    ),
+                ]
+
+    if "hasPowerflow" in data and data["hasPowerflow"] and "powerflow" in data:
+        inverter_serial_number = get_home_kit_sn(data)
+        if not has_existing_homekit_entity or inverter_serial_number is None:
+            inverter_serial_number = "powerflow"
+        serial_backwards_compatibility = (
+            "homeKit"  # the old code uses homeKit for the serial number
+        )
+        device_info = DeviceInfo(
+            identifiers={
+                # Serial numbers are unique identifiers within a specific domain
+                (DOMAIN, serial_backwards_compatibility)
+            },
+            name="HomeKit",
+            manufacturer="GoodWe",
+        )
+        sensors += [
+            SensorOptions(
+                device_info,
+                f"{serial_number}",  # backwards compatibility otherwise would be f"{serial_number}-load"
+                f"HomeKit Load",
+                ["powerflow", "load"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-pv",
+                f"HomeKit PV",
+                ["powerflow", "pv"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-grid",
+                f"HomeKit Grid",
+                ["powerflow", "grid"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-battery",
+                f"HomeKit Battery",
+                ["powerflow", GOODWE_SPELLING.battery],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-genset",
+                f"HomeKit generator",
+                ["powerflow", "genset"],
+                SensorDeviceClass.POWER,
+                POWER_WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
+                f"{serial_number}-soc",
+                f"HomeKit State of Charge",
+                ["powerflow", "soc"],
+                SensorDeviceClass.BATTERY,
+                PERCENTAGE,
+                SensorStateClass.MEASUREMENT,
+            ),
+        ]
+        if (
+            GOODWE_SPELLING.hasEnergyStatisticsCharts in data
+            and data[GOODWE_SPELLING.hasEnergyStatisticsCharts]
+        ):
+            if data[GOODWE_SPELLING.energyStatisticsCharts]:
+                sensors += [
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-import-energy",
+                        f"Sems Import",
+                        [GOODWE_SPELLING.energyStatisticsCharts, "buy"],
+                        SensorDeviceClass.ENERGY,
+                        ENERGY_KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-export-energy",
+                        f"Sems Export",
+                        [GOODWE_SPELLING.energyStatisticsCharts, "sell"],
+                        SensorDeviceClass.ENERGY,
+                        ENERGY_KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                ]
+            if data[GOODWE_SPELLING.energyStatisticsTotals]:
+                sensors += [
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-import-energy-total",
+                        f"Sems Total Import",
+                        [GOODWE_SPELLING.energyStatisticsTotals, "buy"],
+                        SensorDeviceClass.ENERGY,
+                        ENERGY_KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SensorOptions(
+                        device_info,
+                        f"{serial_number}-export-energy-total",
+                        f"Sems Total Export",
+                        [GOODWE_SPELLING.energyStatisticsTotals, "sell"],
+                        SensorDeviceClass.ENERGY,
+                        ENERGY_KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                ]
+    return sensors
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Add sensors for passed config_entry in HA."""
-    # _LOGGER.debug("hass.data[DOMAIN] %s", hass.data[DOMAIN])
     semsApi = hass.data[DOMAIN][config_entry.entry_id]
     stationId = config_entry.data[CONF_STATION_ID]
 
-    # _LOGGER.debug("config_entry %s", config_entry.data)
     update_interval = timedelta(
         seconds=config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     )
@@ -54,43 +581,12 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
             result = await hass.async_add_executor_job(semsApi.getData, stationId)
             _LOGGER.debug("Resulting result: %s", result)
 
+            if "inverter" not in result:
+                raise UpdateFailed(API_UPDATE_ERROR_MSG)
             inverters = result["inverter"]
-
-            # found = []
-            # _LOGGER.debug("Found inverters: %s", inverters)
-            data = {}
             if inverters is None:
-                # something went wrong, probably token could not be fetched
-                raise UpdateFailed(
-                    "Error communicating with API, probably token could not be fetched, see debug logs"
-                )
-            for inverter in inverters:
-                name = inverter["invert_full"]["name"]
-                # powerstation_id = inverter["invert_full"]["powerstation_id"]
-                sn = inverter["invert_full"]["sn"]
-                _LOGGER.debug("Found inverter attribute %s %s", name, sn)
-                data[sn] = inverter["invert_full"]
-
-            hasPowerflow = result["hasPowerflow"]
-            hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
-
-            if hasPowerflow:
-                if hasEnergeStatisticsCharts:
-                    StatisticsCharts = { f"Charts_{key}": val for key, val in result["energeStatisticsCharts"].items() }
-                    StatisticsTotals = { f"Totals_{key}": val for key, val in result["energeStatisticsTotals"].items() }
-                    powerflow = { **result["powerflow"],  **StatisticsCharts, **StatisticsTotals }
-                else:
-                    powerflow = result["powerflow"]
-
-                powerflow["sn"] = result["homKit"]["sn"]
-                #_LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
-                # This seems more accurate than the Chart_sum
-                powerflow["all_time_generation"] = result["kpi"]["total_power"]
-
-                data["homeKit"] = powerflow
-
-            #_LOGGER.debug("Resulting data: %s", data)
-            return data
+                raise UpdateFailed(API_UPDATE_ERROR_MSG)
+            return result
         # except ApiError as err:
         except Exception as err:
             # logging.exception("Something awful happened!")
@@ -117,453 +613,29 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     #
     await coordinator.async_config_entry_first_refresh()
 
-    # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
-    async_add_entities(
-        SemsSensor(coordinator, ent) for idx, ent in enumerate(coordinator.data)
+    data = coordinator.data
+
+    has_existing_homekit_entity = get_has_existing_homekit_entity(data, hass, config_entry)
+
+    _LOGGER.warning("has_existing_homekit_entity: %s", has_existing_homekit_entity)
+
+    sensor_options: List[SensorOptions] = sensor_options_for_data(
+        data, has_existing_homekit_entity
     )
-    async_add_entities(
-        SemsStatisticsSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data)
-    )
-    async_add_entities(
-        SemsPowerflowSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
-    )
-    async_add_entities(
-        SemsTotalImportSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
-    )
-    async_add_entities(
-        SemsTotalExportSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
-    )
-
-class SemsSensor(CoordinatorEntity, SensorEntity):
-    """SemsSensor using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-    """
-
-    def __init__(self, coordinator, sn):
-        """Pass coordinator to CoordinatorEntity."""
-        super().__init__(coordinator)
-        self.coordinator = coordinator
-        self.sn = sn
-        _LOGGER.debug("Creating SemsSensor with id %s", self.sn)
-
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_POWER
-
-    @property
-    def unit_of_measurement(self):
-        return POWER_WATT
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return f"Inverter {self.coordinator.data[self.sn]['name']}"
-
-    @property
-    def unique_id(self) -> str:
-        return self.coordinator.data[self.sn]["sn"]
-
-    @property
-    def state(self):
-        """Return the state of the device."""
-        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        # _LOGGER.debug("self.sn: %s", self.sn)
-        # _LOGGER.debug(
-        #     "state, self data: %s", self.coordinator.data[self.sn]
-        # )
-        data = self.coordinator.data[self.sn]
-        return data["pac"] if data["status"] == 1 else 0
-
-    def statusText(self, status) -> str:
-        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
-        return labels[status] if status in labels else "Unknown"
-
-    # For backwards compatibility
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the monitored installation."""
-        data = self.coordinator.data[self.sn]
-        # _LOGGER.debug("state, self data: %s", data.items())
-        attributes = {k: v for k, v in data.items() if k is not None and v is not None}
-        attributes["statusText"] = self.statusText(data["status"])
-        return attributes
-
-    @property
-    def is_on(self) -> bool:
-        """Return entity status."""
-        self.coordinator.data[self.sn]["status"] == 1
-
-    @property
-    def should_poll(self) -> bool:
-        """No need to poll. Coordinator notifies entity of updates."""
-        return False
-
-    @property
-    def available(self):
-        """Return if entity is available."""
-        return self.coordinator.last_update_success
-
-    @property
-    def device_info(self):
-        # _LOGGER.debug("self.device_state_attributes: %s", self.device_state_attributes)
-        return {
-            "identifiers": {
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.sn)
-            },
-            "name": self.name,
-            "manufacturer": "GoodWe",
-            "model": self.extra_state_attributes.get("model_type", "unknown"),
-            "sw_version": self.extra_state_attributes.get("firmwareversion", "unknown"),
-            # "via_device": (DOMAIN, self.api.bridgeid),
-        }
-
-    async def async_added_to_hass(self):
-        """When entity is added to hass."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self.async_write_ha_state)
+    sensors: List[Sensor] = []
+    for sensor_option in sensor_options:
+        sensors.append(
+            Sensor(
+                coordinator,
+                sensor_option.device_info,
+                sensor_option.unique_id,
+                sensor_option.name,
+                sensor_option.value_path,
+                sensor_option.data_type_converter,
+                sensor_option.device_class,
+                sensor_option.native_unit_of_measurement,
+                sensor_option.state_class,
+                sensor_option.empty_value,
+            )
         )
-
-    async def async_update(self):
-        """Update the entity.
-
-        Only used by the generic entity update service.
-        """
-        await self.coordinator.async_request_refresh()
-
-
-class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
-    """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
-
-    def __init__(self, coordinator, sn):
-        """Pass coordinator to CoordinatorEntity."""
-        super().__init__(coordinator)
-        self.coordinator = coordinator
-        self.sn = sn
-        _LOGGER.debug("Creating SemsStatisticsSensor with id %s", self.sn)
-
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_ENERGY
-
-    @property
-    def unit_of_measurement(self):
-        return ENERGY_KILO_WATT_HOUR
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return f"Inverter {self.coordinator.data[self.sn]['name']} Energy"
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self.coordinator.data[self.sn]['sn']}-energy"
-
-    @property
-    def state(self):
-        """Return the state of the device."""
-        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        # _LOGGER.debug("self.sn: %s", self.sn)
-        # _LOGGER.debug(
-        #     "state, self data: %s", self.coordinator.data[self.sn]
-        # )
-        data = self.coordinator.data[self.sn]
-        return data["etotal"]
-
-    @property
-    def should_poll(self) -> bool:
-        """No need to poll. Coordinator notifies entity of updates."""
-        return False
-
-    @property
-    def device_info(self):
-        # _LOGGER.debug("self.device_state_attributes: %s", self.device_state_attributes)
-        data = self.coordinator.data[self.sn]
-        return {
-            "identifiers": {
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.sn)
-            },
-            # "name": self.name,
-            "manufacturer": "GoodWe",
-            "model": data.get("model_type", "unknown"),
-            "sw_version": data.get("firmwareversion", "unknown"),
-            # "via_device": (DOMAIN, self.api.bridgeid),
-        }
-
-    @property
-    def state_class(self):
-        """used by Metered entities / Long Term Statistics"""
-        return STATE_CLASS_TOTAL_INCREASING
-
-    async def async_added_to_hass(self):
-        """When entity is added to hass."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self.async_write_ha_state)
-        )
-
-    async def async_update(self):
-        """Update the entity.
-
-        Only used by the generic entity update service.
-        """
-        await self.coordinator.async_request_refresh()
-
-class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
-    """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
-
-    def __init__(self, coordinator, sn):
-        """Pass coordinator to CoordinatorEntity."""
-        super().__init__(coordinator)
-        self.coordinator = coordinator
-        self.sn = sn
-        _LOGGER.debug("Creating SemsStatisticsSensor with id %s", self.sn)
-
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_ENERGY
-
-    @property
-    def unit_of_measurement(self):
-        return ENERGY_KILO_WATT_HOUR
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Import"
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self.coordinator.data[self.sn]['sn']}-import-energy"
-
-    @property
-    def state(self):
-        """Return the state of the device."""
-        data = self.coordinator.data[self.sn]
-        return data["Charts_buy"]
-    def statusText(self, status) -> str:
-        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
-        return labels[status] if status in labels else "Unknown"
-
-
-    @property
-    def should_poll(self) -> bool:
-        """No need to poll. Coordinator notifies entity of updates."""
-        return False
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.sn)
-            },
-            "name": "Homekit",
-            "manufacturer": "GoodWe",
-        }
-
-    @property
-    def state_class(self):
-        """used by Metered entities / Long Term Statistics"""
-        return STATE_CLASS_TOTAL_INCREASING
-
-    async def async_added_to_hass(self):
-        """When entity is added to hass."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self.async_write_ha_state)
-        )
-
-    async def async_update(self):
-        """Update the entity.
-
-        Only used by the generic entity update service.
-        """
-        await self.coordinator.async_request_refresh()
-
-class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
-    """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
-
-    def __init__(self, coordinator, sn):
-        """Pass coordinator to CoordinatorEntity."""
-        super().__init__(coordinator)
-        self.coordinator = coordinator
-        self.sn = sn
-        _LOGGER.debug("Creating SemsStatisticsSensor with id %s", self.sn)
-
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_ENERGY
-
-    @property
-    def unit_of_measurement(self):
-        return ENERGY_KILO_WATT_HOUR
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Export"
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self.coordinator.data[self.sn]['sn']}-export-energy"
-
-    @property
-    def state(self):
-        """Return the state of the device."""
-        data = self.coordinator.data[self.sn]
-        return data["Charts_sell"]
-    def statusText(self, status) -> str:
-        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
-        return labels[status] if status in labels else "Unknown"
-
-    @property
-    def should_poll(self) -> bool:
-        """No need to poll. Coordinator notifies entity of updates."""
-        return False
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.sn)
-            },
-            "name": "Homekit",
-            "manufacturer": "GoodWe",
-        }
-
-    @property
-    def state_class(self):
-        """used by Metered entities / Long Term Statistics"""
-        return STATE_CLASS_TOTAL_INCREASING
-
-    async def async_added_to_hass(self):
-        """When entity is added to hass."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self.async_write_ha_state)
-        )
-
-    async def async_update(self):
-        """Update the entity.
-
-        Only used by the generic entity update service.
-        """
-        await self.coordinator.async_request_refresh()
-
-class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
-    """SemsPowerflowSensor using CoordinatorEntity.
-
-    The CoordinatorEntity class provides:
-      should_poll
-      async_update
-      async_added_to_hass
-      available
-    """
-
-    def __init__(self, coordinator, sn):
-        """Pass coordinator to CoordinatorEntity."""
-        super().__init__(coordinator)
-        self.coordinator = coordinator
-        self.sn = sn
-
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_POWER
-
-    @property
-    def unit_of_measurement(self):
-        return POWER_WATT
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']}"
-
-    @property
-    def unique_id(self) -> str:
-        return self.coordinator.data[self.sn]["sn"]
-
-    @property
-    def state(self):
-        """Return the state of the device."""
-        data = self.coordinator.data[self.sn]
-        load = data["load"]
-
-        if load:
-            load = load.replace('(W)', '')
-
-        return load if data["gridStatus"] == 1 else 0
-
-    def statusText(self, status) -> str:
-        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
-        return labels[status] if status in labels else "Unknown"
-
-    # For backwards compatibility
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the monitored installation."""
-        data = self.coordinator.data[self.sn]
-
-        attributes = {k: v for k, v in data.items() if k is not None and v is not None}
-
-        attributes["pv"] = data["pv"].replace('(W)', '')
-        attributes["bettery"] = data["bettery"].replace('(W)', '')
-        attributes["load"] = data["load"].replace('(W)', '')
-        attributes["grid"] = data["grid"].replace('(W)', '')
-
-        attributes["statusText"] = self.statusText(data["gridStatus"])
-
-        if data['loadStatus'] == -1 :
-            attributes['PowerFlowDirection'] = 'Export %s' % data['grid']
-        if data['loadStatus'] == 1 :
-            attributes['PowerFlowDirection'] = 'Import %s' % data['grid']
-
-        return attributes
-
-    @property
-    def is_on(self) -> bool:
-        """Return entity status."""
-        self.coordinator.data[self.sn]["gridStatus"] == 1
-
-    @property
-    def should_poll(self) -> bool:
-        """No need to poll. Coordinator notifies entity of updates."""
-        return False
-
-    @property
-    def available(self):
-        """Return if entity is available."""
-        return self.coordinator.last_update_success
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.sn)
-            },
-            "name": "Homekit",
-            "manufacturer": "GoodWe",
-        }
-
-    async def async_added_to_hass(self):
-        """When entity is added to hass."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self.async_write_ha_state)
-        )
-
-    async def async_update(self):
-        """Update the entity.
-
-        Only used by the generic entity update service.
-        """
-        await self.coordinator.async_request_refresh()
+    async_add_entities(sensors)

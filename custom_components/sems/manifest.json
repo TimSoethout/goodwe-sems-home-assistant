@@ -4,9 +4,10 @@
   "config_flow": true,
   "documentation": "https://github.com/TimSoethout/goodwe-sems-home-assistant",
   "issue_tracker": "https://github.com/TimSoethout/goodwe-sems-home-assistant/issues",
-  "iot_class": "cloud_polling",	
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
   "requirements": [],
   "dependencies": [],
-  "codeowners": ["@TimSoethout"],
-  "version": "3.7.3"
+  "codeowners": ["@TimSoethout", "@L-four"],
+  "version": "4.0.0"
 }
