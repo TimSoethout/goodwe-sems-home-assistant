@@ -1,0 +1,23 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Dispositivo já configurado"
+        },
+        "error": {
+            "cannot_connect": "Falha na ligação",
+            "invalid_auth": "Autenticação Inválida",
+            "unknown": "Erro inesperado"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "powerstation_id": "ID da Planta",
+                    "password": "Password",
+                    "username": "Nome de Utilizador",
+                    "scan_interval": "Intervalo de Atualização (segundos)"
+                }
+            }
+        }
+    },
+    "title": "GoodWe SEMS PV API"
+}
