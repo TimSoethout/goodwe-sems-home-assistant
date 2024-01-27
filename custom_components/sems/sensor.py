@@ -7,7 +7,7 @@ https://github.com/TimSoethout/goodwe-sems-home-assistant
 
 import logging
 import re
-from datetime import timedelta
+from datetime import timedelta, datetime
 from decimal import Decimal
 from typing import List, Callable, Optional
 
@@ -88,7 +88,7 @@ class Sensor(CoordinatorEntity, SensorEntity):
         self._value_path = value_path
         self._data_type_converter = data_type_converter
         self._empty_value = empty_value
-
+        self._attr_available = self._get_native_value_from_coordinator() is not None
         self._attr_unique_id = unique_id
         self._attr_name = name
         self._attr_native_unit_of_measurement = native_unit_of_measurement
@@ -102,11 +102,13 @@ class Sensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Return the state of the device."""
-        value = get_value_from_path(self.coordinator.data, self._value_path)
+        value = self._get_native_value_from_coordinator()
         if isinstance(value, str):
             value = self.str_clean_regex.search(value).group(1)
         if self._empty_value is not None and self._empty_value == value:
             value = 0
+        if value is None:
+            return value
         typed_value = self._data_type_converter(value)
         return typed_value
 
@@ -157,9 +159,9 @@ def get_has_existing_homekit_entity(data, hass, config_entry) -> bool:
     return False
 
 
-def sensor_options_for_data(
-    data, has_existing_homekit_entity=False
-) -> List[SensorOptions]:
+def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> List[SensorOptions]:
+    if has_existing_homekit_entity is None:
+        has_existing_homekit_entity = False
     sensors: List[SensorOptions] = []
     try:
         currency = data["kpi"]["currency"]
@@ -453,7 +455,7 @@ def sensor_options_for_data(
         sensors += [
             SensorOptions(
                 device_info,
-                f"{serial_number}",  # backwards compatibility otherwise would be f"{serial_number}-load"
+                f"{inverter_serial_number}",  # backwards compatibility otherwise would be f"{serial_number}-load"
                 f"HomeKit Load",
                 ["powerflow", "load"],
                 SensorDeviceClass.POWER,
@@ -462,7 +464,7 @@ def sensor_options_for_data(
             ),
             SensorOptions(
                 device_info,
-                f"{serial_number}-pv",
+                f"{inverter_serial_number}-pv",
                 f"HomeKit PV",
                 ["powerflow", "pv"],
                 SensorDeviceClass.POWER,
@@ -471,7 +473,7 @@ def sensor_options_for_data(
             ),
             SensorOptions(
                 device_info,
-                f"{serial_number}-grid",
+                f"{inverter_serial_number}-grid",
                 f"HomeKit Grid",
                 ["powerflow", "grid"],
                 SensorDeviceClass.POWER,
@@ -480,7 +482,7 @@ def sensor_options_for_data(
             ),
             SensorOptions(
                 device_info,
-                f"{serial_number}-battery",
+                f"{inverter_serial_number}-battery",
                 f"HomeKit Battery",
                 ["powerflow", GOODWE_SPELLING.battery],
                 SensorDeviceClass.POWER,
@@ -489,7 +491,7 @@ def sensor_options_for_data(
             ),
             SensorOptions(
                 device_info,
-                f"{serial_number}-genset",
+                f"{inverter_serial_number}-genset",
                 f"HomeKit generator",
                 ["powerflow", "genset"],
                 SensorDeviceClass.POWER,
@@ -498,7 +500,7 @@ def sensor_options_for_data(
             ),
             SensorOptions(
                 device_info,
-                f"{serial_number}-soc",
+                f"{inverter_serial_number}-soc",
                 f"HomeKit State of Charge",
                 ["powerflow", "soc"],
                 SensorDeviceClass.BATTERY,
@@ -514,7 +516,7 @@ def sensor_options_for_data(
                 sensors += [
                     SensorOptions(
                         device_info,
-                        f"{serial_number}-import-energy",
+                        f"{inverter_serial_number}-import-energy",
                         f"Sems Import",
                         [GOODWE_SPELLING.energyStatisticsCharts, "buy"],
                         SensorDeviceClass.ENERGY,
@@ -523,7 +525,7 @@ def sensor_options_for_data(
                     ),
                     SensorOptions(
                         device_info,
-                        f"{serial_number}-export-energy",
+                        f"{inverter_serial_number}-export-energy",
                         f"Sems Export",
                         [GOODWE_SPELLING.energyStatisticsCharts, "sell"],
                         SensorDeviceClass.ENERGY,
@@ -535,7 +537,7 @@ def sensor_options_for_data(
                 sensors += [
                     SensorOptions(
                         device_info,
-                        f"{serial_number}-import-energy-total",
+                        f"{inverter_serial_number}-import-energy-total",
                         f"Sems Total Import",
                         [GOODWE_SPELLING.energyStatisticsTotals, "buy"],
                         SensorDeviceClass.ENERGY,
@@ -544,7 +546,7 @@ def sensor_options_for_data(
                     ),
                     SensorOptions(
                         device_info,
-                        f"{serial_number}-export-energy-total",
+                        f"{inverter_serial_number}-export-energy-total",
                         f"Sems Total Export",
                         [GOODWE_SPELLING.energyStatisticsTotals, "sell"],
                         SensorDeviceClass.ENERGY,
@@ -586,6 +588,15 @@ async def async_setup_entry(
             inverters = result["inverter"]
             if inverters is None:
                 raise UpdateFailed(API_UPDATE_ERROR_MSG)
+            # try and handle bug in the goodwe api where it returns zero when close to midnight.
+            # @see https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/94
+            if GOODWE_SPELLING.energyStatisticsCharts in result:
+                now = datetime.now()
+                past_11_45 = now.hour > 11 and now.minute > 45
+                before_01_15 = now.hour < 1 and now.minute < 15
+                if past_11_45 or before_01_15:
+                    result[GOODWE_SPELLING.energyStatisticsCharts]["sell"] = None
+
             return result
         # except ApiError as err:
         except Exception as err:
@@ -615,7 +626,9 @@ async def async_setup_entry(
 
     data = coordinator.data
 
-    has_existing_homekit_entity = get_has_existing_homekit_entity(data, hass, config_entry)
+    has_existing_homekit_entity = get_has_existing_homekit_entity(
+        data, hass, config_entry
+    )
 
     _LOGGER.warning("has_existing_homekit_entity: %s", has_existing_homekit_entity)
 
