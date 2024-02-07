@@ -592,11 +592,11 @@ async def async_setup_entry(
             # @see https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/94
             if GOODWE_SPELLING.energyStatisticsCharts in result:
                 now = datetime.now()
-                past_11_45 = now.hour > 11 and now.minute > 45
-                before_01_15 = now.hour < 1 and now.minute < 15
+                past_11_45 = now.hour == 23 and now.minute > 45
+                before_01_15 = now.hour == 0 and now.minute < 15
                 if past_11_45 or before_01_15:
                     result[GOODWE_SPELLING.energyStatisticsCharts]["sell"] = None
-
+                    result[GOODWE_SPELLING.energyStatisticsCharts]["buy"] = None
             return result
         # except ApiError as err:
         except Exception as err:

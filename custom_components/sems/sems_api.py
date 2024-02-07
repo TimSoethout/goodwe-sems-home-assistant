@@ -32,7 +32,7 @@ class SemsApi:
             self._token = self.getLoginToken(self._username, self._password)
             return self._token is not None
         except Exception as exception:
-            _LOGGER.exception("SEMS Authentication exception " + exception)
+            _LOGGER.exception("SEMS Authentication exception " + exception.__str__())
             return False
 
     def getLoginToken(self, userName, password):

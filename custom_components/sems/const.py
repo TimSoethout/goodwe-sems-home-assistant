@@ -1,9 +1,8 @@
 """Constants for the sems integration."""
-
-DOMAIN = "sems"
-
 import voluptuous as vol
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, CONF_SCAN_INTERVAL
+
+DOMAIN = "sems"
 
 CONF_STATION_ID = "powerstation_id"
 
@@ -26,6 +25,7 @@ API_UPDATE_ERROR_MSG = "Error communicating with API, probably token could not b
 AC_EMPTY = 6553.5
 AC_CURRENT_EMPTY = 6553.5
 AC_FEQ_EMPTY = 655.35
+
 
 class GOODWE_SPELLING:
     battery = "bettery"
