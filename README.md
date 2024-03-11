@@ -36,10 +36,18 @@ Fill in the required configuration and it should find your inverters.
 
 Note that changed to `configuration.yaml` are no longer necessary and can be removed.
 
-### Recommended: use visitor account to login with this integration
+### Optional: control the invertor power output via the "switch" entity
+
+It is possible to temporarily pause the energy production via "downtime" functionality available on the invertor. This is exposed as a switch and can be used in your own automations.
+
+Please note that it is using an undocumented API and can take a few minutes for the invertor to pick up the change. It takes approx 60 seconds to start again when the invertor is in a downtime mode.
+
+### Recommended: use visitor account if you do not need to control the inverter
+
+In case you are only reading the inverter stats, you can use a Visitor (read-only) account.
 
 Create via the official app, or via the web portal:
-Login to www.semsportal.com, go to https://semsportal.com/powerstation/stationInfonew. Create a new visitor account. 
+Login to www.semsportal.com, go to https://semsportal.com/powerstation/stationInfonew. Create a new visitor account.
 Login to the visitor account once to accept the EULA. Now you should be able to use it in this component.
 
 ### Extra (optional) templates to easy access data as sensors
@@ -78,7 +86,7 @@ Replace `$NAME` with your inverter entity id.
         friendly_name: "Battery power"
 ```
 
-Note that `states.sensor.inverter_$NAME.state` contains the power output in `W`. 
+Note that `states.sensor.inverter_$NAME.state` contains the power output in `W`.
 
 ## Screenies
 

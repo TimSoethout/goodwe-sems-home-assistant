@@ -10,7 +10,7 @@ _LOGGER = logging.getLogger(__name__)
 # _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
 _PowerStationURLPart = "/v2/PowerStation/GetMonitorDetailByPowerstationId"
-_GopsURL = "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
+_PowerControlURL = "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
 _RequestTimeout = 30  # seconds
 
 _DefaultHeaders = {
@@ -129,7 +129,7 @@ class SemsApi:
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from SEMS. %s", exception)
 
-    def change_status(self, powerStationId, status, renewToken=False, maxTokenRetries=2):
+    def change_status(self, inverterSn, status, renewToken=False, maxTokenRetries=2):
         """Schedule the downtime of the station"""
         try:
             # Get the status of our SEMS Power Station
@@ -154,37 +154,33 @@ class SemsApi:
                 "token": json.dumps(self._token),
             }
 
-            gopsURL = _GopsURL
+            powerControlURL = _PowerControlURL
             _LOGGER.debug(
-                "Sending GOPS command (%s) for power station id: %s",
-                gopsURL,
-                powerStationId,
+                "Sending power control command (%s) for power station id: %s",
+                powerControlURL,
+                inverterSn,
             )
 
             data = {
-                "api":"PowerStation/SaveRemoteControlInverter",
-                "param": {
-                    "InverterSN":"",
-                    "StationID":powerStationId,
-                    "InverterStatusSettingMark":1,
-                    "InverterStatus":status
-                }
+                "InverterSN": inverterSn,
+                "InverterStatusSettingMark":1,
+                "InverterStatus": status
             }
 
             response = requests.post(
-                gopsURL, headers=headers, data=data, timeout=_RequestTimeout
+                powerControlURL, headers=headers, data=data, timeout=_RequestTimeout
             )
             if (response.status_code != 200):
                 # try again and renew token is unsuccessful
                 _LOGGER.debug(
-                    "GOPS command not successful, retrying with new token, %s retries remaining",
+                    "Power control command not successful, retrying with new token, %s retries remaining",
                     maxTokenRetries,
                 )
                 return
 
             return
         except Exception as exception:
-            _LOGGER.error("Unable to execute GOPS command. %s", exception)
+            _LOGGER.error("Unable to execute Power control command. %s", exception)
 
 
 class OutOfRetries(exceptions.HomeAssistantError):
