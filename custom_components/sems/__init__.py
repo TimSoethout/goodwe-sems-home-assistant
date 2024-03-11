@@ -14,7 +14,7 @@ from .const import DOMAIN
 from .sems_api import SemsApi
 
 # For your initial PR, limit it to 1 platform.
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "switch"]
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
