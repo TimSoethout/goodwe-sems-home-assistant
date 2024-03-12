@@ -163,16 +163,16 @@ class SemsApi:
 
             data = {
                 "InverterSN": inverterSn,
-                "InverterStatusSettingMark":1,
-                "InverterStatus": status
+                "InverterStatusSettingMark":"1",
+                "InverterStatus": str(status)
             }
 
             response = requests.post(
-                powerControlURL, headers=headers, data=data, timeout=_RequestTimeout
+                powerControlURL, headers=headers, json=data, timeout=_RequestTimeout
             )
             if (response.status_code != 200):
                 # try again and renew token is unsuccessful
-                _LOGGER.debug(
+                _LOGGER.warn(
                     "Power control command not successful, retrying with new token, %s retries remaining",
                     maxTokenRetries,
                 )

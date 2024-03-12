@@ -68,8 +68,8 @@ class SemsSwitch(SwitchEntity):
 
     def async_turn_off(self, **kwargs):
         _LOGGER.debug(f"Inverter {self.sn} set to Off")
-        self.api.change_status(self.sn, 0)
+        self.api.change_status(self.sn, 2)
 
     def async_turn_on(self, **kwargs):
         _LOGGER.debug(f"Inverter {self.sn} set to On")
-        self.api.change_status(self.sn, 1)
+        self.api.change_status(self.sn, 4)
