@@ -18,15 +18,16 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    POWER_WATT,
+    UnitOfEnergy,
+    UnitOfPower,
     CONF_SCAN_INTERVAL,
-    ENERGY_KILO_WATT_HOUR,
-    TEMP_CELSIUS,
-    ELECTRIC_POTENTIAL_VOLT,
-    ELECTRIC_CURRENT_AMPERE,
-    FREQUENCY_HERTZ,
-    PERCENTAGE,
-    POWER_KILO_WATT,
+    UnitOfEnergy,
+    UnitOfTemperature,
+    UnitOfElectricPotential,
+    UnitOfElectricCurrent,
+    UnitOfTemperature,
+    UnitOfFrequency,
+    PERCENTAGE
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
@@ -190,7 +191,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Capacity",
                 path_to_inverter + ["capacity"],
                 SensorDeviceClass.POWER,
-                POWER_KILO_WATT,
+                UnitOfPower.KILO_WATT,
                 SensorStateClass.MEASUREMENT,
             ),
             SensorOptions(
@@ -199,7 +200,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Power",
                 path_to_inverter + ["pac"],
                 SensorDeviceClass.POWER,
-                POWER_WATT,
+                UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
             SensorOptions(
@@ -208,7 +209,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Energy",
                 path_to_inverter + ["etotal"],
                 SensorDeviceClass.ENERGY,
-                ENERGY_KILO_WATT_HOUR,
+                UnitOfEnergy.KILO_WATT_HOUR,
                 SensorStateClass.TOTAL_INCREASING,
             ),
             SensorOptions(
@@ -224,7 +225,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Temperature",
                 path_to_inverter + [GOODWE_SPELLING.temperature],
                 SensorDeviceClass.TEMPERATURE,
-                TEMP_CELSIUS,
+                UnitOfTemperature.CELSIUS,
                 SensorStateClass.MEASUREMENT,
             ),
             SensorOptions(
@@ -233,7 +234,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Energy Today",
                 path_to_inverter + ["eday"],
                 SensorDeviceClass.ENERGY,
-                ENERGY_KILO_WATT_HOUR,
+                UnitOfEnergy.KILO_WATT_HOUR,
                 SensorStateClass.TOTAL_INCREASING,
             ),
             SensorOptions(
@@ -242,7 +243,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Energy This Month",
                 path_to_inverter + [GOODWE_SPELLING.thisMonthTotalE],
                 SensorDeviceClass.ENERGY,
-                ENERGY_KILO_WATT_HOUR,
+                UnitOfEnergy.KILO_WATT_HOUR,
                 SensorStateClass.TOTAL_INCREASING,
             ),
             SensorOptions(
@@ -251,7 +252,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Energy Last Month",
                 path_to_inverter + [GOODWE_SPELLING.lastMonthTotalE],
                 SensorDeviceClass.ENERGY,
-                ENERGY_KILO_WATT_HOUR,
+                UnitOfEnergy.KILO_WATT_HOUR,
                 SensorStateClass.TOTAL_INCREASING,
             ),
             SensorOptions(
@@ -280,7 +281,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} PV String {idx} Voltage",
                 path_to_inverter + [f"vpv{idx}"],
                 SensorDeviceClass.VOLTAGE,
-                ELECTRIC_POTENTIAL_VOLT,
+                UnitOfElectricPotential.VOLT,
                 SensorStateClass.MEASUREMENT,
             )
             for idx in range(1, 5)
@@ -293,7 +294,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} PV String {idx} Current",
                 path_to_inverter + [f"ipv{idx}"],
                 SensorDeviceClass.CURRENT,
-                ELECTRIC_CURRENT_AMPERE,
+                UnitOfElectricCurrent.AMPERE,
                 SensorStateClass.MEASUREMENT,
             )
             for idx in range(1, 5)
@@ -306,7 +307,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Grid {idx} AC Voltage",
                 path_to_inverter + [f"vac{idx}"],
                 SensorDeviceClass.VOLTAGE,
-                ELECTRIC_POTENTIAL_VOLT,
+                UnitOfElectricPotential.VOLT,
                 SensorStateClass.MEASUREMENT,
                 AC_EMPTY,
             )
@@ -319,7 +320,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Grid {idx} AC Current",
                 path_to_inverter + [f"iac{idx}"],
                 SensorDeviceClass.CURRENT,
-                ELECTRIC_CURRENT_AMPERE,
+                UnitOfElectricCurrent.AMPERE,
                 SensorStateClass.MEASUREMENT,
                 AC_CURRENT_EMPTY,
             )
@@ -332,7 +333,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Grid {idx} AC Frequency",
                 path_to_inverter + [f"fac{idx}"],
                 SensorDeviceClass.FREQUENCY,
-                FREQUENCY_HERTZ,
+                UnitOfFrequency.HERTZ,
                 SensorStateClass.MEASUREMENT,
                 AC_FEQ_EMPTY,
             )
@@ -345,7 +346,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Battery Voltage",
                 path_to_inverter + ["vbattery1"],
                 SensorDeviceClass.VOLTAGE,
-                ELECTRIC_POTENTIAL_VOLT,
+                UnitOfElectricPotential.VOLT,
                 SensorStateClass.MEASUREMENT,
             ),
             SensorOptions(
@@ -354,7 +355,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"Inverter {inverter['name']} Battery Current",
                 path_to_inverter + ["ibattery1"],
                 SensorDeviceClass.CURRENT,
-                ELECTRIC_CURRENT_AMPERE,
+                UnitOfElectricCurrent.AMPERE,
                 SensorStateClass.MEASUREMENT,
             ),
         ]
@@ -369,7 +370,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Inverter {inverter['name']} Battery {idx} Power",
                         path_to_battery + ["pbattery"],
                         SensorDeviceClass.POWER,
-                        POWER_WATT,
+                        UnitOfPower.WATT,
                         SensorStateClass.MEASUREMENT,
                     ),
                     SensorOptions(
@@ -378,7 +379,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Inverter {inverter['name']} Battery {idx} Voltage",
                         path_to_battery + ["vbattery"],
                         SensorDeviceClass.VOLTAGE,
-                        ELECTRIC_POTENTIAL_VOLT,
+                        UnitOfElectricPotential.VOLT,
                         SensorStateClass.MEASUREMENT,
                     ),
                     SensorOptions(
@@ -387,7 +388,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Inverter {inverter['name']} Battery {idx} Current",
                         path_to_battery + ["ibattery"],
                         SensorDeviceClass.CURRENT,
-                        ELECTRIC_CURRENT_AMPERE,
+                        UnitOfElectricCurrent.AMPERE,
                         SensorStateClass.MEASUREMENT,
                     ),
                     SensorOptions(
@@ -414,7 +415,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Inverter {inverter['name']} Battery {idx} BMS Temperature",
                         path_to_battery + ["bms_temperature"],
                         SensorDeviceClass.TEMPERATURE,
-                        TEMP_CELSIUS,
+                        UnitOfTemperature.CELSIUS,
                         SensorStateClass.MEASUREMENT,
                     ),
                     SensorOptions(
@@ -423,7 +424,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Inverter {inverter['name']} Battery {idx} BMS Discharge Max Current",
                         path_to_battery + ["bms_discharge_i_max"],
                         SensorDeviceClass.CURRENT,
-                        ELECTRIC_CURRENT_AMPERE,
+                        UnitOfElectricCurrent.AMPERE,
                         SensorStateClass.MEASUREMENT,
                     ),
                     SensorOptions(
@@ -432,7 +433,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Inverter {inverter['name']} Battery {idx} BMS Charge Max Current",
                         path_to_battery + ["bms_charge_i_max"],
                         SensorDeviceClass.CURRENT,
-                        ELECTRIC_CURRENT_AMPERE,
+                        UnitOfElectricCurrent.AMPERE,
                         SensorStateClass.MEASUREMENT,
                     ),
                 ]
@@ -459,7 +460,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"HomeKit Load",
                 ["powerflow", "load"],
                 SensorDeviceClass.POWER,
-                POWER_WATT,
+                UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
             SensorOptions(
@@ -468,7 +469,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"HomeKit PV",
                 ["powerflow", "pv"],
                 SensorDeviceClass.POWER,
-                POWER_WATT,
+                UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
             SensorOptions(
@@ -477,7 +478,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"HomeKit Grid",
                 ["powerflow", "grid"],
                 SensorDeviceClass.POWER,
-                POWER_WATT,
+                UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
             SensorOptions(
@@ -486,7 +487,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"HomeKit Battery",
                 ["powerflow", GOODWE_SPELLING.battery],
                 SensorDeviceClass.POWER,
-                POWER_WATT,
+                UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
             SensorOptions(
@@ -495,7 +496,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 f"HomeKit generator",
                 ["powerflow", "genset"],
                 SensorDeviceClass.POWER,
-                POWER_WATT,
+                UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
             SensorOptions(
@@ -520,7 +521,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Sems Import",
                         [GOODWE_SPELLING.energyStatisticsCharts, "buy"],
                         SensorDeviceClass.ENERGY,
-                        ENERGY_KILO_WATT_HOUR,
+                        UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
                     SensorOptions(
@@ -529,7 +530,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Sems Export",
                         [GOODWE_SPELLING.energyStatisticsCharts, "sell"],
                         SensorDeviceClass.ENERGY,
-                        ENERGY_KILO_WATT_HOUR,
+                        UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
                 ]
@@ -541,7 +542,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Sems Total Import",
                         [GOODWE_SPELLING.energyStatisticsTotals, "buy"],
                         SensorDeviceClass.ENERGY,
-                        ENERGY_KILO_WATT_HOUR,
+                        UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
                     SensorOptions(
@@ -550,7 +551,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                         f"Sems Total Export",
                         [GOODWE_SPELLING.energyStatisticsTotals, "sell"],
                         SensorDeviceClass.ENERGY,
-                        ENERGY_KILO_WATT_HOUR,
+                        UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
                 ]
