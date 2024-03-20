@@ -17,13 +17,15 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
-from homeassistant.components.sensor import STATE_CLASS_TOTAL_INCREASING, SensorEntity
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorDeviceClass,
+    SensorStateClass,
+)
 from homeassistant.const import (
-    DEVICE_CLASS_POWER,
-    POWER_WATT,
     CONF_SCAN_INTERVAL,
-    DEVICE_CLASS_ENERGY,
-    ENERGY_KILO_WATT_HOUR,
+    UnitOfPower,
+    UnitOfEnergy,
 )
 from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
 
@@ -157,11 +159,11 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_class(self):
-        return DEVICE_CLASS_POWER
+        return SensorDeviceClass.POWER_FACTOR
 
     @property
     def unit_of_measurement(self):
-        return POWER_WATT
+        return UnitOfPower.WATT
 
     @property
     def name(self) -> str:
@@ -253,11 +255,11 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_class(self):
-        return DEVICE_CLASS_ENERGY
+        return SensorDeviceClass.ENERGY
 
     @property
     def unit_of_measurement(self):
-        return ENERGY_KILO_WATT_HOUR
+        return UnitOfEnergy.KILO_WATT_HOUR
 
     @property
     def name(self) -> str:
@@ -303,7 +305,7 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
     @property
     def state_class(self):
         """used by Metered entities / Long Term Statistics"""
-        return STATE_CLASS_TOTAL_INCREASING
+        return SensorStateClass.TOTAL_INCREASING
 
     async def async_added_to_hass(self):
         """When entity is added to hass."""
@@ -330,11 +332,11 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_class(self):
-        return DEVICE_CLASS_ENERGY
+        return SensorDeviceClass.ENERGY
 
     @property
     def unit_of_measurement(self):
-        return ENERGY_KILO_WATT_HOUR
+        return UnitOfEnergy.KILO_WATT_HOUR
 
     @property
     def name(self) -> str:
@@ -374,7 +376,7 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     @property
     def state_class(self):
         """used by Metered entities / Long Term Statistics"""
-        return STATE_CLASS_TOTAL_INCREASING
+        return SensorStateClass.TOTAL_INCREASING
 
     async def async_added_to_hass(self):
         """When entity is added to hass."""
@@ -401,11 +403,11 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_class(self):
-        return DEVICE_CLASS_ENERGY
+        return SensorDeviceClass.ENERGY
 
     @property
     def unit_of_measurement(self):
-        return ENERGY_KILO_WATT_HOUR
+        return UnitOfEnergy.KILO_WATT_HOUR
 
     @property
     def name(self) -> str:
@@ -444,7 +446,7 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     @property
     def state_class(self):
         """used by Metered entities / Long Term Statistics"""
-        return STATE_CLASS_TOTAL_INCREASING
+        return SensorStateClass.TOTAL_INCREASING
 
     async def async_added_to_hass(self):
         """When entity is added to hass."""
@@ -477,11 +479,11 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_class(self):
-        return DEVICE_CLASS_POWER
+        return SensorDeviceClass.POWER_FACTOR
 
     @property
     def unit_of_measurement(self):
-        return POWER_WATT
+        return UnitOfPower.WATT
 
     @property
     def name(self) -> str:
