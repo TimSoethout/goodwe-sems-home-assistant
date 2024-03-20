@@ -10,6 +10,7 @@ _LOGGER = logging.getLogger(__name__)
 # _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
 _PowerStationURLPart = "/v2/PowerStation/GetMonitorDetailByPowerstationId"
+_PowerControlURL = "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
 _RequestTimeout = 30  # seconds
 
 _DefaultHeaders = {
@@ -127,6 +128,59 @@ class SemsApi:
             return jsonResponse["data"]
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from SEMS. %s", exception)
+
+    def change_status(self, inverterSn, status, renewToken=False, maxTokenRetries=2):
+        """Schedule the downtime of the station"""
+        try:
+            # Get the status of our SEMS Power Station
+            _LOGGER.debug("SEMS - Making Power Station Status API Call")
+            if maxTokenRetries <= 0:
+                _LOGGER.info(
+                    "SEMS - Maximum token fetch tries reached, aborting for now"
+                )
+                raise OutOfRetries
+            if self._token is None or renewToken:
+                _LOGGER.debug(
+                    "API token not set (%s) or new token requested (%s), fetching",
+                    self._token,
+                    renewToken,
+                )
+                self._token = self.getLoginToken(self._username, self._password)
+
+            # Prepare Power Station status Headers
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "token": json.dumps(self._token),
+            }
+
+            powerControlURL = _PowerControlURL
+            _LOGGER.debug(
+                "Sending power control command (%s) for power station id: %s",
+                powerControlURL,
+                inverterSn,
+            )
+
+            data = {
+                "InverterSN": inverterSn,
+                "InverterStatusSettingMark":"1",
+                "InverterStatus": str(status)
+            }
+
+            response = requests.post(
+                powerControlURL, headers=headers, json=data, timeout=_RequestTimeout
+            )
+            if (response.status_code != 200):
+                # try again and renew token is unsuccessful
+                _LOGGER.warn(
+                    "Power control command not successful, retrying with new token, %s retries remaining",
+                    maxTokenRetries,
+                )
+                return
+
+            return
+        except Exception as exception:
+            _LOGGER.error("Unable to execute Power control command. %s", exception)
 
 
 class OutOfRetries(exceptions.HomeAssistantError):

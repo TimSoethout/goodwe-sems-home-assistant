@@ -5,6 +5,7 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
+from typing import Coroutine
 from homeassistant.core import HomeAssistant
 import homeassistant
 import logging
@@ -26,7 +27,6 @@ from homeassistant.const import (
     UnitOfPower,
     UnitOfEnergy,
 )
-from homeassistant.helpers.entity import Entity
 from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
@@ -569,3 +569,4 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
         Only used by the generic entity update service.
         """
         await self.coordinator.async_request_refresh()
+
