@@ -483,6 +483,15 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
             ),
             SensorOptions(
                 device_info,
+                f"{inverter_serial_number}-load-status",
+                f"HomeKit Load Status",
+                ["powerflow", "loadStatus"],
+                None,
+                None,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SensorOptions(
+                device_info,
                 f"{inverter_serial_number}-battery",
                 f"HomeKit Battery",
                 ["powerflow", GOODWE_SPELLING.battery],
