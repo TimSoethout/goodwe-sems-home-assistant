@@ -29,6 +29,7 @@ AC_FEQ_EMPTY = 655.35
 
 class GOODWE_SPELLING:
     battery = "bettery"
+    batteryStatus = "betteryStatus"
     homeKit = "homKit"
     temperature = "tempperature"
     hasEnergyStatisticsCharts = "hasEnergeStatisticsCharts"

@@ -83,6 +83,7 @@ class Sensor(CoordinatorEntity, SensorEntity):
         native_unit_of_measurement: Optional[str] = None,
         state_class: Optional[SensorStateClass] = None,
         empty_value=None,
+        custom_value_handler=None,
     ):
         super().__init__(coordinator)
         self._value_path = value_path
@@ -95,6 +96,7 @@ class Sensor(CoordinatorEntity, SensorEntity):
         self._attr_device_class = device_class
         self._attr_state_class = state_class
         self._attr_device_info = device_info
+        self._custom_value_handler = custom_value_handler
 
     def _get_native_value_from_coordinator(self):
         return get_value_from_path(self.coordinator.data, self._value_path)
@@ -110,6 +112,8 @@ class Sensor(CoordinatorEntity, SensorEntity):
         if value is None:
             return value
         typed_value = self._data_type_converter(value)
+        if self._custom_value_handler is not None:
+            return self._custom_value_handler(typed_value, self.coordinator.data)
         return typed_value
 
     @property
@@ -129,6 +133,7 @@ class SensorOptions:
         state_class: Optional[SensorStateClass] = None,
         empty_value=None,
         data_type_converter=Decimal,
+        custom_value_handler=None,
     ):
         self.device_info = device_info
         self.unique_id = unique_id
@@ -139,6 +144,7 @@ class SensorOptions:
         self.state_class = state_class
         self.empty_value = empty_value
         self.data_type_converter = data_type_converter
+        self.custom_value_handler = custom_value_handler
 
     def __str__(self):
         return f"SensorOptions(device_info={self.device_info}, unique_id={self.unique_id}, name={self.name}, value_path={self.value_path}, device_class={self.device_class}, native_unit_of_measurement={self.native_unit_of_measurement}, state_class={self.state_class}, empty_value={self.empty_value}, data_type_converter={self.data_type_converter})"
@@ -159,7 +165,9 @@ def get_has_existing_homekit_entity(data, hass, config_entry) -> bool:
     return False
 
 
-def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> List[SensorOptions]:
+def sensor_options_for_data(
+    data, has_existing_homekit_entity: bool | None
+) -> List[SensorOptions]:
     if has_existing_homekit_entity is None:
         has_existing_homekit_entity = False
     sensors: List[SensorOptions] = []
@@ -452,6 +460,27 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
             name="HomeKit",
             manufacturer="GoodWe",
         )
+
+        def status_value_handler(status_path):
+            """
+            Handler for values that are dependent on the status of the grid.
+            @param status_path: the path to the status value
+            """
+            def value_status_handler(value, data):
+                """
+                Handler for the value that is dependent on the status of the grid.
+                @param value: the value to be handled
+                @param data: the data from the coordinator
+                """
+                if value is None:
+                    return None
+                grid_status = get_value_from_path(data, status_path)
+                if grid_status is None:
+                    return value
+                return value * int(grid_status)
+
+            return value_status_handler
+
         sensors += [
             SensorOptions(
                 device_info,
@@ -461,6 +490,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 SensorDeviceClass.POWER,
                 POWER_WATT,
                 SensorStateClass.MEASUREMENT,
+                status_value_handler(["powerflow", "loadStatus"]),
             ),
             SensorOptions(
                 device_info,
@@ -479,6 +509,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 SensorDeviceClass.POWER,
                 POWER_WATT,
                 SensorStateClass.MEASUREMENT,
+                status_value_handler(["powerflow", "gridStatus"]),
             ),
             SensorOptions(
                 device_info,
@@ -488,6 +519,7 @@ def sensor_options_for_data(data, has_existing_homekit_entity: bool | None) -> L
                 SensorDeviceClass.POWER,
                 POWER_WATT,
                 SensorStateClass.MEASUREMENT,
+                status_value_handler(["powerflow", GOODWE_SPELLING.batteryStatus]),
             ),
             SensorOptions(
                 device_info,
@@ -649,6 +681,7 @@ async def async_setup_entry(
                 sensor_option.native_unit_of_measurement,
                 sensor_option.state_class,
                 sensor_option.empty_value,
+                sensor_option.custom_value_handler,
             )
         )
     async_add_entities(sensors)
