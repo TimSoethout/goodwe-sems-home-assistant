@@ -2,5 +2,5 @@
   "render_readme": true,
   "content_in_root": false,
   "iot_class": "Cloud Poll",
-  "homeassistant": "2021.12.1"
+  "homeassistant": "2024.5"
 }
