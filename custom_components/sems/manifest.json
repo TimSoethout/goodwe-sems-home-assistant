@@ -2,11 +2,11 @@
   "domain": "sems",
   "name": "GoodWe SEMS API",
   "codeowners": ["@TimSoethout"],
-	"config_flow": true,
-	"dependencies": [],
-	"documentation": "https://github.com/TimSoethout/goodwe-sems-home-assistant",
-	"iot_class": "cloud_polling",
-	"issue_tracker": "https://github.com/TimSoethout/goodwe-sems-home-assistant/issues",
-	"requirements": [],
-	"version": "5.0.0"
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/TimSoethout/goodwe-sems-home-assistant",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/TimSoethout/goodwe-sems-home-assistant/issues",
+  "requirements": [],
+  "version": "5.0.0"
 }
