@@ -1,6 +1,5 @@
 {
-  "render_readme": true,
+  "name": "GoodWe SEMS API",
   "content_in_root": false,
-  "iot_class": "Cloud Poll",
   "homeassistant": "2024.5"
 }
