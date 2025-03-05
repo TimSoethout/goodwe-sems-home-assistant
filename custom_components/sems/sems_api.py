@@ -176,8 +176,10 @@ class SemsApi:
                     "Power control command not successful, retrying with new token, %s retries remaining",
                     maxTokenRetries,
                 )
-                return
-
+                return self.change_status(
+                    inverterSn, status, True, maxTokenRetries=maxTokenRetries - 1
+                )
+                
             return
         except Exception as exception:
             _LOGGER.error("Unable to execute Power control command. %s", exception)

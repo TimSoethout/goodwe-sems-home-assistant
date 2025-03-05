@@ -5,29 +5,26 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
-from typing import Coroutine
-from homeassistant.core import HomeAssistant
-import homeassistant
-import logging
-
 from datetime import timedelta
+import logging
+from typing import Coroutine
 
+import homeassistant
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.components.switch import SwitchEntity
+from homeassistant.const import CONF_SCAN_INTERVAL, UnitOfEnergy, UnitOfPower
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
     UpdateFailed,
 )
-from homeassistant.components.sensor import (
-    SensorEntity,
-    SensorDeviceClass,
-    SensorStateClass,
-)
-from homeassistant.const import (
-    CONF_SCAN_INTERVAL,
-    UnitOfPower,
-    UnitOfEnergy,
-)
-from .const import DOMAIN, CONF_STATION_ID, DEFAULT_SCAN_INTERVAL
+
+from .const import CONF_STATION_ID, DEFAULT_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,54 +32,64 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Add sensors for passed config_entry in HA."""
     # _LOGGER.debug("hass.data[DOMAIN] %s", hass.data[DOMAIN])
-    semsApi = hass.data[DOMAIN][config_entry.entry_id]
-    stationId = config_entry.data[CONF_STATION_ID]
+    # semsApi = hass.data[DOMAIN][config_entry.entry_id]
+    # stationId = config_entry.data[CONF_STATION_ID]
 
     # _LOGGER.debug("config_entry %s", config_entry.data)
-    update_interval = timedelta(
-        seconds=config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    )
+    # update_interval = timedelta(
+    #     seconds=config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    # )
 
-    async def async_update_data():
-        """Fetch data from API endpoint.
+    # async def async_update_data():
+    #     """Fetch data from API endpoint.
 
-        This is the place to pre-process the data to lookup tables
-        so entities can quickly look up their data.
-        """
-        try:
-            # Note: asyncio.TimeoutError and aiohttp.ClientError are already
-            # handled by the data update coordinator.
-            # async with async_timeout.timeout(10):
-            result = await hass.async_add_executor_job(semsApi.getData, stationId)
-            _LOGGER.debug("Resulting result: %s", result)
+    #     This is the place to pre-process the data to lookup tables
+    #     so entities can quickly look up their data.
+    #     """
+    #     try:
+    #         # Note: asyncio.TimeoutError and aiohttp.ClientError are already
+    #         # handled by the data update coordinator.
+    #         # async with async_timeout.timeout(10):
+    #         result = await hass.async_add_executor_job(semsApi.getData, stationId)
+    #         _LOGGER.debug("Resulting result: %s", result)
 
-            inverters = result["inverter"]
+    #         inverters = result["inverter"]
 
-            # found = []
-            # _LOGGER.debug("Found inverters: %s", inverters)
-            data = {}
-            if inverters is None:
-                # something went wrong, probably token could not be fetched
-                raise UpdateFailed(
-                    "Error communicating with API, probably token could not be fetched, see debug logs"
-                )
-            for inverter in inverters:
-                name = inverter["invert_full"]["name"]
-                # powerstation_id = inverter["invert_full"]["powerstation_id"]
-                sn = inverter["invert_full"]["sn"]
-                _LOGGER.debug("Found inverter attribute %s %s", name, sn)
-                data[sn] = inverter["invert_full"]
+    #         # found = []
+    #         # _LOGGER.debug("Found inverters: %s", inverters)
+    #         data = {}
+    #         if inverters is None:
+    #             # something went wrong, probably token could not be fetched
+    #             raise UpdateFailed(
+    #                 "Error communicating with API, probably token could not be fetched, see debug logs"
+    #             )
+    #         for inverter in inverters:
+    #             name = inverter["invert_full"]["name"]
+    #             # powerstation_id = inverter["invert_full"]["powerstation_id"]
+    #             sn = inverter["invert_full"]["sn"]
+    #             _LOGGER.debug("Found inverter attribute %s %s", name, sn)
+    #             data[sn] = inverter["invert_full"]
 
-            hasPowerflow = result["hasPowerflow"]
-            hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
+    #         hasPowerflow = result["hasPowerflow"]
+    #         hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
 
-            if hasPowerflow:
-                if hasEnergeStatisticsCharts:
-                    StatisticsCharts = { f"Charts_{key}": val for key, val in result["energeStatisticsCharts"].items() }
-                    StatisticsTotals = { f"Totals_{key}": val for key, val in result["energeStatisticsTotals"].items() }
-                    powerflow = { **result["powerflow"],  **StatisticsCharts, **StatisticsTotals }
-                else:
-                    powerflow = result["powerflow"]
+    #         if hasPowerflow:
+    #             if hasEnergeStatisticsCharts:
+    #                 StatisticsCharts = {
+    #                     f"Charts_{key}": val
+    #                     for key, val in result["energeStatisticsCharts"].items()
+    #                 }
+    #                 StatisticsTotals = {
+    #                     f"Totals_{key}": val
+    #                     for key, val in result["energeStatisticsTotals"].items()
+    #                 }
+    #                 powerflow = {
+    #                     **result["powerflow"],
+    #                     **StatisticsCharts,
+    #                     **StatisticsTotals,
+    #                 }
+    #             else:
+    #                 powerflow = result["powerflow"]
 
                 powerflow["sn"] = result["homKit"]["sn"]
 
@@ -90,29 +97,30 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 # Let's put something in, otherwise we can't see the data.
                 if powerflow["sn"] is None:
                     powerflow["sn"] = "GW-HOMEKIT-NO-SERIAL"
-                
+
                 #_LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
                 # This seems more accurate than the Chart_sum
                 powerflow["all_time_generation"] = result["kpi"]["total_power"]
 
-                data["homeKit"] = powerflow
+    #             data["homeKit"] = powerflow
 
-            #_LOGGER.debug("Resulting data: %s", data)
-            return data
-        # except ApiError as err:
-        except Exception as err:
-            # logging.exception("Something awful happened!")
-            raise UpdateFailed(f"Error communicating with API: {err}")
+    #         # _LOGGER.debug("Resulting data: %s", data)
+    #         return data
+    #     # except ApiError as err:
+    #     except Exception as err:
+    #         # logging.exception("Something awful happened!")
+    #         raise UpdateFailed(f"Error communicating with API: {err}") from err
 
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        # Name of the data. For logging purposes.
-        name="SEMS API",
-        update_method=async_update_data,
-        # Polling interval. Will only be polled if there are subscribers.
-        update_interval=update_interval,
-    )
+    # coordinator = DataUpdateCoordinator(
+    #     hass,
+    #     _LOGGER,
+    #     # Name of the data. For logging purposes.
+    #     name="SEMS API",
+    #     update_method=async_update_data,
+    #     # Polling interval. Will only be polled if there are subscribers.
+    #     update_interval=update_interval,
+    # )
+    coordinator = hass.data[DOMAIN][entry.entry_id]
 
     #
     # Fetch initial data so we have data when entities subscribe
@@ -135,16 +143,20 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     )
     async_add_entities(
         SemsPowerflowSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+        for idx, ent in enumerate(coordinator.data)
+        if ent == "homeKit"
     )
     async_add_entities(
         SemsTotalImportSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+        for idx, ent in enumerate(coordinator.data)
+        if ent == "homeKit"
     )
     async_add_entities(
         SemsTotalExportSensor(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data) if ent == "homeKit"
+        for idx, ent in enumerate(coordinator.data)
+        if ent == "homeKit"
     )
+
 
 class SemsSensor(CoordinatorEntity, SensorEntity):
     """SemsSensor using CoordinatorEntity.
@@ -208,7 +220,7 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
     @property
     def is_on(self) -> bool:
         """Return entity status."""
-        self.coordinator.data[self.sn]["status"] == 1
+        return self.coordinator.data[self.sn]["status"] == 1
 
     @property
     def should_poll(self) -> bool:
@@ -326,6 +338,7 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
         """
         await self.coordinator.async_request_refresh()
 
+
 class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
 
@@ -358,10 +371,10 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
         """Return the state of the device."""
         data = self.coordinator.data[self.sn]
         return data["Charts_buy"]
+
     def statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
         return labels[status] if status in labels else "Unknown"
-
 
     @property
     def should_poll(self) -> bool:
@@ -396,6 +409,7 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
         Only used by the generic entity update service.
         """
         await self.coordinator.async_request_refresh()
+
 
 class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
@@ -429,6 +443,7 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
         """Return the state of the device."""
         data = self.coordinator.data[self.sn]
         return data["Charts_sell"]
+
     def statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
         return labels[status] if status in labels else "Unknown"
@@ -466,6 +481,7 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
         Only used by the generic entity update service.
         """
         await self.coordinator.async_request_refresh()
+
 
 class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
     """SemsPowerflowSensor using CoordinatorEntity.
@@ -507,7 +523,7 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
         load = data["load"]
 
         if load:
-            load = load.replace('(W)', '')
+            load = load.replace("(W)", "")
 
         return load if data["gridStatus"] == 1 else 0
 
@@ -523,17 +539,17 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
 
         attributes = {k: v for k, v in data.items() if k is not None and v is not None}
 
-        attributes["pv"] = data["pv"].replace('(W)', '')
-        attributes["bettery"] = data["bettery"].replace('(W)', '')
-        attributes["load"] = data["load"].replace('(W)', '')
-        attributes["grid"] = data["grid"].replace('(W)', '')
+        attributes["pv"] = data["pv"].replace("(W)", "")
+        attributes["bettery"] = data["bettery"].replace("(W)", "")
+        attributes["load"] = data["load"].replace("(W)", "")
+        attributes["grid"] = data["grid"].replace("(W)", "")
 
         attributes["statusText"] = self.statusText(data["gridStatus"])
 
-        if data['loadStatus'] == -1 :
-            attributes['PowerFlowDirection'] = 'Export %s' % data['grid']
-        if data['loadStatus'] == 1 :
-            attributes['PowerFlowDirection'] = 'Import %s' % data['grid']
+        if data["loadStatus"] == -1:
+            attributes["PowerFlowDirection"] = "Export %s" % data["grid"]
+        if data["loadStatus"] == 1:
+            attributes["PowerFlowDirection"] = "Import %s" % data["grid"]
 
         return attributes
 
@@ -575,4 +591,3 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
         Only used by the generic entity update service.
         """
         await self.coordinator.async_request_refresh()
-

@@ -1,11 +1,15 @@
-"""Constants for the sems integration."""
+"""Constants for the SEMS integration."""
+
+from datetime import timedelta
+
+import voluptuous as vol
+
+from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
+import homeassistant.helpers.config_validation as cv
 
 DOMAIN = "sems"
 
-import voluptuous as vol
-import homeassistant.helpers.config_validation as cv
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, CONF_SCAN_INTERVAL
-from datetime import timedelta
+PLATFORMS = ["sensor", "switch"]
 
 CONF_STATION_ID = "powerstation_id"
 
