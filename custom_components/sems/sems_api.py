@@ -9,7 +9,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
-_PowerStationURLPart = "/v2/PowerStation/GetMonitorDetailByPowerstationId"
+_PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
 _PowerControlURL = (
     "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
 )
