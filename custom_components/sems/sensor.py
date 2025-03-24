@@ -91,16 +91,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     #             else:
     #                 powerflow = result["powerflow"]
 
-                powerflow["sn"] = result["homKit"]["sn"]
+    # powerflow["sn"] = result["homKit"]["sn"]
 
-                # Goodwe 'Power Meter' (not HomeKit) doesn't have a sn
-                # Let's put something in, otherwise we can't see the data.
-                if powerflow["sn"] is None:
-                    powerflow["sn"] = "GW-HOMEKIT-NO-SERIAL"
+    # # Goodwe 'Power Meter' (not HomeKit) doesn't have a sn
+    # # Let's put something in, otherwise we can't see the data.
+    # if powerflow["sn"] is None:
+    #     powerflow["sn"] = "GW-HOMEKIT-NO-SERIAL"
 
-                #_LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
-                # This seems more accurate than the Chart_sum
-                powerflow["all_time_generation"] = result["kpi"]["total_power"]
+    # #_LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
+    # # This seems more accurate than the Chart_sum
+    # powerflow["all_time_generation"] = result["kpi"]["total_power"]
 
     #             data["homeKit"] = powerflow
 
