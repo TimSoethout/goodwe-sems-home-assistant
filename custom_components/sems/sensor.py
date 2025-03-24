@@ -1,5 +1,4 @@
-"""
-Support for power production statistics from GoodWe SEMS API.
+"""Support for power production statistics from GoodWe SEMS API.
 
 For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
@@ -7,7 +6,7 @@ https://github.com/TimSoethout/goodwe-sems-home-assistant
 
 from datetime import timedelta
 import logging
-from typing import Coroutine
+# from typing import Coroutine
 
 import homeassistant
 from homeassistant.components.sensor import (
@@ -18,6 +17,7 @@ from homeassistant.components.sensor import (
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import CONF_SCAN_INTERVAL, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
@@ -120,7 +120,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     #     # Polling interval. Will only be polled if there are subscribers.
     #     update_interval=update_interval,
     # )
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     #
     # Fetch initial data so we have data when entities subscribe
@@ -168,7 +168,7 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
       available
     """
 
-    def __init__(self, coordinator, sn):
+    def __init__(self, coordinator, sn) -> None:
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
         self.coordinator = coordinator
@@ -177,20 +177,28 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_class(self):
-        return SensorDeviceClass.POWER_FACTOR
+        """Return the device class of the sensor."""
+        return SensorDeviceClass.POWER
 
     @property
     def unit_of_measurement(self):
+        """Return the unit of measurement for the sensor."""
         return UnitOfPower.WATT
 
     @property
-    def name(self) -> str:
+    def device_name(self) -> str:
         """Return the name of the sensor."""
         return f"Inverter {self.coordinator.data[self.sn]['name']}"
 
     @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"Inverter {self.coordinator.data[self.sn]['name']} Power"
+
+    @property
     def unique_id(self) -> str:
-        return self.coordinator.data[self.sn]["sn"]
+        """Return the unique ID of the sensor."""
+        return f"{self.coordinator.data[self.sn]['sn']}-power"
 
     @property
     def state(self):
@@ -233,19 +241,20 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
         return self.coordinator.last_update_success
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         # _LOGGER.debug("self.device_state_attributes: %s", self.device_state_attributes)
-        return {
-            "identifiers": {
+        return DeviceInfo(
+            identifiers={
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self.sn)
             },
-            "name": self.name,
-            "manufacturer": "GoodWe",
-            "model": self.extra_state_attributes.get("model_type", "unknown"),
-            "sw_version": self.extra_state_attributes.get("firmwareversion", "unknown"),
-            # "via_device": (DOMAIN, self.api.bridgeid),
-        }
+            name=self.device_name,
+            manufacturer="GoodWe",
+            model=self.extra_state_attributes.get("model_type", "unknown"),
+            sw_version=self.extra_state_attributes.get("firmwareversion", "unknown"),
+            configuration_url=f"https://semsportal.com/PowerStation/PowerStatusSnMin/{self.coordinator.data[self.sn]['powerstation_id']}",
+            # "via_device": (DOMAIN, self.sn),
+        )
 
     async def async_added_to_hass(self):
         """When entity is added to hass."""

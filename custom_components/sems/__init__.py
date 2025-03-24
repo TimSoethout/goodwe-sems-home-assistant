@@ -3,24 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.const import (
-    CONF_PASSWORD,
-    CONF_USERNAME,
-)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-
-from datetime import timedelta
 from .const import (
+    CONF_SCAN_INTERVAL,
+    CONF_STATION_ID,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     PLATFORMS,
-    CONF_SCAN_INTERVAL,
-    DEFAULT_SCAN_INTERVAL,
-    CONF_STATION_ID,
 )
 from .sems_api import SemsApi
 
@@ -41,7 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up sems from a config entry."""
     semsApi = SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
     coordinator = SemsDataUpdateCoordinator(hass, semsApi, entry)
-    await coordinator.async_confg_entry_first_refresh()
+    await coordinator.async_config_entry_first_refresh()
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -130,7 +126,13 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
         update_interval = timedelta(
             seconds=entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
-        super().__init__(hass, entry, name=DOMAIN, update_interval=update_interval)
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=DOMAIN,
+            update_interval=update_interval,
+        )
 
     async def _async_update_data(self):
         """Fetch data from API endpoint.

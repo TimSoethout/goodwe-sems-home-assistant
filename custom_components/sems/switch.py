@@ -54,20 +54,21 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
       available
     """
 
-    def __init__(self, coordinator, api, sn):
+    def __init__(self, coordinator, sn) -> None:
         super().__init__(coordinator, context=sn)
         self.coordinator = coordinator
-        self.api = api
+        # self.api = api
         self.sn = sn
-        _LOGGER.debug(f"Creating SemsStatusSwitch for Inverter {self.sn}")
+        _LOGGER.debug("Creating SemsStatusSwitch for Inverter %s", self.sn)
 
     @property
     def name(self) -> str:
         """Return the name of the switch."""
-        return f"Inverter {self.sn} Status Switch"
+        return f"Inverter {self.coordinator.data[self.sn]['name']} Status Switch"
 
     @property
     def unique_id(self) -> str:
+        """Return the unique ID of the sensor."""
         return f"{self.sn}-status-switch"
 
     @property
@@ -84,50 +85,13 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def is_on(self) -> bool:
         """Return entity status."""
+        _LOGGER.debug("coordinator.data: %s", self.coordinator.data)
         return self.coordinator.data[self.sn]["status"] == 1
 
     async def async_turn_off(self, **kwargs):
         _LOGGER.debug(f"Inverter {self.sn} set to Off")
-        await self.api.change_status(self.sn, 2)
+        await self.coordinator.semsApi.change_status(self.sn, 2)
 
     async def async_turn_on(self, **kwargs):
         _LOGGER.debug(f"Inverter {self.sn} set to On")
-        await self.api.change_status(self.sn, 4)
-
-
-# class SemsSwitch(SwitchEntity):
-
-#     def __init__(self, api, sn):
-#         super().__init__()
-#         self.api = api
-#         self.sn = sn
-#         _LOGGER.debug(f"Creating SemsSwitch for Inverter {self.sn}")
-
-#     @property
-#     def name(self) -> str:
-#         """Return the name of the switch."""
-#         return f"Inverter {self.sn} Switch"
-
-
-#     @property
-#     def unique_id(self) -> str:
-#         return f"{self.sn}-switch"
-
-#     @property
-#     def device_info(self):
-#         return {
-#             "identifiers": {
-#                 # Serial numbers are unique identifiers within a specific domain
-#                 (DOMAIN, self.sn)
-#             },
-#             "name": "Homekit",
-#             "manufacturer": "GoodWe",
-#         }
-
-#     async def async_turn_off(self, **kwargs):
-#         _LOGGER.debug(f"Inverter {self.sn} set to Off")
-#         await self.api.change_status(self.sn, 2)
-
-#     async def async_turn_on(self, **kwargs):
-#         _LOGGER.debug(f"Inverter {self.sn} set to On")
-#         await self.api.change_status(self.sn, 4)
+        await self.coordinator.semsApi.change_status(self.sn, 4)
