@@ -10,9 +10,10 @@ _LOGGER = logging.getLogger(__name__)
 # _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
-_PowerControlURL = (
-    "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
-)
+# _PowerControlURL = (
+#     "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
+# )
+_PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
 _RequestTimeout = 30  # seconds
 
 _DefaultHeaders = {
@@ -116,6 +117,7 @@ class SemsApi:
                 powerStationURL, headers=headers, data=data, timeout=_RequestTimeout
             )
             jsonResponse = response.json()
+            _LOGGER.debug("Response: %s", jsonResponse)
             # try again and renew token is unsuccessful
             if jsonResponse["msg"] != "success" or jsonResponse["data"] is None:
                 _LOGGER.debug(
@@ -156,7 +158,8 @@ class SemsApi:
                 "token": json.dumps(self._token),
             }
 
-            powerControlURL = _PowerControlURL
+            powerControlURL = self._token["api"] + _PowerControlURLPart
+            # powerControlURL = _PowerControlURL
             _LOGGER.debug(
                 "Sending power control command (%s) for power station id: %s",
                 powerControlURL,
