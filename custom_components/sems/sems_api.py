@@ -10,7 +10,9 @@ _LOGGER = logging.getLogger(__name__)
 # _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
 _PowerStationURLPart = "/v2/PowerStation/GetMonitorDetailByPowerstationId"
-_PowerControlURL = "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
+_PowerControlURL = (
+    "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
+)
 _RequestTimeout = 30  # seconds
 
 _DefaultHeaders = {
@@ -163,23 +165,23 @@ class SemsApi:
 
             data = {
                 "InverterSN": inverterSn,
-                "InverterStatusSettingMark":"1",
-                "InverterStatus": str(status)
+                "InverterStatusSettingMark": "1",
+                "InverterStatus": str(status),
             }
 
             response = requests.post(
                 powerControlURL, headers=headers, json=data, timeout=_RequestTimeout
             )
-            if (response.status_code != 200):
+            if response.status_code != 200:
                 # try again and renew token is unsuccessful
-                _LOGGER.warn(
+                _LOGGER.warning(
                     "Power control command not successful, retrying with new token, %s retries remaining",
                     maxTokenRetries,
                 )
                 return self.change_status(
                     inverterSn, status, True, maxTokenRetries=maxTokenRetries - 1
                 )
-                
+
             return
         except Exception as exception:
             _LOGGER.error("Unable to execute Power control command. %s", exception)

@@ -64,12 +64,12 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def name(self) -> str:
         """Return the name of the switch."""
-        return f"Inverter {self.coordinator.data[self.sn]['name']} Status Switch"
+        return f"Inverter {self.coordinator.data[self.sn]['name']} Switch"
 
     @property
     def unique_id(self) -> str:
         """Return the unique ID of the sensor."""
-        return f"{self.sn}-status-switch"
+        return f"{self.sn}-switch"
 
     @property
     def device_info(self):
