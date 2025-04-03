@@ -9,7 +9,9 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.entity_registry import async_migrate_entries
 
 from .const import (
     CONF_SCAN_INTERVAL,
@@ -206,3 +208,61 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as err:
             # logging.exception("Something awful happened!")
             raise UpdateFailed(f"Error communicating with API: {err}") from err
+
+
+# migrate to _power ids for inverter entry
+async def async_migrate_entry(hass, config_entry):
+    """Migrate old entry."""
+    _LOGGER.debug(
+        "Migrating configuration from version %s.%s",
+        config_entry.version,
+        config_entry.minor_version,
+    )
+
+    if config_entry.version < 7:
+        # get existing entities for device
+        semsApi = SemsApi(
+            hass, config_entry.data[CONF_USERNAME], config_entry.data[CONF_PASSWORD]
+        )
+        coordinator = SemsDataUpdateCoordinator(hass, semsApi, config_entry)
+        await coordinator.async_config_entry_first_refresh()
+
+        _LOGGER.debug(f"found inverter {coordinator.data}")
+
+        for idx, ent in enumerate(coordinator.data):
+            _LOGGER.debug("Found inverter: %s", ent)
+
+            old_unique_id = f"{ent}"
+            new_unique_id = f"{old_unique_id}-power"
+            _LOGGER.debug(
+                "Old unique id: %s; new unique id: %s", old_unique_id, new_unique_id
+            )
+
+            @callback
+            def update_unique_id(entity_entry):
+                """Update unique ID of entity entry."""
+                return {
+                    "new_unique_id": entity_entry.unique_id.replace(
+                        old_unique_id, new_unique_id
+                    )
+                }
+
+            if old_unique_id != new_unique_id:
+                await async_migrate_entries(
+                    hass, config_entry.entry_id, update_unique_id
+                )
+
+                hass.config_entries.async_update_entry(
+                    config_entry, unique_id=new_unique_id
+                )
+                _LOGGER.info(
+                    "Migrated unique id from %s to %s", old_unique_id, new_unique_id
+                )
+
+    _LOGGER.info(
+        "Migration from version %s.%s successful",
+        config_entry.version,
+        config_entry.minor_version,
+    )
+
+    return True

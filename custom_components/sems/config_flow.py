@@ -1,4 +1,5 @@
 """Config flow for sems integration."""
+
 from __future__ import annotations
 
 import logging
@@ -46,7 +47,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     _LOGGER.debug("SEMS - new config flow")
 
-    VERSION = 1
+    VERSION = 7  # Updated to 7 to allow for migration
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     async def async_step_user(
