@@ -15,8 +15,9 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import CONF_SCAN_INTERVAL, UnitOfEnergy, UnitOfPower
+from homeassistant.const import CONF_SCAN_INTERVAL, UnitOfEnergy, UnitOfPower, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -134,6 +135,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     await coordinator.async_config_entry_first_refresh()
 
     # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
+
+    for _idx, ent in enumerate(coordinator.data):
+        _migrate_to_new_unique_id(hass, ent)
+
     async_add_entities(
         SemsSensor(coordinator, ent) for idx, ent in enumerate(coordinator.data)
     )
@@ -158,6 +163,33 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     )
 
 
+# Migrate old power sensor unique ids to new unique ids (with `-power`)
+def _migrate_to_new_unique_id(hass: HomeAssistant, sn: str) -> None:
+    """Migrate old unique ids to new unique ids."""
+    ent_reg = entity_registry.async_get(hass)
+
+    old_unique_id = sn
+    new_unique_id = f"{old_unique_id}-power"
+    _LOGGER.debug("Old unique id: %s; new unique id: %s", old_unique_id, new_unique_id)
+    entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, old_unique_id)
+    _LOGGER.debug("Entity ID: %s", entity_id)
+    if entity_id is not None:
+        try:
+            ent_reg.async_update_entity(entity_id, new_unique_id=new_unique_id)
+        except ValueError:
+            _LOGGER.warning(
+                "Skip migration of id [%s] to [%s] because it already exists",
+                old_unique_id,
+                new_unique_id,
+            )
+        else:
+            _LOGGER.info(
+                "Migrating unique_id from [%s] to [%s]",
+                old_unique_id,
+                new_unique_id,
+            )
+
+
 class SemsSensor(CoordinatorEntity, SensorEntity):
     """SemsSensor using CoordinatorEntity.
 
@@ -168,65 +200,38 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
       available
     """
 
-    # Sensor has entity name (e.g. Inverter 123456 Power)
-    # _attr_has_entity_name = True
-    _attr_name = None
+    # Sensor has name determined by device class (e.g. Inverter 123456 Power)
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator, sn) -> None:
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
         self.coordinator = coordinator
         self.sn = sn
+        self._attr_unique_id = f"{self.coordinator.data[self.sn]['sn']}-power"
         _LOGGER.debug("Creating SemsSensor with id %s", self.sn)
 
-    @property
-    def device_class(self):
-        """Return the device class of the sensor."""
-        return SensorDeviceClass.POWER
-
-    @property
-    def unit_of_measurement(self):
-        """Return the unit of measurement for the sensor."""
-        return UnitOfPower.WATT
-
-    @property
-    def device_name(self) -> str:
-        """Return the name of the sensor."""
-        return f"Inverter {self.coordinator.data[self.sn]['name']}"
-
-    # @property
-    # def name(self) -> str:
-    #     """Return the name of the sensor."""
-    #     return f"Inverter {self.coordinator.data[self.sn]['name']} Power"
-
-    @property
-    def unique_id(self) -> str:
-        """Return the unique ID of the sensor."""
-        return f"{self.coordinator.data[self.sn]['sn']}-power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_should_poll = False
 
     @property
     def state(self):
         """Return the state of the device."""
-        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        # _LOGGER.debug("self.sn: %s", self.sn)
-        # _LOGGER.debug(
-        #     "state, self data: %s", self.coordinator.data[self.sn]
-        # )
         data = self.coordinator.data[self.sn]
         return data["pac"] if data["status"] == 1 else 0
 
-    def statusText(self, status) -> str:
+    def _statusText(self, status) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
-        return labels[status] if status in labels else "Unknown"
+        return labels.get(status, "Unknown")
 
     # For backwards compatibility
     @property
     def extra_state_attributes(self):
         """Return the state attributes of the monitored installation."""
         data = self.coordinator.data[self.sn]
-        # _LOGGER.debug("state, self data: %s", data.items())
         attributes = {k: v for k, v in data.items() if k is not None and v is not None}
-        attributes["statusText"] = self.statusText(data["status"])
+        attributes["statusText"] = self._statusText(data["status"])
         return attributes
 
     @property
@@ -235,29 +240,20 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
         return self.coordinator.data[self.sn]["status"] == 1
 
     @property
-    def should_poll(self) -> bool:
-        """No need to poll. Coordinator notifies entity of updates."""
-        return False
-
-    @property
     def available(self):
         """Return if entity is available."""
         return self.coordinator.last_update_success
 
     @property
     def device_info(self) -> DeviceInfo:
-        # _LOGGER.debug("self.device_state_attributes: %s", self.device_state_attributes)
+        """Return device information."""
         return DeviceInfo(
-            identifiers={
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, self.sn)
-            },
-            name=self.device_name,
+            identifiers={(DOMAIN, self.sn)},
+            name=f"Inverter {self.coordinator.data[self.sn]['name']}",
             manufacturer="GoodWe",
             model=self.extra_state_attributes.get("model_type", "unknown"),
             sw_version=self.extra_state_attributes.get("firmwareversion", "unknown"),
             configuration_url=f"https://semsportal.com/PowerStation/PowerStatusSnMin/{self.coordinator.data[self.sn]['powerstation_id']}",
-            # "via_device": (DOMAIN, self.sn),
         )
 
     async def async_added_to_hass(self):
@@ -276,6 +272,8 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
 
 class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
     """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
+
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator, sn):
         """Pass coordinator to CoordinatorEntity."""
@@ -355,6 +353,8 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
 class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator, sn):
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
@@ -373,7 +373,7 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Import"
+        return "HomeKit Import"
 
     @property
     def unique_id(self) -> str:
@@ -427,6 +427,8 @@ class SemsTotalImportSensor(CoordinatorEntity, SensorEntity):
 class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     """Sensor in kWh to enable HA statistics, in the end usable in the power component."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator, sn):
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
@@ -445,7 +447,7 @@ class SemsTotalExportSensor(CoordinatorEntity, SensorEntity):
     @property
     def name(self) -> str:
         """Return the name of the sensor."""
-        return f"HomeKit {self.coordinator.data[self.sn]['sn']} Export"
+        return "HomeKit Export"
 
     @property
     def unique_id(self) -> str:
@@ -506,6 +508,8 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
       available
     """
 
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator, sn):
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
@@ -527,7 +531,7 @@ class SemsPowerflowSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def unique_id(self) -> str:
-        return self.coordinator.data[self.sn]["sn"]
+        return f"{self.coordinator.data[self.sn]['sn']}-homekit"
 
     @property
     def state(self):

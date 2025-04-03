@@ -34,7 +34,7 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
       available
     """
 
-    # Sensor has entity name (e.g. Inverter 123456 Power)
+    # Sensor has device name (e.g. Inverter 123456 Power)
     _attr_has_entity_name = True
     _attr_name = None
 
@@ -77,7 +77,7 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def is_on(self) -> bool:
         """Return entity status."""
-        _LOGGER.debug("coordinator.data: %s", self.coordinator.data)
+        _LOGGER.debug("coordinator.data[sn]: %s", self.coordinator.data[self.sn])
         return self.coordinator.data[self.sn]["status"] == 1
 
     async def async_turn_off(self, **kwargs):

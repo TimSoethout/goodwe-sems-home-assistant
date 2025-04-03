@@ -47,8 +47,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     _LOGGER.debug("SEMS - new config flow")
 
-    VERSION = 7  # Updated to 7 to allow for migration
-    CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
+    VERSION = 1
+    # CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -69,7 +69,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         else:
-            return self.async_create_entry(title=info[CONF_STATION_ID], data=user_input)
+            return self.async_create_entry(
+                title=f"Inverter {info[CONF_STATION_ID]}", data=user_input
+            )
 
         return self.async_show_form(
             step_id="user", data_schema=SEMS_CONFIG_SCHEMA, errors=errors
