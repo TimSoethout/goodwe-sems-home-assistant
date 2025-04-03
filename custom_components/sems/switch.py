@@ -34,6 +34,10 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
       available
     """
 
+    # Sensor has entity name (e.g. Inverter 123456 Power)
+    _attr_has_entity_name = True
+    _attr_name = None
+
     def __init__(self, coordinator, sn) -> None:
         """Initialize the SemsStatusSwitch.
 
@@ -48,10 +52,10 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
         self.sn = sn
         _LOGGER.debug("Creating SemsStatusSwitch for Inverter %s", self.sn)
 
-    @property
-    def name(self) -> str:
-        """Return the name of the switch."""
-        return f"Inverter {self.coordinator.data[self.sn]['name']} Switch"
+    # @property
+    # def name(self) -> str:
+    #     """Return the name of the switch."""
+    #     return f"Inverter {self.coordinator.data[self.sn]['name']} Switch"
 
     @property
     def unique_id(self) -> str:

@@ -168,6 +168,10 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
       available
     """
 
+    # Sensor has entity name (e.g. Inverter 123456 Power)
+    _attr_has_entity_name = True
+    _attr_name = None
+
     def __init__(self, coordinator, sn) -> None:
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
@@ -190,10 +194,10 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
         """Return the name of the sensor."""
         return f"Inverter {self.coordinator.data[self.sn]['name']}"
 
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return f"Inverter {self.coordinator.data[self.sn]['name']} Power"
+    # @property
+    # def name(self) -> str:
+    #     """Return the name of the sensor."""
+    #     return f"Inverter {self.coordinator.data[self.sn]['name']} Power"
 
     @property
     def unique_id(self) -> str:
@@ -288,10 +292,10 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
     def unit_of_measurement(self):
         return UnitOfEnergy.KILO_WATT_HOUR
 
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return f"Inverter {self.coordinator.data[self.sn]['name']} Energy"
+    # @property
+    # def name(self) -> str:
+    #     """Return the name of the sensor."""
+    #     return f"Inverter {self.coordinator.data[self.sn]['name']} Energy"
 
     @property
     def unique_id(self) -> str:
