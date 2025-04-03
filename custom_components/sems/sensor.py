@@ -169,7 +169,7 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
     """
 
     # Sensor has entity name (e.g. Inverter 123456 Power)
-    _attr_has_entity_name = True
+    # _attr_has_entity_name = True
     _attr_name = None
 
     def __init__(self, coordinator, sn) -> None:
