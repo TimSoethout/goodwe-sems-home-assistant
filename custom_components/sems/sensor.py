@@ -216,8 +216,8 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
     _attr_should_poll = False
 
     @property
-    def state(self):
-        """Return the state of the device."""
+    def native_value(self):
+        """Return the value reported by the sensor."""
         data = self.coordinator.data[self.sn]
         return data["pac"] if data["status"] == 1 else 0
 
