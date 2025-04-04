@@ -15,6 +15,9 @@
                     "password": "Password",
                     "username": "Nome de Utilizador",
                     "scan_interval": "Intervalo de Atualização (segundos)"
+                },
+                "data_description": {
+                    "powerstation_id": "Se vazio, irá consultar a API SEMS e usar o primeiro"
                 }
             }
         }
