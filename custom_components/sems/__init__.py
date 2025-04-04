@@ -149,7 +149,16 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
             result = await self.hass.async_add_executor_job(
                 self.semsApi.getData, self.stationId
             )
-            _LOGGER.debug("Resulting result: %s", result)
+            _LOGGER.debug("semsApi.getData result: %s", result)
+
+            # _LOGGER.warning("SEMS - Try get getPowerStationIds")
+            # powerStationIds = await self.hass.async_add_executor_job(
+            #     self.semsApi.getPowerStationIds
+            # )
+            # _LOGGER.warning(
+            #     "SEMS - getPowerStationIds: Found power station IDs: %s",
+            #     powerStationIds,
+            # )
 
             inverters = result["inverter"]
 

@@ -7,8 +7,8 @@ from homeassistant import exceptions
 
 _LOGGER = logging.getLogger(__name__)
 
-# _LoginURL = "https://eu.semsportal.com/api/v2/Common/CrossLogin"
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
+_GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
 # _PowerControlURL = (
 #     "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
@@ -39,11 +39,11 @@ class SemsApi:
             self._token = self.getLoginToken(self._username, self._password)
             return self._token is not None
         except Exception as exception:
-            _LOGGER.exception("SEMS Authentication exception " + exception)
+            _LOGGER.exception("SEMS Authentication exception: %s", exception)
             return False
 
     def getLoginToken(self, userName, password):
-        """Get the login token for the SEMS API"""
+        """Get the login token for the SEMS API."""
         try:
             # Get our Authentication Token from SEMS Portal API
             _LOGGER.debug("SEMS - Getting API token")
@@ -78,6 +78,64 @@ class SemsApi:
         except Exception as exception:
             _LOGGER.error("Unable to fetch login token from SEMS API. %s", exception)
             return None
+
+    def getPowerStationIds(self, renewToken=False, maxTokenRetries=2) -> str:
+        """Get the power station ids from the SEMS API."""
+        try:
+            # Get the status of our SEMS Power Station
+            _LOGGER.debug(
+                "SEMS - getPowerStationIds Making Power Station Status API Call"
+            )
+            if maxTokenRetries <= 0:
+                _LOGGER.info(
+                    "SEMS - Maximum token fetch tries reached, aborting for now"
+                )
+                raise OutOfRetries
+            if self._token is None or renewToken:
+                _LOGGER.debug(
+                    "API token not set (%s) or new token requested (%s), fetching",
+                    self._token,
+                    renewToken,
+                )
+                self._token = self.getLoginToken(self._username, self._password)
+
+                # Prepare Power Station status Headers
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "token": json.dumps(self._token),
+            }
+
+            getPowerStationIdUrl = self._token["api"] + _GetPowerStationIdByOwnerURLPart
+            _LOGGER.debug(
+                "Querying SEMS API (%s) for power station ids by owner",
+                getPowerStationIdUrl,
+            )
+
+            response = requests.post(
+                getPowerStationIdUrl,
+                headers=headers,
+                # data=data,
+                timeout=_RequestTimeout,
+            )
+            jsonResponse = response.json()
+            _LOGGER.debug("Response: %s", jsonResponse)
+            # try again and renew token is unsuccessful
+            if jsonResponse["msg"] != "Successful" or jsonResponse["data"] is None:
+                _LOGGER.debug(
+                    "GetPowerStationIdByOwner Query not successful (%s), retrying with new token, %s retries remaining",
+                    jsonResponse["msg"],
+                    maxTokenRetries,
+                )
+                return self.getPowerStationIds(
+                    True, maxTokenRetries=maxTokenRetries - 1
+                )
+
+            return jsonResponse["data"]
+        except Exception as exception:
+            _LOGGER.error(
+                "Unable to fetch power station Ids from SEMS Api. %s", exception
+            )
 
     def getData(self, powerStationId, renewToken=False, maxTokenRetries=2):
         """Get the latest data from the SEMS API and updates the state."""
