@@ -14,7 +14,9 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+from homeassistant.core import HomeAssistant
+
+async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
     """Add switches for passed config_entry in HA."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
     # stationId = config_entry.data[CONF_STATION_ID]
@@ -36,7 +38,7 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
 
     # Sensor has device name (e.g. Inverter 123456 Power)
     _attr_has_entity_name = True
-    _attr_name = None
+    # _attr_name = None
 
     def __init__(self, coordinator, sn) -> None:
         """Initialize the SemsStatusSwitch.
