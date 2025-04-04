@@ -6,7 +6,8 @@ https://github.com/TimSoethout/goodwe-sems-home-assistant
 
 import logging
 
-from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -15,6 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 from homeassistant.core import HomeAssistant
+
 
 async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
     """Add switches for passed config_entry in HA."""
@@ -50,31 +52,19 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
         """
         super().__init__(coordinator, context=sn)
         self.coordinator = coordinator
-        # self.api = api
         self.sn = sn
-        _LOGGER.debug("Creating SemsStatusSwitch for Inverter %s", self.sn)
-
-    # @property
-    # def name(self) -> str:
-    #     """Return the name of the switch."""
-    #     return f"Inverter {self.coordinator.data[self.sn]['name']} Switch"
-
-    @property
-    def unique_id(self) -> str:
-        """Return the unique ID of the sensor."""
-        return f"{self.sn}-switch"
-
-    @property
-    def device_info(self):
-        """Return device information for the inverter."""
-        return {
-            "identifiers": {
+        self._attr_device_info = DeviceInfo(
+            identifiers={
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self.sn)
             },
-            "name": self.name,
-            "manufacturer": "GoodWe",
-        }
+            name=f"Inverter {self.coordinator.data[self.sn]['name']}",
+        )
+        self._attr_unique_id = f"{self.sn}-switch"
+        # somehow needed, no default naming
+        self._attr_name = "Switch"
+        self._attr_device_class = SwitchDeviceClass.OUTLET
+        _LOGGER.debug("Creating SemsStatusSwitch for Inverter %s", self.sn)
 
     @property
     def is_on(self) -> bool:
