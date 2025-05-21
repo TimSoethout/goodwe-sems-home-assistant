@@ -60,30 +60,38 @@ Replace `$NAME` with your inverter entity id.
 ```yaml
 template:
   - sensor:
-      - name: pv_temperature
-        state: '{{ states.sensor.inverter_$NAME.attributes.tempperature }}'
-        unit_of_measurement: 'C'
-      - name: pv_energy_day
-        state: '{{ states.sensor.inverter_$NAME.attributes.eday }}'
-        unit_of_measurement: 'kWh'
-      - name: pv_energy_total
-        state: '{{ states.sensor.inverter_$NAME.attributes.etotal }}'
-        unit_of_measurement: 'kWh'
-      - name: pv_income_day
-        state: '{{ states.sensor.inverter_$NAME.attributes.iday }}'
-        unit_of_measurement: '€'
-      - name: pv_income_total
-        state: '{{ states.sensor.inverter_$NAME.attributes.itotal }}'
-        unit_of_measurement: '€'
-      - name: pv_excess
-        state: '{{ states.sensor.inverter_$NAME.attributes.pmeter }}'
-        unit_of_measurement: 'W'
-      - name: pv_battery_power
-        state: '{{ states.sensor.inverter_$NAME.attributes.soc }}'
-        unit_of_measurement: '%'
-      - name: pv_import_day
-        state: '{{ states.sensor.inverter_$NAME.attributes.buy }}'
-        unit_of_measurement: 'kWh'
+      - name: "PV Temperature"
+        unit_of_measurement: "°C"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'tempperature') }}
+      - name: "PV Energy Day"
+        unit_of_measurement: "kWh"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'eday') }}
+      - name: "PV Energy Total"
+        unit_of_measurement: "kWh"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'etotal') }}
+      - name: "PV Income Day"
+        unit_of_measurement: "€"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'iday') }}
+      - name: "PV Income Total"
+        unit_of_measurement: "€"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'itotal') }}
+      - name: "PV Excess"
+        unit_of_measurement: "W"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'pmeter') }}
+      - name: "PV Battery Power"
+        unit_of_measurement: "%"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'soc') }}
+      - name: "PV Import Day"
+        unit_of_measurement: "kWh"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'buy') }}
 ```
 
 Note that `states.sensor.inverter_$NAME.state` contains the power output in `W`.
