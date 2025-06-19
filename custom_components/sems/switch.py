@@ -1,5 +1,4 @@
-"""
-Support for switch controlling an output of a GoodWe SEMS inverter.
+"""Support for switch controlling an output of a GoodWe SEMS inverter.
 
 For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
@@ -7,69 +6,82 @@ https://github.com/TimSoethout/goodwe-sems-home-assistant
 
 import logging
 
-from homeassistant.const import (
-    CONF_SCAN_INTERVAL,
-)
-from homeassistant.helpers.entity import Entity
-from homeassistant.helpers.update_coordinator import UpdateFailed
-from .const import DOMAIN, CONF_STATION_ID
-from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+from homeassistant.core import HomeAssistant
+
+
+async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
     """Add switches for passed config_entry in HA."""
-    semsApi = hass.data[DOMAIN][config_entry.entry_id]
-    stationId = config_entry.data[CONF_STATION_ID]
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    # stationId = config_entry.data[CONF_STATION_ID]
 
-    try:
-        result = await hass.async_add_executor_job(semsApi.getData, stationId)
+    async_add_entities(
+        SemsStatusSwitch(coordinator, ent) for idx, ent in enumerate(coordinator.data)
+    )
 
-    except Exception as err:
-        # logging.exception("Something awful happened!")
-        raise UpdateFailed(f"Error communicating with API: {err}")
 
-    inverters = result["inverter"]
-    entities = []
-    for inverter in inverters:
-        entities.append(SemsSwitch(semsApi, inverter["invert_full"]["sn"]))
+class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
+    """SemsStatusSwitch using CoordinatorEntity.
 
-    async_add_entities(entities)
+    The CoordinatorEntity class provides:
+      should_poll
+      async_update
+      async_added_to_hass
+      available
+    """
 
-class SemsSwitch(SwitchEntity):
+    # Sensor has device name (e.g. Inverter 123456 Power)
+    _attr_has_entity_name = True
+    # _attr_name = None
 
-    def __init__(self, api, sn):
-        super().__init__()
-        self.api = api
+    def __init__(self, coordinator, sn) -> None:
+        """Initialize the SemsStatusSwitch.
+
+        Args:
+            coordinator: The data update coordinator for managing updates.
+            sn: The serial number of the inverter.
+
+        """
+        super().__init__(coordinator, context=sn)
+        self.coordinator = coordinator
         self.sn = sn
-        _LOGGER.debug(f"Creating SemsSwitch for Inverter {self.sn}")
-
-    @property
-    def name(self) -> str:
-        """Return the name of the switch."""
-        return f"Inverter {self.sn} Switch"
-
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self.sn}-switch"
-
-    @property
-    def device_info(self):
-        return {
-            "identifiers": {
+        self._attr_device_info = DeviceInfo(
+            identifiers={
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self.sn)
             },
-            "name": "Homekit",
-            "manufacturer": "GoodWe",
-        }
+            name=f"Inverter {self.coordinator.data[self.sn]['name']}",
+        )
+        self._attr_unique_id = f"{self.sn}-switch"
+        # somehow needed, no default naming
+        self._attr_name = "Switch"
+        self._attr_device_class = SwitchDeviceClass.OUTLET
+        _LOGGER.debug("Creating SemsStatusSwitch for Inverter %s", self.sn)
 
-    def async_turn_off(self, **kwargs):
-        _LOGGER.debug(f"Inverter {self.sn} set to Off")
-        self.api.change_status(self.sn, 2)
+    @property
+    def is_on(self) -> bool:
+        """Return entity status."""
+        _LOGGER.debug("coordinator.data[sn]: %s", self.coordinator.data[self.sn])
+        return self.coordinator.data[self.sn]["status"] == 1
 
-    def async_turn_on(self, **kwargs):
-        _LOGGER.debug(f"Inverter {self.sn} set to On")
-        self.api.change_status(self.sn, 4)
+    async def async_turn_off(self, **kwargs):
+        """Turn off the inverter."""
+        _LOGGER.debug("Inverter %s set to Off", self.sn)
+        await self.hass.async_add_executor_job(
+            self.coordinator.semsApi.change_status, self.sn, 2
+        )
+
+    async def async_turn_on(self, **kwargs):
+        """Turn on the inverter."""
+        _LOGGER.debug("Inverter %s set to On", self.sn)
+        await self.hass.async_add_executor_job(
+            self.coordinator.semsApi.change_status, self.sn, 4
+        )

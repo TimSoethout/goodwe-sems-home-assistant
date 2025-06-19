@@ -1,4 +1,5 @@
 """Config flow for sems integration."""
+
 from __future__ import annotations
 
 import logging
@@ -19,25 +20,46 @@ from homeassistant.const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def mask_password(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Mask password in user input for logging."""
+    masked_input = user_input.copy()
+    if CONF_PASSWORD in masked_input:
+        masked_input[CONF_PASSWORD] = "<masked>"
+    return masked_input
+
+
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
 
-    _LOGGER.debug("SEMS - Start validation config flow user input")
+    _LOGGER.debug(
+        "SEMS - Start validation config flow user input, with input data: %s",
+        mask_password(data),
+    )
     api = SemsApi(hass, data[CONF_USERNAME], data[CONF_PASSWORD])
 
     authenticated = await hass.async_add_executor_job(api.test_authentication)
-    if not authenticated:
-        raise InvalidAuth
-
     # If you cannot connect:
     # throw CannotConnect
     # If the authentication is wrong:
     # InvalidAuth
+    if not authenticated:
+        raise InvalidAuth
+
+    # If optional station ID is not provided, query the SEMS API for the first found
+    if CONF_STATION_ID not in data:
+        _LOGGER.debug(
+            "SEMS - No station ID provided, query SEMS API, using first found"
+        )
+        powerStationId = await hass.async_add_executor_job(api.getPowerStationIds)
+        _LOGGER.debug("SEMS - Found power station IDs: %s", powerStationId)
+
+        data[CONF_STATION_ID] = powerStationId
 
     # Return info that you want to store in the config entry.
+    _LOGGER.debug("SEMS - validate_input Returning data: %s", mask_password(data))
     return data
 
 
@@ -47,7 +69,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     _LOGGER.debug("SEMS - new config flow")
 
     VERSION = 1
-    CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
+    # CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -68,7 +90,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         else:
-            return self.async_create_entry(title=info[CONF_STATION_ID], data=user_input)
+            _LOGGER.debug(
+                "Creating config entry for %s with data: %s",
+                info[CONF_STATION_ID],
+                mask_password(info),
+            )
+            return self.async_create_entry(
+                title=f"Inverter {info[CONF_STATION_ID]}", data=info
+            )
 
         return self.async_show_form(
             step_id="user", data_schema=SEMS_CONFIG_SCHEMA, errors=errors

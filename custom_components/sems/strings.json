@@ -4,10 +4,13 @@
     "step": {
       "user": {
         "data": {
-          "station_id": "[%key:common::config_flow::data::powerstation_id%]",
+          "powerstation_id": "[%key:common::config_flow::data::powerstation_id%]",
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]",
           "scan_interval": "[%key:common::config_flow::data::scan_interval%]"
+        },
+        "data_description": {
+          "powerstation_id": "[%key:common::config_flow::data_description::powerstation_id%]"
         }
       }
     },
