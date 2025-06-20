@@ -302,11 +302,9 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
     @property
     def state(self):
         """Return the state of the device."""
-        # _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        # _LOGGER.debug("self.sn: %s", self.sn)
-        # _LOGGER.debug(
-        #     "state, self data: %s", self.coordinator.data[self.sn]
-        # )
+        _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
+        _LOGGER.debug("self.sn: %s", self.sn)
+        _LOGGER.debug("state, self data: %s", self.coordinator.data[self.sn])
         data = self.coordinator.data[self.sn]
         return data["etotal"]
 
