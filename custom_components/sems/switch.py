@@ -23,8 +23,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
     # stationId = config_entry.data[CONF_STATION_ID]
 
+    # coordinator.data should contain a dictionary of inverters, with as data `invert_full`
+    # Don't make switches for homekit, since it is not an inverter
     async_add_entities(
-        SemsStatusSwitch(coordinator, ent) for idx, ent in enumerate(coordinator.data)
+        SemsStatusSwitch(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data)
+        if ent != "homeKit"
     )
 
 
@@ -50,6 +54,7 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
             sn: The serial number of the inverter.
 
         """
+        _LOGGER.debug("Try create SemsStatusSwitch for Inverter %s", sn)
         super().__init__(coordinator, context=sn)
         self.coordinator = coordinator
         self.sn = sn
@@ -58,7 +63,8 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
                 # Serial numbers are unique identifiers within a specific domain
                 (DOMAIN, self.sn)
             },
-            name=f"Inverter {self.coordinator.data[self.sn]['name']}",
+            # Commented out for now, since not all inverter entries have a name; could be related to creating too much switch devices, also for non-inverters such as homekit.
+            # name=f"Inverter {self.coordinator.data[self.sn]['name']}",
         )
         self._attr_unique_id = f"{self.sn}-switch"
         # somehow needed, no default naming

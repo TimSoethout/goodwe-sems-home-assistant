@@ -140,11 +140,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         _migrate_to_new_unique_id(hass, ent)
 
     async_add_entities(
-        SemsSensor(coordinator, ent) for idx, ent in enumerate(coordinator.data)
+        SemsSensor(coordinator, ent)
+        for idx, ent in enumerate(coordinator.data)
+        # Don't make SemsSensor for homeKit, since it is not an inverter; unsure how this could work before...
+        if ent != "homeKit"
     )
     async_add_entities(
         SemsStatisticsSensor(coordinator, ent)
         for idx, ent in enumerate(coordinator.data)
+        # Don't make SemsStatisticsSensor for homeKit, since it is not an inverter; unsure how this could work before...
+        if ent != "homeKit"
     )
     async_add_entities(
         SemsPowerflowSensor(coordinator, ent)
@@ -208,8 +213,13 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self.coordinator = coordinator
         self.sn = sn
-        self._attr_unique_id = f"{self.coordinator.data[self.sn]['sn']}-power"
         _LOGGER.debug("Creating SemsSensor with id %s", self.sn)
+        self._attr_unique_id = f"{self.coordinator.data[self.sn]['sn']}-power"
+        _LOGGER.debug(
+            "Creating SemsSensor with id %s and data %s",
+            self.sn,
+            self.coordinator.data[self.sn],
+        )
 
     _attr_device_class = SensorDeviceClass.POWER
     _attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -275,12 +285,17 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, sn):
+    def __init__(self, coordinator, sn) -> None:
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator)
         self.coordinator = coordinator
         self.sn = sn
         _LOGGER.debug("Creating SemsStatisticsSensor with id %s", self.sn)
+        _LOGGER.debug(
+            "Creating SemsSensor with id %s and data %s",
+            self.sn,
+            self.coordinator.data[self.sn],
+        )
 
     @property
     def device_class(self):
@@ -302,9 +317,13 @@ class SemsStatisticsSensor(CoordinatorEntity, SensorEntity):
     @property
     def state(self):
         """Return the state of the device."""
-        _LOGGER.debug("state, coordinator data: %s", self.coordinator.data)
-        _LOGGER.debug("self.sn: %s", self.sn)
-        _LOGGER.debug("state, self data: %s", self.coordinator.data[self.sn])
+        _LOGGER.debug(
+            "SemsStatisticsSensor state, coordinator data: %s", self.coordinator.data
+        )
+        _LOGGER.debug("SemsStatisticsSensor self.sn: %s", self.sn)
+        _LOGGER.debug(
+            "SemsStatisticsSensor state, self data: %s", self.coordinator.data[self.sn]
+        )
         data = self.coordinator.data[self.sn]
         return data["etotal"]
 

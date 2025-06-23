@@ -181,6 +181,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
             hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
 
             if hasPowerflow:
+                _LOGGER.debug("Found powerflow data")
                 if hasEnergeStatisticsCharts:
                     StatisticsCharts = {
                         f"Charts_{key}": val
@@ -211,7 +212,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
 
                 data["homeKit"] = powerflow
 
-            # _LOGGER.debug("Resulting data: %s", data)
+            _LOGGER.debug("Resulting data: %s", data)
             return data
         # except ApiError as err:
         except Exception as err:

@@ -137,7 +137,7 @@ class SemsApi:
                 "Unable to fetch power station Ids from SEMS Api. %s", exception
             )
 
-    def getData(self, powerStationId, renewToken=False, maxTokenRetries=2):
+    def getData(self, powerStationId, renewToken=False, maxTokenRetries=2) -> dict:
         """Get the latest data from the SEMS API and updates the state."""
         try:
             # Get the status of our SEMS Power Station
@@ -190,6 +190,7 @@ class SemsApi:
             return jsonResponse["data"]
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from SEMS. %s", exception)
+            return {}
 
     def change_status(self, inverterSn, status, renewToken=False, maxTokenRetries=2):
         """Schedule the downtime of the station"""
