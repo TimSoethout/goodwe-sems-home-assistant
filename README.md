@@ -2,14 +2,19 @@
 
 [![Paypal-shield]](https://www.paypal.com/donate?business=9NWEEX4P6998J&currency_code=EUR)
 <a href="https://www.buymeacoffee.com/TimSoethout" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="20"></a>
+<a href="https://github.com/sponsors/timsoethout"><img alt="Sponsor" src="https://img.shields.io/badge/sponsor-30363D?&logo=GitHub-Sponsors&logoColor=#white" height="20"/></a>
 
 Integration for Home Assistant that retrieves PV data from GoodWe SEMS API.
+
+![GitHub Repo stars](https://img.shields.io/github/stars/TimSoethout/goodwe-sems-home-assistant)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TimSoethout/goodwe-sems-home-assistant/total)
+![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/TimSoethout/goodwe-sems-home-assistant/latest/total)
 
 ## Setup
 
 ### Easiest install method via HACS
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/custom-components/hacs)
 
 The repository folder structure is compatible with [HACS](https://hacs.xyz) and is included by default in HACS.
 
@@ -53,37 +58,40 @@ Login to the visitor account once to accept the EULA. Now you should be able to 
 ### Extra (optional) templates to easy access data as sensors
 Replace `$NAME` with your inverter entity id.
 ```yaml
-  - platform: template
-    sensors:
-      pv_temperature:
-        value_template: '{{ states.sensor.inverter_$NAME.attributes.tempperature }}'
-        unit_of_measurement: 'C'
-        friendly_name: "PV Temperature"
-      pv_eday:
-        value_template: '{{ states.sensor.inverter_$NAME.attributes.eday }}'
-        unit_of_measurement: 'kWh'
-        friendly_name: "PV energy day"
-      pv_etotal:
-        value_template: '{{ states.sensor.inverter_$NAME.attributes.etotal }}'
-        unit_of_measurement: 'kWh'
-        friendly_name: "PV energy total"
-      pv_iday:
-        value_template: '{{ states.sensor.inverter_$NAME.attributes.iday }}'
-        unit_of_measurement: '€'
-        friendly_name: "PV income day"
-      pv_itotal:
-        value_template: '{{ states.sensor.inverter_$NAME.attributes.itotal }}'
-        unit_of_measurement: '€'
-        friendly_name: "PV income total"
-      pv_excess:
-        value_template: '{{ states.sensor.inverter_$NAME.attributes.pmeter }}'
-        unit_of_measurement: 'W'
-        friendly_name: "PV spare"
-      # battery soc
-      pv_soc:
-        value_template: '{{ states.sensor.inverter_$NAME.attributes.soc }}'
-        unit_of_measurement: '%'
-        friendly_name: "Battery power"
+template:
+  - sensor:
+      - name: "PV Temperature"
+        unit_of_measurement: "°C"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'tempperature') }}
+      - name: "PV Energy Day"
+        unit_of_measurement: "kWh"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'eday') }}
+      - name: "PV Energy Total"
+        unit_of_measurement: "kWh"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'etotal') }}
+      - name: "PV Income Day"
+        unit_of_measurement: "€"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'iday') }}
+      - name: "PV Income Total"
+        unit_of_measurement: "€"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'itotal') }}
+      - name: "PV Excess"
+        unit_of_measurement: "W"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'pmeter') }}
+      - name: "PV Battery Power"
+        unit_of_measurement: "%"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'soc') }}
+      - name: "PV Import Day"
+        unit_of_measurement: "kWh"
+        state: >
+          {{ state_attr('sensor.inverter_$NAME', 'buy') }}
 ```
 
 Note that `states.sensor.inverter_$NAME.state` contains the power output in `W`.

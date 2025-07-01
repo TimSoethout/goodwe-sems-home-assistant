@@ -213,6 +213,7 @@ class SemsSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self.coordinator = coordinator
         self.sn = sn
+        self._attr_unique_id = f"{self.coordinator.data[self.sn]['sn']}-power"
         _LOGGER.debug("Creating SemsSensor with id %s", self.sn)
         self._attr_unique_id = f"{self.coordinator.data[self.sn]['sn']}-power"
         _LOGGER.debug(
