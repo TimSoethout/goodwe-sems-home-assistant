@@ -1,0 +1,90 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    # Run tests daily at 6 AM UTC to catch dependency issues
+    - cron: '0 6 * * *'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r tests/requirements.txt
+        # Remove problematic HA plugin that interferes with basic tests
+        pip uninstall pytest-homeassistant-custom-component -y || true
+
+    - name: Run unit tests with coverage
+      run: |
+        # Disable conftest.py that requires HA fixtures
+        mv tests/conftest.py tests/conftest.py.disabled || true
+        pytest tests/test_basic.py tests/test_sensor_unit.py tests/test_config_flow_unit.py tests/test_init_unit.py --cov=custom_components.zendure_local --cov-report=xml --cov-report=term-missing -v
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+        verbose: true
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install linting dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff black mypy
+
+    - name: Run ruff
+      run: ruff check custom_components/
+
+    - name: Run black
+      run: black --check custom_components/
+
+    - name: Run mypy
+      run: mypy custom_components/ --ignore-missing-imports
+      continue-on-error: true  # Don't fail CI on mypy issues initially
+
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate with hassfest
+      uses: home-assistant/actions/hassfest@master
+      with:
+        path: './custom_components'
+
+    - name: Validate with HACS
+      uses: hacs/action@main
+      with:
+        category: integration
