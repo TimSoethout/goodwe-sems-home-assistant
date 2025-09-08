@@ -121,7 +121,10 @@ class SemsApi:
             jsonResponse = response.json()
             _LOGGER.debug("Response: %s", jsonResponse)
             # try again and renew token is unsuccessful
-            if jsonResponse["msg"] != "Successful" or jsonResponse["data"] is None:
+            if (
+                jsonResponse["msg"] not in ["Successful", "操作成功"]
+                or jsonResponse["data"] is None
+            ):
                 _LOGGER.debug(
                     "GetPowerStationIdByOwner Query not successful (%s), retrying with new token, %s retries remaining",
                     jsonResponse["msg"],
@@ -177,7 +180,10 @@ class SemsApi:
             jsonResponse = response.json()
             _LOGGER.debug("Response: %s", jsonResponse)
             # try again and renew token is unsuccessful
-            if jsonResponse["msg"] != "success" or jsonResponse["data"] is None:
+            if (
+                jsonResponse["msg"] not in ["success", "操作成功"]
+                or jsonResponse["data"] is None
+            ):
                 _LOGGER.debug(
                     "Query not successful (%s), retrying with new token, %s retries remaining",
                     jsonResponse["msg"],
