@@ -90,7 +90,3 @@ This ensures tests validate against the actual API response format while protect
 - `pytest` - Test framework
 - `requests-mock` - HTTP request mocking
 - `requests` - HTTP library (tested dependency)
-
-## TODO
-- github actions for tests
-- ~~anonymize test data in tests~~ ✅ Complete
