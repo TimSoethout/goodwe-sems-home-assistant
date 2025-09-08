@@ -2,3 +2,7 @@ pytest>=7.0.0
 pytest-asyncio>=0.21.0
 pytest-cov>=4.0.0
 requests-mock>=1.10.0
+requests>=2.25.0
+# Mock Home Assistant dependencies for unit testing
+aiohttp>=3.8.0
+homeassistant>=2025.5.1
