@@ -31,16 +31,17 @@ class SemsApi:
         self._hass = hass
         self._username = username
         self._password = password
-        self._token = None
+        self._token: dict | None = None
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
         try:
             self._token = self.getLoginToken(self._username, self._password)
-            return self._token is not None
         except Exception as exception:
             _LOGGER.exception("SEMS Authentication exception: %s", exception)
             return False
+        else:
+            return self._token is not None
 
     def getLoginToken(self, userName, password):
         """Get the login token for the SEMS API."""
@@ -61,7 +62,7 @@ class SemsApi:
                 timeout=_RequestTimeout,
             )
             _LOGGER.debug("Login Response: %s", login_response)
-            # _LOGGER.debug("Login Response text: %s", login_response.text)
+            _LOGGER.debug("Login Response text: %s", login_response.text)
 
             login_response.raise_for_status()
 
@@ -74,10 +75,11 @@ class SemsApi:
             tokenDict["api"] = jsonResponse["api"]
 
             _LOGGER.debug("SEMS - API Token received: %s", tokenDict)
-            return tokenDict
         except Exception as exception:
             _LOGGER.error("Unable to fetch login token from SEMS API. %s", exception)
             return None
+        else:
+            return tokenDict
 
     def getPowerStationIds(self, renewToken=False, maxTokenRetries=2) -> str:
         """Get the power station ids from the SEMS API."""
@@ -122,19 +124,20 @@ class SemsApi:
             _LOGGER.debug("Response: %s", jsonResponse)
             # try again and renew token is unsuccessful
             if (
-                jsonResponse["msg"] not in ["Successful", "操作成功"]
-                or jsonResponse["data"] is None
+                jsonResponse["code"] in (0, "0")
+                # jsonResponse["msg"] not in ["Successful", "操作成功"]
+                and jsonResponse["data"] is not None
             ):
-                _LOGGER.debug(
-                    "GetPowerStationIdByOwner Query not successful (%s), retrying with new token, %s retries remaining",
-                    jsonResponse["msg"],
-                    maxTokenRetries,
-                )
-                return self.getPowerStationIds(
-                    True, maxTokenRetries=maxTokenRetries - 1
-                )
+                return jsonResponse["data"]
 
-            return jsonResponse["data"]
+            _LOGGER.debug(
+                "GetPowerStationIdByOwner Query not successful (code: %s, message: %s), retrying with new token, %s retries remaining",
+                jsonResponse["code"],
+                jsonResponse["msg"],
+                maxTokenRetries,
+            )
+            return self.getPowerStationIds(True, maxTokenRetries=maxTokenRetries - 1)
+
         except Exception as exception:
             _LOGGER.error(
                 "Unable to fetch power station Ids from SEMS Api. %s", exception
@@ -181,19 +184,21 @@ class SemsApi:
             _LOGGER.debug("Response: %s", jsonResponse)
             # try again and renew token is unsuccessful
             if (
-                jsonResponse["msg"] not in ["success", "操作成功"]
-                or jsonResponse["data"] is None
+                jsonResponse["code"] in (0, "0")
+                # jsonResponse["msg"] not in ["success", "操作成功"]
+                and jsonResponse["data"] is not None
             ):
-                _LOGGER.debug(
-                    "Query not successful (%s), retrying with new token, %s retries remaining",
-                    jsonResponse["msg"],
-                    maxTokenRetries,
-                )
-                return self.getData(
-                    powerStationId, True, maxTokenRetries=maxTokenRetries - 1
-                )
+                return jsonResponse["data"]
 
-            return jsonResponse["data"]
+            _LOGGER.debug(
+                "GetData Query not successful (code: %s, message: %s), retrying with new token, %s retries remaining",
+                jsonResponse["msg"],
+                maxTokenRetries,
+            )
+            return self.getData(
+                powerStationId, True, maxTokenRetries=maxTokenRetries - 1
+            )
+
         except Exception as exception:
             _LOGGER.error("Unable to fetch data from SEMS. %s", exception)
             return {}
