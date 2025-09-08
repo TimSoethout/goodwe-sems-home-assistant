@@ -136,7 +136,7 @@ class TestSemsApi:
         # Mock power station IDs response with realistic UUID
         station_response = {
             "code": 0,
-            "data": REAL_POWER_STATION_ID,
+            "data": MOCK_POWER_STATION_ID,
             "msg": SUCCESS_MESSAGE,
         }
         requests_mock.post(
@@ -146,7 +146,7 @@ class TestSemsApi:
 
         result = self.api.getPowerStationIds()
 
-        assert result == REAL_POWER_STATION_ID
+        assert result == MOCK_POWER_STATION_ID
 
     def test_get_data_success(self, requests_mock):
         """Test successful data retrieval with real SEMS API response structure."""
@@ -177,7 +177,7 @@ class TestSemsApi:
             "code": "0",
             "data": {
                 "info": {
-                    "powerstation_id": REAL_POWER_STATION_ID,
+                    "powerstation_id": MOCK_POWER_STATION_ID,
                     "time": "09/08/2025 16:48:27",
                     "stationname": "Impala",
                     "address": "Utrecht, Netherlands",
@@ -195,7 +195,7 @@ class TestSemsApi:
                 },
                 "inverter": [
                     {
-                        "sn": REAL_INVERTER_SN,
+                        "sn": MOCK_INVERTER_SN,
                         "name": "Zolder",
                         "in_pac": 1.8,
                         "out_pac": 589.0,
@@ -213,15 +213,15 @@ class TestSemsApi:
         endpoint = "https://eu.semsportal.com/api//v3/PowerStation/GetMonitorDetailByPowerstationId"
         requests_mock.post(endpoint, json=data_response)
 
-        result = self.api.getData(REAL_POWER_STATION_ID)
+        result = self.api.getData(MOCK_POWER_STATION_ID)
 
         # Verify we get the actual data structure back
-        assert result["info"]["powerstation_id"] == REAL_POWER_STATION_ID
+        assert result["info"]["powerstation_id"] == MOCK_POWER_STATION_ID
         assert result["info"]["stationname"] == "Impala"
         assert result["kpi"]["pac"] == 589.0
         assert result["kpi"]["total_power"] == 18843.2
         assert len(result["inverter"]) == 1
-        assert result["inverter"][0]["sn"] == REAL_INVERTER_SN
+        assert result["inverter"][0]["sn"] == MOCK_INVERTER_SN
         assert result["inverter"][0]["out_pac"] == 589.0
         assert result["inverter"][0]["eday"] == 8.9
 
@@ -256,7 +256,7 @@ class TestSemsApi:
         requests_mock.post(endpoint, json={"status": "success"}, status_code=200)
 
         # Should not raise exception
-        self.api.change_status(REAL_INVERTER_SN, 1)
+        self.api.change_status(MOCK_INVERTER_SN, 1)
 
     def test_change_status_http_error(self, requests_mock):
         """Test inverter status change with HTTP error."""
@@ -278,7 +278,7 @@ class TestSemsApi:
 
         # Should raise OutOfRetries after exhausting retries
         with pytest.raises(OutOfRetries):
-            self.api.change_status(REAL_INVERTER_SN, 1)
+            self.api.change_status(MOCK_INVERTER_SN, 1)
 
     def test_api_call_with_token_retry(self, requests_mock):
         """Test API call that retries with new token on failure."""
@@ -303,7 +303,7 @@ class TestSemsApi:
         # Mock API call responses (failure then success)
         api_responses = [
             {"code": 1002, "msg": "Token expired", "data": None},
-            {"code": 0, "data": REAL_POWER_STATION_ID, "msg": SUCCESS_MESSAGE},
+            {"code": 0, "data": MOCK_POWER_STATION_ID, "msg": SUCCESS_MESSAGE},
         ]
         endpoint = (
             "https://eu.semsportal.com/api//PowerStation/GetPowerStationIdByOwner"
@@ -312,7 +312,7 @@ class TestSemsApi:
 
         result = self.api.getPowerStationIds()
 
-        assert result == REAL_POWER_STATION_ID
+        assert result == MOCK_POWER_STATION_ID
 
     def test_max_retries_exceeded(self):
         """Test that OutOfRetries is raised when max retries exceeded."""
