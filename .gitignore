@@ -4,3 +4,5 @@
 example.json
 
 .DS_Store
+coverage.xml
+.coverage
