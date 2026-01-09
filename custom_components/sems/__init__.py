@@ -32,10 +32,6 @@ class SemsData:
     inverters: dict[str, dict[str, Any]]
     currency: str | None = None
 
-    def get_inverter(self, serial_number: str) -> dict[str, Any] | None:
-        """Return inverter payload for a serial number."""
-        return self.inverters.get(serial_number)
-
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the sems component."""
@@ -127,7 +123,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 #     await async_setup_entry(hass, entry)
 
 
-class SemsDataUpdateCoordinator(DataUpdateCoordinator):
+class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
     """Class to manage fetching data from the API."""
 
     def __init__(self, hass: HomeAssistant, semsApi: SemsApi, entry) -> None:
@@ -236,6 +232,10 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
             data = SemsData(inverters=inverters_by_sn, currency=currency)
             _LOGGER.debug("Resulting data: %s", data)
             return data
+
+
+# Type alias to make type inference working for pylance
+type SemsCoordinator = SemsDataUpdateCoordinator
 
 
 # # migrate to _power ids for inverter entry
