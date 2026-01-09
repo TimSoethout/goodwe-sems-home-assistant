@@ -55,34 +55,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-# async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-#     """Set up this integration using UI."""
-#     if hass.data.get(DOMAIN) is None:
-#         hass.data.setdefault(DOMAIN, {})
-#         _LOGGER.info(STARTUP_MESSAGE)
-
-#     username = entry.data.get(CONF_USERNAME)
-#     password = entry.data.get(CONF_PASSWORD)
-
-#     conn = Connection(username, password)
-#     client = MyenergiClient(conn)
-
-#     coordinator = MyenergiDataUpdateCoordinator(hass, client=client, entry=entry)
-#     await coordinator.async_config_entry_first_refresh()
-
-#     hass.data[DOMAIN][entry.entry_id] = coordinator
-
-#     for platform in PLATFORMS:
-#         if entry.options.get(platform, True):
-#             coordinator.platforms.append(platform)
-#             hass.async_add_job(
-#                 hass.config_entries.async_forward_entry_setup(entry, platform)
-#             )
-
-#     entry.add_update_listener(async_reload_entry)
-#     return True
-
-
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = all(
@@ -97,30 +69,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
-
-
-# async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-#     """Handle removal of an entry."""
-#     coordinator = hass.data[DOMAIN][entry.entry_id]
-#     unloaded = all(
-#         await asyncio.gather(
-#             *[
-#                 hass.config_entries.async_forward_entry_unload(entry, platform)
-#                 for platform in PLATFORMS
-#                 if platform in coordinator.platforms
-#             ]
-#         )
-#     )
-#     if unloaded:
-#         hass.data[DOMAIN].pop(entry.entry_id)
-
-#     return unloaded
-
-
-# async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-#     """Reload config entry."""
-#     await async_unload_entry(hass, entry)
-#     await async_setup_entry(hass, entry)
 
 
 class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
@@ -236,62 +184,3 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
 # Type alias to make type inference working for pylance
 type SemsCoordinator = SemsDataUpdateCoordinator
-
-
-# # migrate to _power ids for inverter entry
-# async def async_migrate_entry(hass, config_entry):
-#     """Migrate old entry."""
-#     _LOGGER.debug(
-#         "Migrating configuration from version %s.%s",
-#         config_entry.version,
-#         config_entry.minor_version,
-#     )
-
-#     if config_entry.version < 7:
-#         # get existing entities for device
-#         semsApi = SemsApi(
-#             hass, config_entry.data[CONF_USERNAME], config_entry.data[CONF_PASSWORD]
-#         )
-#         coordinator = SemsDataUpdateCoordinator(hass, semsApi, config_entry)
-#         await coordinator.async_config_entry_first_refresh()
-
-#         _LOGGER.debug(f"found inverter {coordinator.data}")
-
-#         for idx, ent in enumerate(coordinator.data):
-#             _LOGGER.debug("Found inverter: %s", ent)
-
-#             old_unique_id = f"{ent}"
-#             new_unique_id = f"{old_unique_id}-XXX"
-#             _LOGGER.debug(
-#                 "Old unique id: %s; new unique id: %s", old_unique_id, new_unique_id
-#             )
-
-#             @callback
-#             def update_unique_id(entity_entry):
-#                 """Update unique ID of entity entry."""
-#                 return {
-#                     "new_unique_id": entity_entry.unique_id.replace(
-#                         old_unique_id, new_unique_id
-#                     )
-#                 }
-
-#             if old_unique_id != new_unique_id:
-#                 await async_migrate_entries(
-#                     hass, config_entry.entry_id, update_unique_id
-#                 )
-
-#                 hass.config_entries.async_update_entry(
-#                     config_entry, unique_id=new_unique_id
-#                 )
-#                 # version = 7
-#                 _LOGGER.info(
-#                     "Migrated unique id from %s to %s", old_unique_id, new_unique_id
-#                 )
-
-#     _LOGGER.info(
-#         "Migration from version %s.%s successful",
-#         config_entry.version,
-#         config_entry.minor_version,
-#     )
-
-#     return True
