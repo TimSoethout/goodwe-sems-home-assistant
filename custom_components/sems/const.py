@@ -23,3 +23,21 @@ SEMS_CONFIG_SCHEMA = vol.Schema(
         ): int,  # , default=DEFAULT_SCAN_INTERVAL
     }
 )
+
+AC_EMPTY = 6553.5
+AC_CURRENT_EMPTY = 6553.5
+AC_FEQ_EMPTY = 655.35
+
+
+class GOODWE_SPELLING:
+    """Constants for correcting GoodWe API spelling errors."""
+
+    battery = "bettery"
+    batteryStatus = "betteryStatus"
+    homeKit = "homKit"
+    temperature = "tempperature"
+    hasEnergyStatisticsCharts = "hasEnergeStatisticsCharts"
+    energyStatisticsCharts = "energeStatisticsCharts"
+    energyStatisticsTotals = "energeStatisticsTotals"
+    thisMonthTotalE = "thismonthetotle"
+    lastMonthTotalE = "lastmonthetotle"
