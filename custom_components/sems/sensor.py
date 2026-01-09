@@ -672,7 +672,8 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         # device class / unit (using has_entity_name).
         if name is None:
             self._attr_has_entity_name = True
-        self._attr_name = name
+        else:
+            self._attr_name = name
 
         self._custom_value_handler = custom_value_handler
 
