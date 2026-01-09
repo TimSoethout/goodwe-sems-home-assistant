@@ -65,7 +65,7 @@ class SemsApi:
             )
 
             _LOGGER.debug("%s Response: %s", operation_name, response)
-            _LOGGER.debug("%s Response text: %s", operation_name, response.text)
+            # _LOGGER.debug("%s Response text: %s", operation_name, response.text)
 
             response.raise_for_status()
             jsonResponse = response.json()
