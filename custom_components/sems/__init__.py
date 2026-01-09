@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import timedelta
 import logging
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.helpers.entity_registry import async_migrate_entries
 
 from .const import (
     CONF_SCAN_INTERVAL,
@@ -23,6 +23,18 @@ from .const import (
 from .sems_api import SemsApi
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
+
+
+@dataclass(slots=True)
+class SemsData:
+    """Runtime SEMS data returned by the coordinator."""
+
+    inverters: dict[str, dict[str, Any]]
+    currency: str | None = None
+
+    def get_inverter(self, serial_number: str) -> dict[str, Any] | None:
+        """Return inverter payload for a serial number."""
+        return self.inverters.get(serial_number)
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -136,19 +148,22 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=update_interval,
         )
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> SemsData:
         """Fetch data from API endpoint.
 
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
+        # Note: asyncio.TimeoutError and aiohttp.ClientError are already
+        # handled by the data update coordinator.
+        # async with async_timeout.timeout(10):
         try:
-            # Note: asyncio.TimeoutError and aiohttp.ClientError are already
-            # handled by the data update coordinator.
-            # async with async_timeout.timeout(10):
             result = await self.hass.async_add_executor_job(
                 self.semsApi.getData, self.stationId
             )
+        except Exception as err:
+            raise UpdateFailed(f"Error communicating with API: {err}") from err
+        else:
             _LOGGER.debug("semsApi.getData result: %s", result)
 
             # _LOGGER.warning("SEMS - Try get getPowerStationIds")
@@ -164,18 +179,24 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
 
             # found = []
             # _LOGGER.debug("Found inverters: %s", inverters)
-            data = {}
+            inverters_by_sn: dict[str, dict[str, Any]] = {}
             if inverters is None:
                 # something went wrong, probably token could not be fetched
                 raise UpdateFailed(
                     "Error communicating with API, probably token could not be fetched, see debug logs"
                 )
+
+            # Get Inverter Date
             for inverter in inverters:
                 name = inverter["invert_full"]["name"]
                 # powerstation_id = inverter["invert_full"]["powerstation_id"]
                 sn = inverter["invert_full"]["sn"]
                 _LOGGER.debug("Found inverter attribute %s %s", name, sn)
-                data[sn] = inverter["invert_full"]
+                inverters_by_sn[sn] = inverter["invert_full"]
+
+            # Add currency
+            kpi = result["kpi"]
+            currency = kpi.get("currency")
 
             hasPowerflow = result["hasPowerflow"]
             hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
@@ -210,14 +231,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
                 # This seems more accurate than the Chart_sum
                 powerflow["all_time_generation"] = result["kpi"]["total_power"]
 
-                data["homeKit"] = powerflow
+                inverters_by_sn["homeKit"] = powerflow
 
+            data = SemsData(inverters=inverters_by_sn, currency=currency)
             _LOGGER.debug("Resulting data: %s", data)
             return data
-        # except ApiError as err:
-        except Exception as err:
-            # logging.exception("Something awful happened!")
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
 
 
 # # migrate to _power ids for inverter entry
