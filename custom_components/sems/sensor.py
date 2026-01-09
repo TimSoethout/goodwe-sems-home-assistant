@@ -36,6 +36,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator, SemsData
 from .const import AC_CURRENT_EMPTY, AC_EMPTY, AC_FEQ_EMPTY, DOMAIN, GOODWE_SPELLING
+from .device import device_info_for_inverter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,20 +93,9 @@ def sensor_options_for_data(
     for serial_number, inverter_data in data.inverters.items():
         # serial_number = inverter["sn"]
         path_to_inverter = [serial_number]
-        name = inverter_data.get("name", "unknown")
         # device_data = get_value_from_path(data, path_to_inverter)
 
-        device_info = DeviceInfo(
-            identifiers={
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, serial_number)
-            },
-            name=f"Inverter {name}",
-            manufacturer="GoodWe",
-            model=inverter_data.get("model_type", "unknown"),
-            sw_version=inverter_data.get("firmwareversion", "unknown"),
-            configuration_url=f"https://semsportal.com/PowerStation/PowerStatusSnMin/{inverter_data['powerstation_id']}",
-        )
+        device_info = device_info_for_inverter(serial_number, inverter_data)
         sensors += [
             SemsSensorType(
                 device_info,
@@ -148,6 +138,7 @@ def sensor_options_for_data(
                 device_class=SensorDeviceClass.TEMPERATURE,
                 native_unit_of_measurement=UnitOfTemperature.CELSIUS,
                 state_class=SensorStateClass.MEASUREMENT,
+                empty_value=0,
             ),
             SemsSensorType(
                 device_info,
