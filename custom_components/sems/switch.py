@@ -27,7 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     # Don't make switches for homekit, since it is not an inverter
     async_add_entities(
         SemsStatusSwitch(coordinator, ent)
-        for idx, ent in enumerate(coordinator.data)
+        for idx, ent in enumerate(coordinator.data.inverters)
         if ent != "homeKit"
     )
 
@@ -75,8 +75,10 @@ class SemsStatusSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def is_on(self) -> bool:
         """Return entity status."""
-        _LOGGER.debug("coordinator.data[sn]: %s", self.coordinator.data[self.sn])
-        return self.coordinator.data[self.sn]["status"] == 1
+        _LOGGER.debug(
+            "coordinator.data[sn]: %s", self.coordinator.data.inverters[self.sn]
+        )
+        return self.coordinator.data.inverters[self.sn]["status"] == 1
 
     async def async_turn_off(self, **kwargs):
         """Turn off the inverter."""
