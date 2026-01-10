@@ -29,6 +29,9 @@ AC_CURRENT_EMPTY = 6553.5
 AC_FEQ_EMPTY = 655.35
 
 
+STATUS_LABELS = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
+
+
 class GOODWE_SPELLING:
     """Constants for correcting GoodWe API spelling errors."""
 

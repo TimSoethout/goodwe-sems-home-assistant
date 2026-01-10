@@ -35,7 +35,14 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator, SemsData
-from .const import AC_CURRENT_EMPTY, AC_EMPTY, AC_FEQ_EMPTY, DOMAIN, GOODWE_SPELLING
+from .const import (
+    AC_CURRENT_EMPTY,
+    AC_EMPTY,
+    AC_FEQ_EMPTY,
+    DOMAIN,
+    GOODWE_SPELLING,
+    STATUS_LABELS,
+)
 from .device import device_info_for_inverter
 
 _LOGGER = logging.getLogger(__name__)
@@ -97,6 +104,15 @@ def sensor_options_for_data(
 
         device_info = device_info_for_inverter(serial_number, inverter_data)
         sensors += [
+            SemsSensorType(
+                device_info,
+                f"{serial_number}-status-text",
+                [*path_to_inverter, "status"],
+                "Status",
+                data_type_converter=lambda status, labels=STATUS_LABELS: labels.get(
+                    int(status), "Unknown"
+                ),
+            ),
             SemsSensorType(
                 device_info,
                 f"{serial_number}-capacity",
