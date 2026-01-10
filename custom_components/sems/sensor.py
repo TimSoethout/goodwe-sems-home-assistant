@@ -106,7 +106,7 @@ def sensor_options_for_data(
         sensors += [
             SemsSensorType(
                 device_info,
-                f"{serial_number}-status-text",
+                f"{serial_number}-status",
                 [*path_to_inverter, "status"],
                 "Status",
                 data_type_converter=lambda status, labels=STATUS_LABELS: labels.get(
@@ -647,6 +647,8 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
     """Representation of a GoodWe SEMS sensor backed by the shared coordinator."""
 
     str_clean_regex = re.compile(r"(\d+\.?\d*)")
+    
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -677,9 +679,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
 
         # When `name` is None, Home Assistant determines the name from
         # device class / unit (using has_entity_name).
-        if name is None:
-            self._attr_has_entity_name = True
-        else:
+        if name is not None:
             self._attr_name = name
 
         self._custom_value_handler = custom_value_handler
