@@ -35,9 +35,7 @@ async def async_setup_entry(
     coordinator: SemsCoordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     async_add_entities(
-        SemsStatusSwitch(coordinator, sn)
-        for sn in coordinator.data.inverters
-        if sn != "homeKit"
+        SemsStatusSwitch(coordinator, sn) for sn in coordinator.data.inverters
     )
 
 
