@@ -98,6 +98,8 @@ def sensor_options_for_data(
     _LOGGER.debug("Detected currency: %s", currency)
 
     for serial_number, inverter_data in data.inverters.items():
+        if serial_number == "homeKit":
+            continue
         # serial_number = inverter["sn"]
         path_to_inverter = [serial_number]
         # device_data = get_value_from_path(data, path_to_inverter)
@@ -158,7 +160,7 @@ def sensor_options_for_data(
             ),
             SemsSensorType(
                 device_info,
-                f"{serial_number}-eday ",
+                f"{serial_number}-eday",
                 [*path_to_inverter, "eday"],
                 "Energy Today",
                 SensorDeviceClass.ENERGY,
@@ -647,7 +649,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
     """Representation of a GoodWe SEMS sensor backed by the shared coordinator."""
 
     str_clean_regex = re.compile(r"(\d+\.?\d*)")
-    
+
     _attr_has_entity_name = True
 
     def __init__(

@@ -19,6 +19,18 @@ UNCHANGED DATA:
 - Numerical values and timestamps (randomized or anonymized)
 """
 
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+
+def _load_json_fixture(relative_path: str) -> dict[str, Any]:
+    fixture_path = Path(__file__).resolve().parent.parent / relative_path
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
 # Anonymized login response based on SEMS API structure
 MOCK_LOGIN_RESPONSE = {
     "language": "en",
@@ -339,6 +351,94 @@ MOCK_GET_DATA_RESPONSE = {
         "isSec1000EtPlant": False,
     },
 }
+
+# Coordinator-compatible getData() result (this corresponds to SemsApi.getData() return value)
+#
+# The Home Assistant integration coordinator expects:
+# - `result["inverter"]`: list of items each containing `{"invert_full": {...}}`
+# - `result["kpi"]`: dict with optional `currency`
+# - `result["hasPowerflow"]` and `result["hasEnergeStatisticsCharts"]`
+MOCK_GET_DATA_RESULT_MINIMAL = {
+    "inverter": [
+        {
+            "invert_full": {
+                "name": "Test Inverter",
+                "sn": "GW0000SN000TEST1",
+                "powerstation_id": "12345678-1234-5678-9abc-123456789abc",
+                "status": 1,
+                "capacity": 3.0,
+                "pac": 589,
+                "etotal": 18843.2,
+                "hour_total": 1234,
+                "tempperature": 32.0,
+                "eday": 8.9,
+                "thismonthetotle": 85.7,
+                "lastmonthetotle": 76.8,
+                "iday": 1.96,
+                "itotal": 4145.5,
+            }
+        }
+    ],
+    "kpi": {
+        "currency": "EUR",
+        "total_power": 18843.2,
+    },
+    "hasPowerflow": False,
+    "hasEnergeStatisticsCharts": False,
+}
+
+# Coordinator-compatible getData() result that includes HomeKit/powerflow data.
+#
+# The coordinator will detect `hasPowerflow=True` and expose a pseudo-inverter
+# under `data.inverters["homeKit"]`.
+MOCK_HOMEKIT_GET_DATA = {
+    "inverter": [
+        {
+            "invert_full": {
+                "name": "Test Inverter",
+                "sn": "GW0000SN000TEST1",
+                "powerstation_id": "12345678-1234-5678-9abc-123456789abc",
+                "status": 1,
+                "capacity": 3.0,
+                "pac": 589,
+                "etotal": 18843.2,
+                "hour_total": 1234,
+                "tempperature": 32.0,
+                "eday": 8.9,
+                "thismonthetotle": 85.7,
+                "lastmonthetotle": 76.8,
+                "iday": 1.96,
+                "itotal": 4145.5,
+            }
+        }
+    ],
+    "kpi": {
+        "currency": "EUR",
+        "total_power": 18843.2,
+    },
+    "homKit": {
+        "homeKitLimit": False,
+        "sn": None,
+    },
+    "hasPowerflow": True,
+    "hasEnergeStatisticsCharts": False,
+    "powerflow": {
+        "pv": "0(W)",
+        "pvStatus": 0,
+        "load": "100(W)",
+        "loadStatus": 1,
+        "grid": "100(W)",
+        "gridStatus": -1,
+        "bettery": "0(W)",
+        "betteryStatus": 0,
+        "genset": "0(W)",
+        "soc": 0,
+    },
+}
+
+MOCK_GET_DATA_ACTUAL_JSON: dict[str, Any] = _load_json_fixture(
+    "tests/test-data/20260110_singleInverter_getData.json"
+)
 
 # Anonymized inverter serial number for testing
 MOCK_INVERTER_SN = "GW0000SN000TEST1"
