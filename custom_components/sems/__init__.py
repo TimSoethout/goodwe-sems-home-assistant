@@ -30,6 +30,7 @@ class SemsData:
     """Runtime SEMS data returned by the coordinator."""
 
     inverters: dict[str, dict[str, Any]]
+    homekit: dict[str, Any] | None = None
     currency: str | None = None
 
 
@@ -145,6 +146,8 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             hasPowerflow = result["hasPowerflow"]
             hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
 
+            homekit: dict[str, Any] | None = None
+
             if hasPowerflow:
                 _LOGGER.debug("Found powerflow data")
                 if hasEnergeStatisticsCharts:
@@ -175,9 +178,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 # This seems more accurate than the Chart_sum
                 powerflow["all_time_generation"] = result["kpi"]["total_power"]
 
-                inverters_by_sn["homeKit"] = powerflow
+                homekit = powerflow
 
-            data = SemsData(inverters=inverters_by_sn, currency=currency)
+            data = SemsData(
+                inverters=inverters_by_sn, homekit=homekit, currency=currency
+            )
             _LOGGER.debug("Resulting data: %s", data)
             return data
 
