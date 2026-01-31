@@ -136,7 +136,7 @@ def sensor_options_for_data(
             ),
             SemsInverterSensorType(
                 device_info,
-                f"{serial_number}-power",  # backwards compatibility otherwise would be f"{serial_number}-power"
+                f"{serial_number}-power",
                 # "Power",
                 [*path_to_inverter, "pac"],
                 device_class=SensorDeviceClass.POWER,
@@ -773,6 +773,41 @@ class SemsInverterSensor(SemsSensor):
         """Return inverter dict."""
 
         return self.coordinator.data.inverters
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return inverter attributes for backwards compatibility."""
+
+        if not (unique_id := self._attr_unique_id) or not unique_id.endswith("-power"):
+            return None
+
+        if not self._value_path:
+            return None
+
+        inverter_sn = self._value_path[0]
+        if not isinstance(inverter_sn, str):
+            return None
+
+        inverter_data = self.coordinator.data.inverters.get(inverter_sn)
+        if inverter_data is None:
+            return None
+
+        attributes = {
+            key: value
+            for key, value in inverter_data.items()
+            if key is not None and value is not None
+        }
+
+        status = inverter_data.get("status")
+        if status is None:
+            attributes["statusText"] = "Unknown"
+        else:
+            try:
+                attributes["statusText"] = STATUS_LABELS.get(int(status), "Unknown")
+            except (TypeError, ValueError):
+                attributes["statusText"] = "Unknown"
+
+        return attributes
 
 
 class SemsHomekitSensor(SemsSensor):
