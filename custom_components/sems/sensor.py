@@ -103,8 +103,6 @@ def sensor_options_for_data(
 ) -> list[SemsSensorType]:
     """Build a list of sensor definitions for the given coordinator data."""
 
-    # if has_existing_homekit_entity is None:
-    # has_existing_homekit_entity = False
     sensors: list[SemsSensorType] = []
     currency = data.currency
     _LOGGER.debug("Detected currency: %s", currency)
