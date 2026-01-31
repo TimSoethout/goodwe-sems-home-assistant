@@ -131,7 +131,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                     "Error communicating with API, probably token could not be fetched, see debug logs"
                 )
 
-            # Get Inverter Date
+            # Get Inverter Data
             for inverter in inverters:
                 name = inverter["invert_full"]["name"]
                 # powerstation_id = inverter["invert_full"]["powerstation_id"]
