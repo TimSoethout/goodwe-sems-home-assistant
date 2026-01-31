@@ -6,7 +6,7 @@
 # entrypoint-based plugin discovery. Explicit loading keeps fixtures like
 # `hass` and `requests_mock` available everywhere.
 pytest_plugins = [
-    "pytest_asyncio.plugin",
+    # "pytest_asyncio.plugin",
     "pytest_homeassistant_custom_component.plugins",
     "requests_mock.contrib._pytest_plugin",
 ]
