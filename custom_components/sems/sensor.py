@@ -601,26 +601,6 @@ async def async_setup_entry(
     # async_add_entities(
     #     SemsStatisticsSensor(coordinator, ent)
     #     for idx, ent in enumerate(coordinator.data)
-    #     # Don't make SemsStatisticsSensor for homeKit, since it is not an inverter; unsure how this could work before...
-    #     if ent != "homeKit"
-    # )
-    # async_add_entities(
-    #     SemsPowerflowSensor(coordinator, ent)
-    #     for idx, ent in enumerate(coordinator.data)
-    #     if ent == "homeKit"
-    # )
-    # async_add_entities(
-    #     SemsTotalImportSensor(coordinator, ent)
-    #     for idx, ent in enumerate(coordinator.data)
-    #     if ent == "homeKit"
-    # )
-    # async_add_entities(
-    #     SemsTotalExportSensor(coordinator, ent)
-    #     for idx, ent in enumerate(coordinator.data)
-    #     if ent == "homeKit"
-    # )
-
-
 # Migrate old power sensor unique ids to new unique ids (with `-power`)
 def _migrate_to_new_unique_id(hass: HomeAssistant, sn: str) -> None:
     """Migrate old unique ids to new unique ids."""
