@@ -10,6 +10,7 @@ _LOGGER = logging.getLogger(__name__)
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
 _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
+_InverterAllPointURLPart = "/v3/PowerStation/GetInverterAllPoint"
 # _PowerControlURL = (
 #     "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
 # )
@@ -205,6 +206,51 @@ class SemsApi:
             operation_name="getData API call",
         )
         return result or {}
+
+    def getInverterAllPoint(self, powerStationId, renewToken=False, maxTokenRetries=2) -> dict:
+        """Get detailed inverter data points (AC voltage, current, temp, PV strings, etc.)."""
+        _LOGGER.debug("SEMS - Making getInverterAllPoint API call")
+        if maxTokenRetries <= 0:
+            _LOGGER.info("SEMS - Maximum token fetch tries reached, aborting for now")
+            raise OutOfRetries
+
+        if self._token is None or renewToken:
+            self._token = self.getLoginToken(self._username, self._password)
+
+        if self._token is None:
+            _LOGGER.error("Failed to obtain API token")
+            return {}
+
+        # This endpoint requires form-urlencoded data
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Accept": "application/json",
+            "token": json.dumps(self._token),
+        }
+
+        api_url = self._token["api"] + _InverterAllPointURLPart
+
+        try:
+            response = requests.post(
+                api_url,
+                headers=headers,
+                data={"powerStationId": powerStationId},
+                timeout=_RequestTimeout,
+            )
+            response.raise_for_status()
+            jsonResponse = response.json()
+
+            if jsonResponse.get("code") not in (0, "0"):
+                _LOGGER.debug(
+                    "getInverterAllPoint not successful, retrying with new token"
+                )
+                return self.getInverterAllPoint(powerStationId, True, maxTokenRetries - 1)
+
+            return jsonResponse.get("data", {})
+
+        except (requests.RequestException, ValueError, KeyError) as exception:
+            _LOGGER.error("Unable to fetch inverter all point data: %s", exception)
+            return {}
 
     def _make_control_api_call(
         self,

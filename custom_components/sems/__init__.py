@@ -177,6 +177,32 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Found inverter attribute %s %s", name, sn)
                 data[sn] = inverter["invert_full"]
 
+            # Fetch detailed inverter data (AC voltage, current, temp, PV strings, etc.)
+            try:
+                detailed_data = await self.hass.async_add_executor_job(
+                    self.semsApi.getInverterAllPoint, self.stationId
+                )
+                if detailed_data:
+                    inverter_points = detailed_data.get("inverterPoints", [])
+                    for inv_point in inverter_points:
+                        inv_sn = inv_point.get("sn")
+                        if inv_sn and inv_sn in data:
+                            # Extract detailed readings from dict.left and dict.right
+                            inv_dict = inv_point.get("dict", {})
+                            for section in ["left", "right"]:
+                                for item in inv_dict.get(section, []):
+                                    key = item.get("key", "")
+                                    value = item.get("value")
+                                    unit = item.get("unit", "")
+                                    if key and value is not None:
+                                        # Store with descriptive key including unit
+                                        data[inv_sn][key] = f"{value} {unit}".strip()
+                            _LOGGER.debug(
+                                "Added detailed data for inverter %s", inv_sn
+                            )
+            except Exception as err:
+                _LOGGER.debug("Could not fetch detailed inverter data: %s", err)
+
             hasPowerflow = result["hasPowerflow"]
             hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
 
