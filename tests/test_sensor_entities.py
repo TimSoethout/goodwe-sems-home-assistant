@@ -139,6 +139,23 @@ async def test_sensor_state_from_coordinator(
     assert state is not None
     assert state.state == "589"
     assert state.attributes.get("unit_of_measurement") == "W"
+    assert state.attributes.get("statusText") == "Normal"
+    assert state.attributes.get("pac") == 589
+
+    # extra_state_attributes should only be exposed on the `-power` entity
+    assert state.attributes.get("capacity") == 3.0
+    assert state.attributes.get("status") == 1
+
+    status_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-status"
+    )
+    assert status_entity_id is not None
+
+    status_state = hass.states.get(status_entity_id)
+    assert status_state is not None
+    assert status_state.state == "Normal"
+    assert "pac" not in status_state.attributes
+    assert "statusText" not in status_state.attributes
 
 
 async def test_unique_id_migration_sn_to_sn_power(
