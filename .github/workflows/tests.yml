@@ -70,7 +70,7 @@ jobs:
       run: ruff format --check custom_components/
 
     - name: Run mypy (check)
-      run: mypy custom_components/ --ignore-missing-imports
+      run: mypy custom_components/ --ignore-missing-imports --python-version 3.13
 
   validate:
     runs-on: ubuntu-latest
