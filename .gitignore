@@ -6,3 +6,6 @@ example.json
 .DS_Store
 coverage.xml
 .coverage
+
+.mypy_cache
+.ruff_cache
