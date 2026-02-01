@@ -16,7 +16,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
-from .const import DOMAIN
 from .device import device_info_for_inverter
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,7 +31,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SEMS switches from a config entry."""
-    coordinator: SemsCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator = config_entry.runtime_data.coordinator
 
     async_add_entities(
         SemsStatusSwitch(coordinator, sn) for sn in coordinator.data.inverters
@@ -74,7 +73,7 @@ class SemsStatusSwitch(CoordinatorEntity[SemsCoordinator], SwitchEntity):
         """Turn off the inverter."""
         _LOGGER.debug("Inverter %s set to off", self._sn)
         await self.hass.async_add_executor_job(
-            self.coordinator.semsApi.change_status,
+            self.coordinator.sems_api.change_status,
             self._sn,
             _COMMAND_TURN_OFF,
         )
@@ -84,7 +83,7 @@ class SemsStatusSwitch(CoordinatorEntity[SemsCoordinator], SwitchEntity):
         """Turn on the inverter."""
         _LOGGER.debug("Inverter %s set to on", self._sn)
         await self.hass.async_add_executor_job(
-            self.coordinator.semsApi.change_status,
+            self.coordinator.sems_api.change_status,
             self._sn,
             _COMMAND_TURN_ON,
         )

@@ -2,7 +2,6 @@ import json
 import logging
 
 import requests
-
 from homeassistant import exceptions
 
 _LOGGER = logging.getLogger(__name__)
