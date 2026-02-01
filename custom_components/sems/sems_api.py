@@ -1,11 +1,16 @@
 import json
 import logging
+import time
 
 import requests
 
 from homeassistant import exceptions
 
 _LOGGER = logging.getLogger(__name__)
+
+# Retry configuration for connection errors
+_MAX_CONNECTION_RETRIES = 3
+_RETRY_DELAYS = [2, 5, 10]  # seconds between retries
 
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
 _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
@@ -51,8 +56,9 @@ class SemsApi:
         json_data=None,
         operation_name="HTTP request",
         validate_code=True,
+        _retry_count=0,
     ):
-        """Make a generic HTTP request with error handling and optional code validation."""
+        """Make a generic HTTP request with error handling, retry logic, and optional code validation."""
         try:
             _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
 
@@ -86,6 +92,53 @@ class SemsApi:
                     return None
 
             return jsonResponse
+
+        except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError) as exception:
+            # Connection errors (including RemoteDisconnected) - retry with backoff
+            if _retry_count < _MAX_CONNECTION_RETRIES:
+                delay = _RETRY_DELAYS[_retry_count] if _retry_count < len(_RETRY_DELAYS) else _RETRY_DELAYS[-1]
+                _LOGGER.warning(
+                    "SEMS connection error during %s, retry %d/%d in %ds: %s",
+                    operation_name,
+                    _retry_count + 1,
+                    _MAX_CONNECTION_RETRIES,
+                    delay,
+                    exception,
+                )
+                time.sleep(delay)
+                return self._make_http_request(
+                    url, headers, data, json_data, operation_name, validate_code, _retry_count + 1
+                )
+            _LOGGER.error(
+                "SEMS connection error during %s after %d retries: %s",
+                operation_name,
+                _MAX_CONNECTION_RETRIES,
+                exception,
+            )
+            raise
+
+        except requests.exceptions.Timeout as exception:
+            # Timeout errors - also retry
+            if _retry_count < _MAX_CONNECTION_RETRIES:
+                delay = _RETRY_DELAYS[_retry_count] if _retry_count < len(_RETRY_DELAYS) else _RETRY_DELAYS[-1]
+                _LOGGER.warning(
+                    "SEMS timeout during %s, retry %d/%d in %ds",
+                    operation_name,
+                    _retry_count + 1,
+                    _MAX_CONNECTION_RETRIES,
+                    delay,
+                )
+                time.sleep(delay)
+                return self._make_http_request(
+                    url, headers, data, json_data, operation_name, validate_code, _retry_count + 1
+                )
+            _LOGGER.error(
+                "SEMS timeout during %s after %d retries: %s",
+                operation_name,
+                _MAX_CONNECTION_RETRIES,
+                exception,
+            )
+            raise
 
         except (requests.RequestException, ValueError, KeyError) as exception:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
