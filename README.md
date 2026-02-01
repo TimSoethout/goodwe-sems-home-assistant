@@ -129,6 +129,23 @@ logger:
 - `cd core/config/custom_components`
 - `ln -s ../goodwe-sems-home-assistant/custom_components/sems sems`
 
+## Linting
+
+Run the same lint checks as the CI workflow:
+
+```bash
+ruff check custom_components/
+ruff format --check custom_components/
+mypy custom_components/ --ignore-missing-imports --python-version 3.13
+```
+
+To fix lint issues locally:
+
+```bash
+ruff check --fix custom_components/
+ruff format custom_components/
+```
+
 ## Credits
 
 Inspired by https://github.com/Sprk-nl/goodwe_sems_portal_scraper and https://github.com/bouwew/sems2mqtt .
