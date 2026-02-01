@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import json
 import logging
+from typing import Any
 
 import requests
 from homeassistant import exceptions
+from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,12 +29,12 @@ _DefaultHeaders = {
 class SemsApi:
     """Interface to the SEMS API."""
 
-    def __init__(self, hass, username, password):
+    def __init__(self, hass: HomeAssistant, username: str, password: str) -> None:
         """Init dummy hub."""
         self._hass = hass
         self._username = username
         self._password = password
-        self._token: dict | None = None
+        self._token: dict[str, Any] | None = None
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
@@ -44,13 +48,13 @@ class SemsApi:
 
     def _make_http_request(
         self,
-        url,
-        headers,
-        data=None,
-        json_data=None,
-        operation_name="HTTP request",
-        validate_code=True,
-    ):
+        url: str,
+        headers: dict[str, str],
+        data: str | None = None,
+        json_data: dict[str, Any] | None = None,
+        operation_name: str = "HTTP request",
+        validate_code: bool = True,
+    ) -> dict[str, Any] | None:
         """Make a generic HTTP request with error handling and optional code validation."""
         try:
             _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
@@ -67,7 +71,7 @@ class SemsApi:
             # _LOGGER.debug("%s Response text: %s", operation_name, response.text)
 
             response.raise_for_status()
-            jsonResponse = response.json()
+            jsonResponse: dict[str, Any] = response.json()
 
             # Validate response code if requested
             if validate_code:
@@ -90,7 +94,7 @@ class SemsApi:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             raise
 
-    def getLoginToken(self, userName: str, password: str) -> dict | None:
+    def getLoginToken(self, userName: str, password: str) -> dict[str, Any] | None:
         """Get the login token for the SEMS API."""
         try:
             # Prepare Login Data to retrieve Authentication Token
@@ -111,6 +115,9 @@ class SemsApi:
             # Get all the details from our response, needed to make the next POST request (the one that really fetches the data)
             # Also store the api url send with the authentication request for later use
             tokenDict = jsonResponse["data"]
+            if not isinstance(tokenDict, dict):
+                _LOGGER.error("Login response data was not a dict")
+                return None
             tokenDict["api"] = jsonResponse["api"]
 
             _LOGGER.debug("SEMS - API Token received: %s", tokenDict)
@@ -122,12 +129,12 @@ class SemsApi:
 
     def _make_api_call(
         self,
-        url_part,
-        data=None,
-        renewToken=False,
-        maxTokenRetries=2,
-        operation_name="API call",
-    ):
+        url_part: str,
+        data: str | None = None,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+        operation_name: str = "API call",
+    ) -> dict[str, Any] | None:
         """Make a generic API call with token management and retry logic."""
         _LOGGER.debug("SEMS - Making %s", operation_name)
         if maxTokenRetries <= 0:
@@ -156,7 +163,7 @@ class SemsApi:
         api_url = self._token["api"] + url_part
 
         try:
-            jsonResponse = self._make_http_request(
+            jsonResponse: dict[str, Any] | None = self._make_http_request(
                 api_url,
                 headers,
                 data=data,
@@ -183,7 +190,9 @@ class SemsApi:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             return None
 
-    def getPowerStationIds(self, renewToken=False, maxTokenRetries=2) -> str | None:
+    def getPowerStationIds(
+        self, renewToken: bool = False, maxTokenRetries: int = 2
+    ) -> dict[str, Any] | None:
         """Get the power station ids from the SEMS API."""
         return self._make_api_call(
             _GetPowerStationIdByOwnerURLPart,
@@ -193,7 +202,9 @@ class SemsApi:
             operation_name="getPowerStationIds API call",
         )
 
-    def getData(self, powerStationId, renewToken=False, maxTokenRetries=2) -> dict:
+    def getData(
+        self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
+    ) -> dict[str, Any]:
         """Get the latest data from the SEMS API and updates the state."""
         data = '{"powerStationId":"' + powerStationId + '"}'
         result = self._make_api_call(
@@ -203,15 +214,15 @@ class SemsApi:
             maxTokenRetries=maxTokenRetries,
             operation_name="getData API call",
         )
-        return result or {}
+        return result if isinstance(result, dict) else {}
 
     def _make_control_api_call(
         self,
-        data,
-        renewToken=False,
-        maxTokenRetries=2,
-        operation_name="Control API call",
-    ):
+        data: dict[str, Any],
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+        operation_name: str = "Control API call",
+    ) -> bool:
         """Make a control API call with different response handling."""
         _LOGGER.debug("SEMS - Making %s", operation_name)
         if maxTokenRetries <= 0:
@@ -269,7 +280,13 @@ class SemsApi:
             _LOGGER.error("Unable to execute %s: %s", operation_name, exception)
             return False
 
-    def change_status(self, inverterSn, status, renewToken=False, maxTokenRetries=2):
+    def change_status(
+        self,
+        inverterSn: str,
+        status: str | int,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> None:
         """Schedule the downtime of the station."""
         data = {
             "InverterSN": inverterSn,
