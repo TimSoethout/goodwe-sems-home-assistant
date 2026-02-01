@@ -15,6 +15,7 @@ _RETRY_DELAYS = [2, 5, 10]  # seconds between retries
 _LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
 _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
+_InverterAllPointURLPart = "/v3/PowerStation/GetInverterAllPoint"
 # _PowerControlURL = (
 #     "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
 # )
@@ -258,6 +259,59 @@ class SemsApi:
             operation_name="getData API call",
         )
         return result or {}
+
+    def getInverterAllPoint(self, powerStationId, renewToken=False, maxTokenRetries=2) -> dict:
+        """Get detailed inverter data points (AC voltage, current, temp, PV strings, etc.).
+
+        This endpoint returns additional inverter readings including:
+        - AC voltage, current, and frequency
+        - Inverter temperature
+        - PV string voltage/current (PV1, PV2, PV3)
+        - WiFi signal strength (RSSI)
+        - Device type and capacity
+        """
+        _LOGGER.debug("SEMS - Making getInverterAllPoint API call")
+        if maxTokenRetries <= 0:
+            _LOGGER.info("SEMS - Maximum token fetch tries reached, aborting for now")
+            raise OutOfRetries
+
+        if self._token is None or renewToken:
+            self._token = self.getLoginToken(self._username, self._password)
+
+        if self._token is None:
+            _LOGGER.error("Failed to obtain API token")
+            return {}
+
+        # This endpoint requires form-urlencoded data (not JSON)
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Accept": "application/json",
+            "token": json.dumps(self._token),
+        }
+
+        api_url = self._token["api"] + _InverterAllPointURLPart
+
+        try:
+            jsonResponse = self._make_http_request(
+                api_url,
+                headers,
+                data={"powerStationId": powerStationId},
+                operation_name="getInverterAllPoint API call",
+                validate_code=True,
+            )
+
+            if jsonResponse is None:
+                # Response validation failed, retry with new token
+                _LOGGER.debug(
+                    "getInverterAllPoint not successful, retrying with new token"
+                )
+                return self.getInverterAllPoint(powerStationId, True, maxTokenRetries - 1)
+
+            return jsonResponse.get("data", {})
+
+        except (requests.RequestException, ValueError, KeyError) as exception:
+            _LOGGER.debug("Unable to fetch inverter all point data: %s", exception)
+            return {}
 
     def _make_control_api_call(
         self,
