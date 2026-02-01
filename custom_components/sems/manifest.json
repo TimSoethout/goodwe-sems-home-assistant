@@ -7,9 +7,9 @@
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/TimSoethout/goodwe-sems-home-assistant",
-  "loggers": ["custom_components.sems"],
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/TimSoethout/goodwe-sems-home-assistant/issues",
+  "loggers": ["custom_components.sems"],
   "requirements": [],
   "version": "8.2.0-beta"
 }
