@@ -41,6 +41,7 @@ from .const import (
     AC_FEQ_EMPTY,
     DOMAIN,
     GOODWE_SPELLING,
+    STALE_THRESHOLD_MINUTES,
     STATUS_LABELS,
 )
 from .device import device_info_for_inverter
@@ -607,6 +608,73 @@ async def async_setup_entry(
         )
         for sensor_option in sensor_options
     ]
+
+    # Create device info for plant-level sensors
+    plant_device = DeviceInfo(
+        identifiers={(DOMAIN, "sems_plant")},
+        name="SEMS Plant",
+        manufacturer="GoodWe",
+        model="Power Plant Monitor",
+    )
+
+    # Add powerflow status sensors if homekit data available
+    if coordinator.data.homekit is not None:
+        powerflow = coordinator.data.homekit.get("powerflow", {})
+        if powerflow:
+            sensors.append(SemsPowerflowStatusSensor(
+                coordinator, plant_device, "grid", "Grid Status"
+            ))
+            sensors.append(SemsPowerflowStatusSensor(
+                coordinator, plant_device, "pv", "Solar Status"
+            ))
+            # Battery status only if battery present
+            if powerflow.get(GOODWE_SPELLING.battery) is not None:
+                sensors.append(SemsPowerflowStatusSensor(
+                    coordinator, plant_device, GOODWE_SPELLING.battery, "Battery Status"
+                ))
+
+    # Add weather sensors if weather data available
+    weather_device = DeviceInfo(
+        identifiers={(DOMAIN, "sems_weather")},
+        name="Solar Site Weather",
+        manufacturer="GoodWe",
+        model="Weather Station",
+    )
+    if coordinator.data.weather is not None:
+        sensors.append(SemsWeatherSensor(coordinator, weather_device, "temp", "Temperature"))
+        sensors.append(SemsWeatherSensor(coordinator, weather_device, "humidity", "Humidity"))
+        sensors.append(SemsWeatherSensor(coordinator, weather_device, "weather_type", "Conditions"))
+        sensors.append(SemsWeatherSensor(coordinator, weather_device, "uv_index", "UV Index"))
+
+    # Add energy statistics sensors if data available
+    stats_device = DeviceInfo(
+        identifiers={(DOMAIN, "energy_stats")},
+        name="Energy Statistics",
+        manufacturer="GoodWe",
+        model="Grid Metering",
+    )
+    if coordinator.data.energy_statistics is not None:
+        sensors.append(SemsEnergyStatsSensor(
+            coordinator, stats_device, "buy", "Grid Import Today"
+        ))
+        sensors.append(SemsEnergyStatsSensor(
+            coordinator, stats_device, "sell", "Grid Export Today"
+        ))
+        sensors.append(SemsEnergyStatsSensor(
+            coordinator, stats_device, "self_use_of_pv", "Self Consumption Today"
+        ))
+        sensors.append(SemsEnergyStatsSensor(
+            coordinator, stats_device, "consumption_of_load", "Total Load Today"
+        ))
+        sensors.append(SemsSelfConsumptionSensor(coordinator, stats_device))
+        sensors.append(SemsContributionRatioSensor(coordinator, stats_device))
+
+    # Add warning sensor
+    sensors.append(SemsWarningSensor(coordinator, plant_device))
+
+    # Add data age sensor for staleness detection
+    sensors.append(SemsDataAgeSensor(coordinator, plant_device))
+
     async_add_entities(sensors)
 
     # async_add_entities(
@@ -814,3 +882,405 @@ class SemsHomekitSensor(SemsSensor):
         """Return HomeKit dict."""
 
         return self.coordinator.data.homekit
+
+
+class SemsPowerflowStatusSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
+    """Sensor for power flow status (direction) - Importing/Exporting/Idle."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: SemsCoordinator,
+        device_info: DeviceInfo,
+        key: str,
+        name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._key = key
+        self._attr_unique_id = f"powerflow_{key}_status"
+        self._attr_name = name
+        self._attr_device_info = device_info
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the status as human-readable value."""
+        if self.coordinator.data.homekit is None:
+            return None
+        powerflow = self.coordinator.data.homekit.get("powerflow", {})
+        status = powerflow.get(f"{self._key}Status", 0)
+
+        if self._key == "grid":
+            if status == -1:
+                return "Importing"
+            elif status == 1:
+                return "Exporting"
+            return "Idle"
+        elif self._key == "pv":
+            if status == -1:
+                return "Generating"
+            return "Idle"
+        elif self._key == GOODWE_SPELLING.battery:
+            if status == -1:
+                return "Charging"
+            elif status == 1:
+                return "Discharging"
+            return "Idle"
+        return str(status)
+
+    @property
+    def icon(self) -> str:
+        """Return icon based on status."""
+        if self.coordinator.data.homekit is None:
+            return "mdi:power-plug-off"
+        powerflow = self.coordinator.data.homekit.get("powerflow", {})
+        status = powerflow.get(f"{self._key}Status", 0)
+
+        if self._key == "grid":
+            if status == -1:
+                return "mdi:transmission-tower-import"
+            elif status == 1:
+                return "mdi:transmission-tower-export"
+            return "mdi:transmission-tower"
+        elif self._key == "pv":
+            if status == -1:
+                return "mdi:solar-power"
+            return "mdi:solar-power-variant-outline"
+        elif self._key == GOODWE_SPELLING.battery:
+            if status == -1:
+                return "mdi:battery-charging"
+            elif status == 1:
+                return "mdi:battery-arrow-down"
+            return "mdi:battery"
+        return "mdi:help-circle"
+
+
+class SemsWeatherSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
+    """Sensor for weather data at the solar site."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: SemsCoordinator,
+        device_info: DeviceInfo,
+        key: str,
+        name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._key = key
+        self._attr_unique_id = f"weather_{key}"
+        self._attr_name = name
+        self._attr_device_info = device_info
+
+        if key == "temp":
+            self._attr_device_class = SensorDeviceClass.TEMPERATURE
+            self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        elif key == "humidity":
+            self._attr_device_class = SensorDeviceClass.HUMIDITY
+            self._attr_native_unit_of_measurement = PERCENTAGE
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        elif key == "uv_index":
+            self._attr_icon = "mdi:sun-wireless"
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        else:
+            self._attr_icon = "mdi:weather-partly-cloudy"
+
+    def _get_today_forecast(self) -> dict[str, Any]:
+        """Extract today's forecast from HeWeather6 data."""
+        if self.coordinator.data.weather is None:
+            return {}
+
+        weather = self.coordinator.data.weather
+        he_weather = weather.get("HeWeather6", [])
+        if he_weather and len(he_weather) > 0:
+            daily = he_weather[0].get("daily_forecast", [])
+            if daily and len(daily) > 0:
+                return daily[0]
+        return weather
+
+    @property
+    def native_value(self) -> Any:
+        """Return the weather value."""
+        forecast = self._get_today_forecast()
+
+        if self._key == "temp":
+            temp = forecast.get("tmp_max", forecast.get("temp", forecast.get("temperature")))
+            if temp is not None:
+                try:
+                    return float(str(temp).replace("°C", "").replace("℃", "").strip())
+                except (ValueError, TypeError):
+                    pass
+            return None
+        elif self._key == "humidity":
+            humidity = forecast.get("hum", forecast.get("humidity"))
+            if humidity is not None:
+                try:
+                    return float(str(humidity).replace("%", "").strip())
+                except (ValueError, TypeError):
+                    pass
+            return None
+        elif self._key == "weather_type":
+            return forecast.get("cond_txt_d", forecast.get("weather_type", forecast.get("condition")))
+        elif self._key == "uv_index":
+            uv = forecast.get("uv_index")
+            if uv is not None:
+                try:
+                    return int(uv)
+                except (ValueError, TypeError):
+                    pass
+            return None
+
+        return forecast.get(self._key)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return all weather data as attributes."""
+        forecast = self._get_today_forecast()
+        attrs = {}
+        field_map = {
+            "tmp_max": "high_temp",
+            "tmp_min": "low_temp",
+            "hum": "humidity",
+            "cond_txt_d": "condition_day",
+            "cond_txt_n": "condition_night",
+            "wind_dir": "wind_direction",
+            "wind_spd": "wind_speed",
+            "uv_index": "uv_index",
+        }
+        for api_key, attr_name in field_map.items():
+            if api_key in forecast and forecast[api_key] is not None:
+                attrs[attr_name] = forecast[api_key]
+        return attrs
+
+
+class SemsEnergyStatsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
+    """Sensor for energy statistics (grid import/export)."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+    def __init__(
+        self,
+        coordinator: SemsCoordinator,
+        device_info: DeviceInfo,
+        stat_key: str,
+        name: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._stat_key = stat_key
+        self._attr_unique_id = f"energy_stats_{stat_key}"
+        self._attr_name = name
+        self._attr_device_info = device_info
+
+        if stat_key == "sell":
+            self._attr_icon = "mdi:transmission-tower-export"
+        elif stat_key == "buy":
+            self._attr_icon = "mdi:transmission-tower-import"
+        elif stat_key == "self_use_of_pv":
+            self._attr_icon = "mdi:solar-power"
+        else:
+            self._attr_icon = "mdi:lightning-bolt"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the energy statistic value."""
+        if self.coordinator.data.energy_statistics is None:
+            return None
+        return self.coordinator.data.energy_statistics.get(self._stat_key, 0)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional statistics as attributes."""
+        if self.coordinator.data.energy_statistics is None:
+            return {}
+        energy_stats = self.coordinator.data.energy_statistics
+        attrs = {}
+        if self._stat_key == "buy":
+            attrs["percentage_of_load"] = energy_stats.get("buy_percent", 0)
+        elif self._stat_key == "sell":
+            attrs["percentage_of_generation"] = energy_stats.get("sell_percent", 0)
+        return attrs
+
+
+class SemsSelfConsumptionSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
+    """Sensor for self-consumption rate (percentage of PV used directly)."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:home-lightning-bolt"
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: SemsCoordinator,
+        device_info: DeviceInfo,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = "self_consumption_rate"
+        self._attr_name = "Self Consumption Rate"
+        self._attr_device_info = device_info
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the self-consumption rate from API."""
+        if self.coordinator.data.energy_statistics is None:
+            return None
+        ratio = self.coordinator.data.energy_statistics.get("self_use_ratio")
+        if ratio is not None:
+            return round(ratio, 1)
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return detailed energy breakdown."""
+        if self.coordinator.data.energy_statistics is None:
+            return {}
+        energy_stats = self.coordinator.data.energy_statistics
+        return {
+            "generation_today": energy_stats.get("generation", 0),
+            "self_consumed": energy_stats.get("self_use_of_pv", 0),
+            "export_today": energy_stats.get("sell", 0),
+            "import_today": energy_stats.get("buy", 0),
+            "total_load": energy_stats.get("consumption_of_load", 0),
+        }
+
+
+class SemsContributionRatioSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
+    """Sensor for PV contribution ratio (percentage of load supplied by PV)."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:solar-power-variant"
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: SemsCoordinator,
+        device_info: DeviceInfo,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = "pv_contribution_rate"
+        self._attr_name = "PV Contribution Rate"
+        self._attr_device_info = device_info
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the PV contribution rate."""
+        if self.coordinator.data.energy_statistics is None:
+            return None
+        ratio = self.coordinator.data.energy_statistics.get("contribution_ratio")
+        if ratio is not None:
+            return round(ratio * 100, 1)
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return energy breakdown."""
+        if self.coordinator.data.energy_statistics is None:
+            return {}
+        energy_stats = self.coordinator.data.energy_statistics
+        return {
+            "pv_used_by_load": energy_stats.get("self_use_of_pv", 0),
+            "total_load": energy_stats.get("consumption_of_load", 0),
+            "grid_import": energy_stats.get("buy", 0),
+            "grid_import_percent": energy_stats.get("buy_percent", 0),
+        }
+
+
+class SemsWarningSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
+    """Sensor for active warnings count."""
+
+    _attr_icon = "mdi:alert"
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: SemsCoordinator,
+        device_info: DeviceInfo,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = "sems_warnings"
+        self._attr_name = "Active Warnings"
+        self._attr_device_info = device_info
+
+    @property
+    def native_value(self) -> int:
+        """Return the warning count."""
+        if self.coordinator.data.warnings is None:
+            return 0
+        warnings = self.coordinator.data.warnings
+        if isinstance(warnings, list):
+            return len(warnings)
+        return 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return warning details."""
+        if self.coordinator.data.warnings is None:
+            return {}
+        warnings = self.coordinator.data.warnings
+        if not warnings:
+            return {}
+        return {"warnings": warnings}
+
+    @property
+    def icon(self) -> str:
+        """Return icon based on warning count."""
+        count = self.native_value
+        if count > 0:
+            return "mdi:alert-circle"
+        return "mdi:check-circle"
+
+
+class SemsDataAgeSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
+    """Sensor for data freshness/staleness detection."""
+
+    _attr_icon = "mdi:clock-check-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "min"
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: SemsCoordinator,
+        device_info: DeviceInfo,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = "sems_data_age"
+        self._attr_name = "Data Age"
+        self._attr_device_info = device_info
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the data age in minutes."""
+        age = self.coordinator.data_age_minutes
+        if age is not None:
+            return round(age, 1)
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return staleness details."""
+        return {
+            "is_stale": self.coordinator.is_stale,
+            "stale_threshold_minutes": STALE_THRESHOLD_MINUTES,
+            "data_age_seconds": round(self.coordinator.data_age_seconds, 1),
+        }
+
+    @property
+    def icon(self) -> str:
+        """Return icon based on staleness."""
+        if self.coordinator.is_stale:
+            return "mdi:clock-alert-outline"
+        return "mdi:clock-check-outline"

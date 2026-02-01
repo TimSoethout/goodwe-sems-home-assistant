@@ -3,6 +3,8 @@
   "config": {
     "step": {
       "user": {
+        "title": "Connect to SEMS Portal",
+        "description": "Enter your SEMS Portal credentials to connect your GoodWe solar inverter.",
         "data": {
           "powerstation_id": "[%key:common::config_flow::data::powerstation_id%]",
           "username": "[%key:common::config_flow::data::username%]",
@@ -21,6 +23,32 @@
     },
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SEMS Options",
+        "description": "Configure polling and optimization settings for your solar inverter.",
+        "data": {
+          "api_server": "API Server",
+          "scan_interval": "Update interval (seconds)",
+          "night_mode": "Enable night mode",
+          "night_interval": "Night mode interval (seconds)",
+          "always_poll_powerflow": "Always poll powerflow (split polling)",
+          "midnight_skip": "Skip updates around midnight",
+          "stale_threshold": "Stale data threshold (seconds)"
+        },
+        "data_description": {
+          "api_server": "Select SEMS API server region. Use Auto-detect unless you have connection issues.",
+          "scan_interval": "How often to poll the API for new data (30-300 seconds)",
+          "night_mode": "Reduce API calls when inverter is offline or not producing power",
+          "night_interval": "How often to fetch detailed data during night mode (less frequent saves API calls)",
+          "always_poll_powerflow": "Keep polling powerflow at normal rate during night, only slow detailed data fetches",
+          "midnight_skip": "Skip API calls between 23:55-00:10 to avoid phantom/incorrect data around midnight",
+          "stale_threshold": "Log warning if data hasn't been updated within this time period"
+        }
+      }
     }
   }
 }
