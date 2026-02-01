@@ -420,6 +420,24 @@ def sensor_options_for_data(
 
             return value_status_handler
 
+        def grid_value_handler(value: Any, data: dict[str, Any]) -> Any:
+            """Apply sign to grid power: positive=importing, negative=exporting."""
+            if value is None:
+                return None
+            grid_status = get_value_from_path(data, ["powerflow", "gridStatus"])
+            if grid_status is None:
+                return value
+            try:
+                # gridStatus: -1=importing, 1=exporting
+                # We want: positive=importing, negative=exporting
+                # So: if exporting (status=1), negate the value
+                status = int(grid_status)
+                if status == 1:  # Exporting
+                    return -Decimal(str(value))
+                return Decimal(str(value))  # Importing or idle
+            except (TypeError, ValueError):
+                return value
+
         sensors += [
             SemsHomekitSensorType(
                 device_info,
@@ -448,6 +466,7 @@ def sensor_options_for_data(
                 SensorDeviceClass.POWER,
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
+                custom_value_handler=grid_value_handler,
             ),
             SemsHomekitSensorType(
                 device_info,
