@@ -27,7 +27,9 @@ Crude sensor for Home Assistant that scrapes from GoodWe SEMS portal. Copy all t
 
 ## Configure integration
 
-The required ID of your Power Station can be retrieved by logging in to the SEMS Portal with your credentials:
+The required ID of your Power Station is automatically retrieved when left empty. It will pick the first found ID.
+
+To manually find you Power Station ID, log in to the SEMS Portal with your credentials:
 https://www.semsportal.com
 
 After login you'll see the ID in your URL, e.g.:
@@ -38,8 +40,6 @@ In this example the ID of the Power Station is: 12345678-1234-1234-1234-12345678
 In the home assistant GUI, go to `Configuration` > `Integrations` and click the `Add Integration` button. Search for `GoodWe SEMS API`.
 
 Fill in the required configuration and it should find your inverters.
-
-Note that changed to `configuration.yaml` are no longer necessary and can be removed.
 
 ### Optional: control the invertor power output via the "switch" entity
 
@@ -55,47 +55,6 @@ Create via the official app, or via the web portal:
 Login to www.semsportal.com, go to https://semsportal.com/powerstation/stationInfonew. Create a new visitor account.
 Login to the visitor account once to accept the EULA. Now you should be able to use it in this component.
 
-### Extra (optional) templates to easy access data as sensors
-Replace `$NAME` with your inverter entity id.
-```yaml
-template:
-  - sensor:
-      - name: "PV Temperature"
-        unit_of_measurement: "°C"
-        state: >
-          {{ state_attr('sensor.inverter_$NAME', 'tempperature') }}
-      - name: "PV Energy Day"
-        unit_of_measurement: "kWh"
-        state: >
-          {{ state_attr('sensor.inverter_$NAME', 'eday') }}
-      - name: "PV Energy Total"
-        unit_of_measurement: "kWh"
-        state: >
-          {{ state_attr('sensor.inverter_$NAME', 'etotal') }}
-      - name: "PV Income Day"
-        unit_of_measurement: "€"
-        state: >
-          {{ state_attr('sensor.inverter_$NAME', 'iday') }}
-      - name: "PV Income Total"
-        unit_of_measurement: "€"
-        state: >
-          {{ state_attr('sensor.inverter_$NAME', 'itotal') }}
-      - name: "PV Excess"
-        unit_of_measurement: "W"
-        state: >
-          {{ state_attr('sensor.inverter_$NAME', 'pmeter') }}
-      - name: "PV Battery Power"
-        unit_of_measurement: "%"
-        state: >
-          {{ state_attr('sensor.inverter_$NAME', 'soc') }}
-      - name: "PV Import Day"
-        unit_of_measurement: "kWh"
-        state: >
-          {{ state_attr('sensor.inverter_$NAME', 'buy') }}
-```
-
-Note that `states.sensor.inverter_$NAME.state` contains the power output in `W`.
-
 ## Screenies
 
 ![Detail window](images/sems-details.webp)
@@ -106,7 +65,9 @@ Note that `states.sensor.inverter_$NAME.state` contains the power output in `W`.
 
 ## Debug info
 
-Add the last line in `configuration.yaml` in the relevant part of `logger`:
+Enable debugging in the GUI, by going to the integration, and selecting "Enable Debug Logging" in the top right corner. [https://www.home-assistant.io/docs/configuration/troubleshooting/#enabling-debug-logging](See HA documentation for more info.)
+
+Or add the last line in `configuration.yaml` in the relevant part of `logger`:
 
 ```yaml
 logger:
