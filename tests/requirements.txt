@@ -6,4 +6,4 @@ requests-mock>=1.10.0
 requests>=2.25.0
 # Mock Home Assistant dependencies for unit testing
 aiohttp>=3.8.0
-homeassistant>=2025.5.1
+# homeassistant>=2025.5.1
