@@ -1,2 +1,45 @@
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = [
+	".venv",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = [
+	"E",
+	"F",
+	"W",
+	"I",
+	"B",
+	"UP",
+	"ASYNC",
+	"RUF",
+]
+ignore = [
+	"E501",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components.sems"]
+
+[tool.mypy]
+python_version = "3.12"
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.coverage.run]
+branch = true
+source = ["custom_components/sems"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

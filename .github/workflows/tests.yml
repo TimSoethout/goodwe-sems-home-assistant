@@ -50,7 +50,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python 
+    - name: Set up Python
       uses: actions/setup-python@v6
       with:
         python-version: "3.13"
@@ -58,16 +58,16 @@ jobs:
     - name: Install linting dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install ruff black mypy
+        pip install ruff mypy
 
-    - name: Run ruff (check only)
-      run: ruff check custom_components/ || true
+    - name: Run ruff (lint)
+      run: ruff check custom_components/
 
-    - name: Run black (check only)
-      run: black --check custom_components/ || true
+    - name: Run ruff (format check)
+      run: ruff format --check custom_components/
 
-    - name: Run mypy (check only)
-      run: mypy custom_components/ --ignore-missing-imports || true
+    - name: Run mypy (check)
+      run: mypy custom_components/ --ignore-missing-imports
 
   validate:
     runs-on: ubuntu-latest
