@@ -28,7 +28,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r tests/requirements.txt
+        pip install -r requirements.test.txt
 
     - name: Run tests with coverage
       run: |
@@ -52,7 +52,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-        cache: 'pip' 
+        cache: 'pip'
 
     - name: Install linting dependencies
       run: |
