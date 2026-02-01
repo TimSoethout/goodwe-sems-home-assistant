@@ -14,8 +14,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_NIGHT_INTERVAL,
+    CONF_NIGHT_MODE,
     CONF_SCAN_INTERVAL,
     CONF_STATION_ID,
+    DEFAULT_NIGHT_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     PLATFORMS,
@@ -82,9 +85,14 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         self.stationId = entry.data[CONF_STATION_ID]
         self.hass = hass
 
-        update_interval = timedelta(
-            seconds=entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        )
+        # Night mode configuration
+        self._night_mode_enabled = entry.data.get(CONF_NIGHT_MODE, True)
+        self._night_interval = entry.data.get(CONF_NIGHT_INTERVAL, DEFAULT_NIGHT_INTERVAL)
+        self._base_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        self._is_night = False
+        self._last_detailed_fetch: float = 0
+
+        update_interval = timedelta(seconds=self._base_interval)
         super().__init__(
             hass,
             _LOGGER,
@@ -92,6 +100,39 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             name=DOMAIN,
             update_interval=update_interval,
         )
+
+    def _is_night_time(self, inverters: dict[str, dict[str, Any]]) -> bool:
+        """Check if inverter is in night mode (offline/not producing)."""
+        if not inverters:
+            return False
+
+        for inv_data in inverters.values():
+            status = inv_data.get("status")
+            # Status -1=Offline, 0=Waiting, 1=Normal, 2=Fault
+            if status in (-1, 0, "-1", "0"):
+                return True
+            # Also check if power output is zero
+            pac = inv_data.get("pac", 0)
+            try:
+                if float(pac) <= 0:
+                    return True
+            except (TypeError, ValueError):
+                pass
+        return False
+
+    def _update_night_status(self, is_night: bool) -> None:
+        """Update night mode status and log transitions."""
+        if not self._night_mode_enabled:
+            return
+
+        if is_night and not self._is_night:
+            _LOGGER.info(
+                "SEMS: Entering night mode - skipping detailed inverter data fetch"
+            )
+            self._is_night = True
+        elif not is_night and self._is_night:
+            _LOGGER.info("SEMS: Exiting night mode - resuming full data fetch")
+            self._is_night = False
 
     async def _async_update_data(self) -> SemsData:
         """Fetch data from API endpoint.
@@ -139,33 +180,49 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 _LOGGER.debug("Found inverter attribute %s %s", name, sn)
                 inverters_by_sn[sn] = inverter["invert_full"]
 
+            # Check night mode status
+            is_night = self._is_night_time(inverters_by_sn)
+            self._update_night_status(is_night)
+
             # Fetch detailed inverter data (AC voltage, current, temp, PV strings, etc.)
-            try:
-                detailed_data = await self.hass.async_add_executor_job(
-                    self.semsApi.getInverterAllPoint, self.stationId
-                )
-                if detailed_data:
-                    inverter_points = detailed_data.get("inverterPoints", [])
-                    for inv_point in inverter_points:
-                        inv_sn = inv_point.get("sn")
-                        if inv_sn and inv_sn in inverters_by_sn:
-                            # Extract detailed readings from dict.left and dict.right
-                            inv_dict = inv_point.get("dict", {})
-                            for section in ["left", "right"]:
-                                for item in inv_dict.get(section, []):
-                                    key = item.get("key", "")
-                                    value = item.get("value")
-                                    unit = item.get("unit", "")
-                                    if key and value is not None:
-                                        # Store with descriptive key including unit
-                                        inverters_by_sn[inv_sn][key] = (
-                                            f"{value} {unit}".strip()
-                                        )
-                            _LOGGER.debug(
-                                "Added detailed data for inverter %s", inv_sn
-                            )
-            except Exception as err:
-                _LOGGER.debug("Could not fetch detailed inverter data: %s", err)
+            # Skip during night mode to reduce API calls
+            import time
+            should_fetch_detailed = (
+                not is_night
+                or not self._night_mode_enabled
+                or (time.time() - self._last_detailed_fetch) > self._night_interval
+            )
+
+            if should_fetch_detailed:
+                try:
+                    detailed_data = await self.hass.async_add_executor_job(
+                        self.semsApi.getInverterAllPoint, self.stationId
+                    )
+                    if detailed_data:
+                        inverter_points = detailed_data.get("inverterPoints", [])
+                        for inv_point in inverter_points:
+                            inv_sn = inv_point.get("sn")
+                            if inv_sn and inv_sn in inverters_by_sn:
+                                # Extract detailed readings from dict.left and dict.right
+                                inv_dict = inv_point.get("dict", {})
+                                for section in ["left", "right"]:
+                                    for item in inv_dict.get(section, []):
+                                        key = item.get("key", "")
+                                        value = item.get("value")
+                                        unit = item.get("unit", "")
+                                        if key and value is not None:
+                                            # Store with descriptive key including unit
+                                            inverters_by_sn[inv_sn][key] = (
+                                                f"{value} {unit}".strip()
+                                            )
+                                _LOGGER.debug(
+                                    "Added detailed data for inverter %s", inv_sn
+                                )
+                        self._last_detailed_fetch = time.time()
+                except Exception as err:
+                    _LOGGER.debug("Could not fetch detailed inverter data: %s", err)
+            else:
+                _LOGGER.debug("SEMS: Night mode - skipping detailed inverter fetch")
 
             # Add currency
             kpi = result["kpi"]

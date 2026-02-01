@@ -9,8 +9,11 @@ DOMAIN = "sems"
 PLATFORMS = ["sensor", "switch"]
 
 CONF_STATION_ID = "powerstation_id"
+CONF_NIGHT_MODE = "night_mode"
+CONF_NIGHT_INTERVAL = "night_interval"
 
 DEFAULT_SCAN_INTERVAL = 60  # timedelta(seconds=60)
+DEFAULT_NIGHT_INTERVAL = 300  # 5 minutes during night
 
 # Validation of the user's configuration
 SEMS_CONFIG_SCHEMA = vol.Schema(
