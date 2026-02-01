@@ -31,7 +31,7 @@ ignore = [
 known-first-party = ["custom_components.sems"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 show_error_codes = true
 warn_redundant_casts = true
 warn_unused_ignores = true
