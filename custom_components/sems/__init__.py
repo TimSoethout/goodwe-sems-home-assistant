@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import timedelta
-import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -18,11 +17,23 @@ from .const import (
     CONF_STATION_ID,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    GOODWE_SPELLING,
     PLATFORMS,
 )
 from .sems_api import SemsApi
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
+
+
+@dataclass(slots=True)
+class SemsRuntimeData:
+    """Runtime data stored on the config entry."""
+
+    api: SemsApi
+    coordinator: SemsDataUpdateCoordinator
+
+
+type SemsConfigEntry = ConfigEntry[SemsRuntimeData]
 
 
 @dataclass(slots=True)
@@ -36,51 +47,35 @@ class SemsData:
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the sems component."""
-    # Ensure our name space for storing objects is a known type. A dict is
-    # common/preferred as it allows a separate instance of your class for each
-    # instance that has been created in the UI.
-    hass.data.setdefault(DOMAIN, {})
-
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Set up sems from a config entry."""
-    semsApi = SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
-    coordinator = SemsDataUpdateCoordinator(hass, semsApi, entry)
-    await coordinator.async_config_entry_first_refresh()
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    sems_api = SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
+    coordinator = SemsDataUpdateCoordinator(hass, sems_api, entry)
+    entry.runtime_data = SemsRuntimeData(api=sems_api, coordinator=coordinator)
 
+    await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = all(
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_unload(entry, platform)
-                for platform in PLATFORMS
-            ]
-        )
-    )
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
     """Class to manage fetching data from the API."""
 
-    def __init__(self, hass: HomeAssistant, semsApi: SemsApi, entry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, sems_api: SemsApi, entry: ConfigEntry
+    ) -> None:
         """Initialize."""
-        self.semsApi = semsApi
-        self.platforms = []
-        self.stationId = entry.data[CONF_STATION_ID]
-        self.hass = hass
+        self.sems_api = sems_api
+        self.station_id = entry.data[CONF_STATION_ID]
 
         update_interval = timedelta(
             seconds=entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
@@ -104,70 +99,71 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         # async with async_timeout.timeout(10):
         try:
             result = await self.hass.async_add_executor_job(
-                self.semsApi.getData, self.stationId
+                self.sems_api.getData, self.station_id
             )
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
             _LOGGER.debug("semsApi.getData result: %s", result)
 
-            # _LOGGER.warning("SEMS - Try get getPowerStationIds")
-            # powerStationIds = await self.hass.async_add_executor_job(
-            #     self.semsApi.getPowerStationIds
-            # )
-            # _LOGGER.warning(
-            #     "SEMS - getPowerStationIds: Found power station IDs: %s",
-            #     powerStationIds,
-            # )
-
-            inverters = result["inverter"]
-
-            # found = []
-            # _LOGGER.debug("Found inverters: %s", inverters)
+            inverters = result.get("inverter")
             inverters_by_sn: dict[str, dict[str, Any]] = {}
-            if inverters is None:
-                # something went wrong, probably token could not be fetched
+            if not inverters:
                 raise UpdateFailed(
-                    "Error communicating with API, probably token could not be fetched, see debug logs"
+                    "Error communicating with API: missing inverter data"
                 )
 
             # Get Inverter Data
             for inverter in inverters:
-                name = inverter["invert_full"]["name"]
-                # powerstation_id = inverter["invert_full"]["powerstation_id"]
-                sn = inverter["invert_full"]["sn"]
+                inverter_full = inverter.get("invert_full")
+                if not isinstance(inverter_full, dict):
+                    continue
+
+                name = inverter_full.get("name")
+                sn = inverter_full.get("sn")
+                if not isinstance(sn, str):
+                    continue
+
                 _LOGGER.debug("Found inverter attribute %s %s", name, sn)
-                inverters_by_sn[sn] = inverter["invert_full"]
+                inverters_by_sn[sn] = inverter_full
 
             # Add currency
-            kpi = result["kpi"]
+            kpi = result.get("kpi")
+            if not isinstance(kpi, dict):
+                kpi = {}
             currency = kpi.get("currency")
 
-            hasPowerflow = result["hasPowerflow"]
-            hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
+            has_powerflow = bool(result.get("hasPowerflow"))
+            has_energy_statistics_charts = bool(
+                result.get(GOODWE_SPELLING.hasEnergyStatisticsCharts)
+            )
 
             homekit: dict[str, Any] | None = None
 
-            if hasPowerflow:
+            if has_powerflow:
                 _LOGGER.debug("Found powerflow data")
-                if hasEnergeStatisticsCharts:
-                    StatisticsCharts = {
-                        f"Charts_{key}": val
-                        for key, val in result["energeStatisticsCharts"].items()
-                    }
-                    StatisticsTotals = {
-                        f"Totals_{key}": val
-                        for key, val in result["energeStatisticsTotals"].items()
-                    }
-                    powerflow = {
-                        **result["powerflow"],
-                        **StatisticsCharts,
-                        **StatisticsTotals,
-                    }
-                else:
-                    powerflow = result["powerflow"]
+                powerflow = result.get("powerflow")
+                if not isinstance(powerflow, dict):
+                    powerflow = {}
 
-                powerflow["sn"] = result["homKit"]["sn"]
+                if has_energy_statistics_charts:
+                    charts = result.get(GOODWE_SPELLING.energyStatisticsCharts)
+                    if not isinstance(charts, dict):
+                        charts = {}
+                    totals = result.get(GOODWE_SPELLING.energyStatisticsTotals)
+                    if not isinstance(totals, dict):
+                        totals = {}
+
+                    powerflow = {
+                        **powerflow,
+                        **{f"Charts_{key}": val for key, val in charts.items()},
+                        **{f"Totals_{key}": val for key, val in totals.items()},
+                    }
+
+                homekit_data = result.get(GOODWE_SPELLING.homeKit)
+                if not isinstance(homekit_data, dict):
+                    homekit_data = {}
+                powerflow["sn"] = homekit_data.get("sn")
 
                 # Goodwe 'Power Meter' (not HomeKit) doesn't have a sn
                 # Let's put something in, otherwise we can't see the data.
@@ -176,7 +172,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
                 # _LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
                 # This seems more accurate than the Chart_sum
-                powerflow["all_time_generation"] = result["kpi"]["total_power"]
+                powerflow["all_time_generation"] = kpi.get("total_power")
 
                 homekit = powerflow
 
