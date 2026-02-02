@@ -21,14 +21,16 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: '**/requirements.test.txt'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r tests/requirements.txt
+        pip install -r requirements.test.txt
 
     - name: Run tests with coverage
       run: |
@@ -49,23 +51,26 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
-        python-version: '3.11'
+        python-version: "3.13"
+        cache: 'pip'
+        cache-dependency-path: '**/requirements.test.txt'
 
     - name: Install linting dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install ruff black mypy
+        pip install -r requirements.test.txt
+        pip install ruff mypy
 
-    - name: Run ruff (check only)
-      run: ruff check custom_components/ || true
+    - name: Run ruff (lint)
+      run: ruff check custom_components/
 
-    - name: Run black (check only)
-      run: black --check custom_components/ || true
+    - name: Run ruff (format check)
+      run: ruff format --check custom_components/
 
-    - name: Run mypy (check only)
-      run: mypy custom_components/ --ignore-missing-imports || true
+    - name: Run mypy (check)
+      run: mypy custom_components/ --ignore-missing-imports --python-version 3.13
 
   validate:
     runs-on: ubuntu-latest

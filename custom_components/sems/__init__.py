@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
+import logging
+import time
 from dataclasses import dataclass
 from datetime import timedelta
-import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -36,6 +37,19 @@ from .sems_api import SemsApi
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+@dataclass(slots=True)
+class SemsRuntimeData:
+    """Runtime data stored on the config entry."""
+
+    api: SemsApi
+    coordinator: SemsDataUpdateCoordinator
+
+
+type SemsConfigEntry = ConfigEntry[SemsRuntimeData]
+
 
 @dataclass(slots=True)
 class SemsData:
@@ -52,21 +66,16 @@ class SemsData:
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the sems component."""
-    # Ensure our name space for storing objects is a known type. A dict is
-    # common/preferred as it allows a separate instance of your class for each
-    # instance that has been created in the UI.
-    hass.data.setdefault(DOMAIN, {})
-
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Set up sems from a config entry."""
-    semsApi = SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
-    coordinator = SemsDataUpdateCoordinator(hass, semsApi, entry)
-    await coordinator.async_config_entry_first_refresh()
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    sems_api = SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
+    coordinator = SemsDataUpdateCoordinator(hass, sems_api, entry)
+    entry.runtime_data = SemsRuntimeData(api=sems_api, coordinator=coordinator)
 
+    await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Register update listener for options changes
@@ -75,36 +84,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def async_reload_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> None:
     """Reload config entry when options change."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = all(
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_unload(entry, platform)
-                for platform in PLATFORMS
-            ]
-        )
-    )
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
     """Class to manage fetching data from the API."""
 
-    def __init__(self, hass: HomeAssistant, semsApi: SemsApi, entry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, sems_api: SemsApi, entry: SemsConfigEntry
+    ) -> None:
         """Initialize."""
-        self.semsApi = semsApi
-        self.platforms = []
-        self.stationId = entry.data[CONF_STATION_ID]
-        self.hass = hass
+        self.sems_api = sems_api
+        self.station_id = entry.data[CONF_STATION_ID]
 
         # Night mode configuration
         self._night_mode_enabled = entry.data.get(CONF_NIGHT_MODE, True)
@@ -184,8 +182,6 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
     def _should_do_full_fetch(self) -> bool:
         """Determine if we should do a full fetch or quick (powerflow-only) fetch."""
-        import time
-
         # Always do full fetch if night mode is disabled
         if not self._night_mode_enabled:
             return True
@@ -241,8 +237,6 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
     @property
     def is_stale(self) -> bool:
         """Check if data is stale (older than threshold)."""
-        import time
-
         if self._last_successful_fetch == 0:
             return False  # No data yet, not stale
         return (time.time() - self._last_successful_fetch) > self._stale_threshold
@@ -250,8 +244,6 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
     @property
     def data_age_seconds(self) -> float:
         """Return age of data in seconds."""
-        import time
-
         if self._last_successful_fetch == 0:
             return 0
         return time.time() - self._last_successful_fetch
@@ -298,56 +290,39 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
         # Note: asyncio.TimeoutError and aiohttp.ClientError are already
         # handled by the data update coordinator.
-        # async with async_timeout.timeout(10):
         try:
             result = await self.hass.async_add_executor_job(
-                self.semsApi.getData, self.stationId
+                self.sems_api.getData, self.station_id
             )
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
             _LOGGER.debug("semsApi.getData result: %s", result)
 
-            # _LOGGER.warning("SEMS - Try get getPowerStationIds")
-            # powerStationIds = await self.hass.async_add_executor_job(
-            #     self.semsApi.getPowerStationIds
-            # )
-            # _LOGGER.warning(
-            #     "SEMS - getPowerStationIds: Found power station IDs: %s",
-            #     powerStationIds,
-            # )
-
-            inverters = result["inverter"]
-
-            # found = []
-            # _LOGGER.debug("Found inverters: %s", inverters)
+            inverters = result.get("inverter")
             inverters_by_sn: dict[str, dict[str, Any]] = {}
-            if inverters is None:
-                # something went wrong, probably token could not be fetched
+            if not inverters:
                 raise UpdateFailed(
-                    "Error communicating with API, probably token could not be fetched, see debug logs"
+                    "Error communicating with API: missing inverter data"
                 )
 
             # Get Inverter Data
             for inverter in inverters:
-                name = inverter["invert_full"]["name"]
-                # powerstation_id = inverter["invert_full"]["powerstation_id"]
-                sn = inverter["invert_full"]["sn"]
+                inverter_full = inverter.get("invert_full")
+                if not isinstance(inverter_full, dict):
+                    continue
+
+                name = inverter_full.get("name")
+                sn = inverter_full.get("sn")
+                if not isinstance(sn, str):
+                    continue
+
                 _LOGGER.debug("Found inverter attribute %s %s", name, sn)
-                inverters_by_sn[sn] = inverter["invert_full"]
+                inverters_by_sn[sn] = inverter_full
 
             # Check night mode status
             is_night = self._is_night_time(inverters_by_sn)
             self._update_night_status(is_night)
-
-            # Fetch detailed inverter data (AC voltage, current, temp, PV strings, etc.)
-            # Skip during night mode to reduce API calls
-            import time
-            should_fetch_detailed = (
-                not is_night
-                or not self._night_mode_enabled
-                or (time.time() - self._last_detailed_fetch) > self._night_interval
-            )
 
             # Determine if we should do full fetch (detailed data, warnings, weather, etc.)
             do_full_fetch = self._should_do_full_fetch()
@@ -361,7 +336,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 # Full fetch - get detailed inverter data
                 try:
                     detailed_data = await self.hass.async_add_executor_job(
-                        self.semsApi.getInverterAllPoint, self.stationId
+                        self.sems_api.getInverterAllPoint, self.station_id
                     )
                     if detailed_data:
                         inverter_points = detailed_data.get("inverterPoints", [])
@@ -390,7 +365,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 # Fetch warnings
                 try:
                     warnings_data = await self.hass.async_add_executor_job(
-                        self.semsApi.getWarnings, self.stationId
+                        self.sems_api.getWarnings, self.station_id
                     )
                     self._cached_warnings = warnings_data
                 except Exception as err:
@@ -399,7 +374,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 # Fetch weather
                 try:
                     weather_data = await self.hass.async_add_executor_job(
-                        self.semsApi.getWeather, self.stationId
+                        self.sems_api.getWeather, self.station_id
                     )
                     self._cached_weather = weather_data
                 except Exception as err:
@@ -408,7 +383,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 # Fetch energy statistics
                 try:
                     energy_stats_data = await self.hass.async_add_executor_job(
-                        self.semsApi.getEnergyStatistics, self.stationId
+                        self.sems_api.getEnergyStatistics, self.station_id
                     )
                     if energy_stats_data:
                         self._cached_energy_stats = energy_stats_data
@@ -433,20 +408,43 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 _LOGGER.debug("SEMS: %s - using cached detailed data", mode_str)
 
             # Add currency
-            kpi = result["kpi"]
+            kpi = result.get("kpi")
+            if not isinstance(kpi, dict):
+                kpi = {}
             currency = kpi.get("currency")
 
-            hasPowerflow = result["hasPowerflow"]
-            hasEnergeStatisticsCharts = result["hasEnergeStatisticsCharts"]
+            has_powerflow = bool(result.get("hasPowerflow"))
+            has_energy_statistics_charts = bool(
+                result.get(GOODWE_SPELLING.hasEnergyStatisticsCharts)
+            )
 
             homekit: dict[str, Any] | None = None
 
-            if hasPowerflow:
+            if has_powerflow:
                 _LOGGER.debug("Found powerflow data")
-                powerflow_data = result["powerflow"].copy()
+                powerflow = result.get("powerflow")
+                if not isinstance(powerflow, dict):
+                    powerflow = {}
+
+                # Make a copy to avoid modifying original
+                powerflow_data = powerflow.copy()
+
+                # Add energy statistics charts if available
+                if has_energy_statistics_charts:
+                    charts = result.get(GOODWE_SPELLING.energyStatisticsCharts)
+                    if isinstance(charts, dict):
+                        for key, val in charts.items():
+                            powerflow_data[f"Charts_{key}"] = val
+                    totals = result.get(GOODWE_SPELLING.energyStatisticsTotals)
+                    if isinstance(totals, dict):
+                        for key, val in totals.items():
+                            powerflow_data[f"Totals_{key}"] = val
 
                 # Get serial number from homKit
-                sn = result["homKit"]["sn"]
+                homekit_data = result.get(GOODWE_SPELLING.homeKit)
+                if not isinstance(homekit_data, dict):
+                    homekit_data = {}
+                sn = homekit_data.get("sn")
                 # Goodwe 'Power Meter' (not HomeKit) doesn't have a sn
                 if sn is None:
                     sn = "GW-HOMEKIT-NO-SERIAL"
@@ -456,16 +454,16 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 homekit = {
                     "powerflow": powerflow_data,
                     "sn": sn,
-                    "all_time_generation": result["kpi"]["total_power"],
+                    "all_time_generation": kpi.get("total_power"),
                 }
 
-                # Add energy statistics charts if available
-                if hasEnergeStatisticsCharts:
+                # Add energy statistics charts flag if available
+                if has_energy_statistics_charts:
                     homekit[GOODWE_SPELLING.hasEnergyStatisticsCharts] = True
-                    if result.get("energeStatisticsCharts"):
-                        homekit[GOODWE_SPELLING.energyStatisticsCharts] = result["energeStatisticsCharts"]
-                    if result.get("energeStatisticsTotals"):
-                        homekit[GOODWE_SPELLING.energyStatisticsTotals] = result["energeStatisticsTotals"]
+                    if result.get(GOODWE_SPELLING.energyStatisticsCharts):
+                        homekit[GOODWE_SPELLING.energyStatisticsCharts] = result[GOODWE_SPELLING.energyStatisticsCharts]
+                    if result.get(GOODWE_SPELLING.energyStatisticsTotals):
+                        homekit[GOODWE_SPELLING.energyStatisticsTotals] = result[GOODWE_SPELLING.energyStatisticsTotals]
 
             current_time = time.time()
             data = SemsData(

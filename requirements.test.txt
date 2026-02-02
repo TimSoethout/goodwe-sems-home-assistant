@@ -4,6 +4,7 @@ pytest-cov>=4.0.0
 pytest-homeassistant-custom-component>=0.13.0
 requests-mock>=1.10.0
 requests>=2.25.0
+types-requests
 # Mock Home Assistant dependencies for unit testing
 aiohttp>=3.8.0
-homeassistant>=2025.5.1
+# homeassistant>=2025.5.1

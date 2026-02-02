@@ -4,11 +4,11 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
+import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
-import logging
-import re
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -34,7 +34,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import SemsCoordinator, SemsData
+from . import SemsConfigEntry, SemsCoordinator, SemsData
 from .const import (
     AC_CURRENT_EMPTY,
     AC_EMPTY,
@@ -48,6 +48,8 @@ from .device import device_info_for_inverter
 
 _LOGGER = logging.getLogger(__name__)
 
+type SemsValuePath = list[str | int]
+
 
 @dataclass(slots=True)
 class SemsSensorType:
@@ -55,7 +57,7 @@ class SemsSensorType:
 
     device_info: DeviceInfo
     unique_id: str
-    value_path: list[str]
+    value_path: SemsValuePath
     name: str | None = None  # Name is None when it is determined by device class / UOM.
     device_class: SensorDeviceClass | None = None
     native_unit_of_measurement: str | None = None
@@ -110,7 +112,7 @@ def sensor_options_for_data(
 
     for serial_number, inverter_data in data.inverters.items():
         # serial_number = inverter["sn"]
-        path_to_inverter = [serial_number]
+        path_to_inverter: SemsValuePath = [serial_number]
         # device_data = get_value_from_path(data, path_to_inverter)
 
         device_info = device_info_for_inverter(serial_number, inverter_data)
@@ -308,7 +310,11 @@ def sensor_options_for_data(
         )
         if isinstance(battery_count, int):
             for idx in range(battery_count):
-                path_to_battery = [*path_to_inverter, "more_batterys", idx]
+                path_to_battery: SemsValuePath = [
+                    *path_to_inverter,
+                    "more_batterys",
+                    idx,
+                ]
                 sensors += [
                     SemsInverterSensorType(
                         device_info,
@@ -403,7 +409,7 @@ def sensor_options_for_data(
         )
 
         def status_value_handler(
-            status_path: list[str],
+            status_path: SemsValuePath,
         ) -> Callable[[Any, dict[str, Any]], Any]:
             """Return a handler that applies a sign depending on grid status."""
 
@@ -558,22 +564,11 @@ def sensor_options_for_data(
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: SemsConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Add sensors for passed config_entry in HA."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
-
-    #
-    # Fetch initial data so we have data when entities subscribe
-    #
-    # If the refresh fails, async_config_entry_first_refresh will
-    # raise ConfigEntryNotReady and setup will try again later
-    #
-    # If you do not want to retry setup on failure, use
-    # coordinator.async_refresh() instead
-    #
-    await coordinator.async_config_entry_first_refresh()
+    coordinator = config_entry.runtime_data.coordinator
 
     # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
 
@@ -686,6 +681,8 @@ async def async_setup_entry(
     # async_add_entities(
     #     SemsStatisticsSensor(coordinator, ent)
     #     for idx, ent in enumerate(coordinator.data)
+
+
 # Migrate old power sensor unique ids to new unique ids (with `-power`)
 def _migrate_to_new_unique_id(hass: HomeAssistant, sn: str) -> None:
     """Migrate old unique ids to new unique ids."""
@@ -713,7 +710,7 @@ def _migrate_to_new_unique_id(hass: HomeAssistant, sn: str) -> None:
             )
 
 
-def get_value_from_path(data: dict[str, Any], path: list[str]) -> Any:
+def get_value_from_path(data: dict[str, Any], path: SemsValuePath) -> Any:
     """Return the value at a nested path in a dict, or `None` if missing."""
 
     value: Any = data
@@ -738,7 +735,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         device_info: DeviceInfo,
         unique_id: str,
         name: str | None,
-        value_path: list[str],
+        value_path: SemsValuePath,
         data_type_converter: Callable,
         device_class: SensorDeviceClass | None = None,
         native_unit_of_measurement: str | None = None,
