@@ -113,7 +113,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             inverters_by_sn: dict[str, dict[str, Any]] = {}
             if not inverters or not isinstance(inverters, list):
                 raise UpdateFailed(
-                    "Error communicating with API: invalid or missing inverter data, see debug logs"
+                    "Error communicating with API: invalid or missing inverter data. See debug logs"
                 )
 
             # Get Inverter Data
