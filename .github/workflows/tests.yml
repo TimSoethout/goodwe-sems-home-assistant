@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
-    branches: [ main, master ]
+    # branches: [ main, master ]
   schedule:
     # Run tests daily at 6 AM UTC to catch dependency issues
     - cron: '0 6 * * *'
