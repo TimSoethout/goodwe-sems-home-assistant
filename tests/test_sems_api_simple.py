@@ -106,6 +106,7 @@ class TestSemsApiSimple:
 
         result = self.api.getPowerStationId()
 
+        assert result is not None
         assert result == MOCK_POWER_STATION_ID
 
     def test_constants_available(self):
