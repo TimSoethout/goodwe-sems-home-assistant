@@ -462,6 +462,11 @@ def sensor_options_for_data(
                 None,
                 None,
                 SensorStateClass.MEASUREMENT,
+                # Note: for the dedicated "load-status" sensor we intentionally use
+                # gridStatus here instead of loadStatus. The "HomeKit Load" power
+                # sensor above uses loadStatus to determine the sign of the load
+                # power value itself, while this sensor exposes the load state using
+                # the same import/export (sign) convention as the grid power sensor.
                 custom_value_handler=status_value_handler(["powerflow", "gridStatus"]),
             ),
             SemsHomekitSensorType(
