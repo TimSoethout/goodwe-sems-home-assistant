@@ -49,8 +49,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.debug(
             "SEMS - No station ID provided, query SEMS API, using first found"
         )
-        powerStationId = await hass.async_add_executor_job(api.getPowerStationIds)
-        _LOGGER.debug("SEMS - Found power station IDs: %s", powerStationId)
+        powerStationId = await hass.async_add_executor_job(api.getPowerStationId)
+        _LOGGER.debug("SEMS - Found power station ID: %s", powerStationId)
 
         data[CONF_STATION_ID] = powerStationId
 

@@ -144,7 +144,7 @@ class TestSemsApi:
             json=station_response,
         )
 
-        result = self.api.getPowerStationIds()
+        result = self.api.getPowerStationId()
 
         assert result == MOCK_POWER_STATION_ID
 
@@ -310,7 +310,7 @@ class TestSemsApi:
         )
         requests_mock.post(endpoint, [{"json": resp} for resp in api_responses])
 
-        result = self.api.getPowerStationIds()
+        result = self.api.getPowerStationId()
 
         assert result == MOCK_POWER_STATION_ID
 
@@ -318,7 +318,7 @@ class TestSemsApi:
         """Test that OutOfRetries is raised when max retries exceeded."""
         with pytest.raises(OutOfRetries):
             # This should raise OutOfRetries immediately since maxTokenRetries=0
-            self.api.getPowerStationIds(maxTokenRetries=0)
+            self.api.getPowerStationId(maxTokenRetries=0)
 
 
 class TestOutOfRetries:

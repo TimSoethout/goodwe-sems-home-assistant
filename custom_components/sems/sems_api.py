@@ -190,16 +190,16 @@ class SemsApi:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             return None
 
-    def getPowerStationIds(
+    def getPowerStationId(
         self, renewToken: bool = False, maxTokenRetries: int = 2
-    ) -> dict[str, Any] | None:
-        """Get the power station ids from the SEMS API."""
+    ) -> str | None:
+        """Get the power station id from the SEMS API."""
         return self._make_api_call(
             _GetPowerStationIdByOwnerURLPart,
             data=None,
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
-            operation_name="getPowerStationIds API call",
+            operation_name="getPowerStationId API call",
         )
 
     def getData(

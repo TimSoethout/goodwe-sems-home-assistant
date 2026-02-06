@@ -96,16 +96,7 @@ class TestSemsApiSimple:
             "hasError": False,
             "code": 0,
             "msg": "操作成功",
-            "data": {
-                "list": [
-                    {
-                        "id": MOCK_POWER_STATION_ID,
-                        "name": "Test Solar Farm",
-                        "status": 1,
-                        "address": "Test City, Test Country",
-                    }
-                ]
-            },
+            "data": MOCK_POWER_STATION_ID,
         }
 
         requests_mock.post(
@@ -113,10 +104,9 @@ class TestSemsApiSimple:
             json=power_station_response,
         )
 
-        result = self.api.getPowerStationIds()
+        result = self.api.getPowerStationId()
 
-        assert result is not None
-        assert len(result) == 1
+        assert result == MOCK_POWER_STATION_ID
 
     def test_constants_available(self):
         """Test that anonymized test constants are available."""

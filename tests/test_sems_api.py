@@ -274,10 +274,10 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "_make_api_call")
     def test_get_power_station_ids(self, mock_api_call):
-        """Test getPowerStationIds method."""
+        """Test getPowerStationId method."""
         mock_api_call.return_value = "station123"
 
-        result = self.api.getPowerStationIds()
+        result = self.api.getPowerStationId()
 
         assert result == "station123"
         mock_api_call.assert_called_once_with(
@@ -285,7 +285,7 @@ class TestSemsApi:
             data=None,
             renewToken=False,
             maxTokenRetries=2,
-            operation_name="getPowerStationIds API call",
+            operation_name="getPowerStationId API call",
         )
 
     @patch.object(SemsApi, "_make_api_call")
