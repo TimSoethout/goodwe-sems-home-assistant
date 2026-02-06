@@ -41,6 +41,70 @@ In the home assistant GUI, go to `Configuration` > `Integrations` and click the 
 
 Fill in the required configuration and it should find your inverters.
 
+## How to Change or Check Configuration
+
+### Checking Current Configuration
+
+To view the current configuration of your GoodWe SEMS integration:
+
+1. Go to `Settings` > `Devices & Services` (or `Configuration` > `Integrations` in older HA versions)
+2. Find the `GoodWe SEMS API` integration
+3. Click on it to view the configured entities and devices
+
+### Changing Username, Password, or Other Settings
+
+**Important**: The GoodWe SEMS integration currently does not support changing configuration settings (username, password, station ID, or scan interval) through the Home Assistant user interface after initial setup.
+
+To change your configuration, you need to:
+
+1. **Remove the existing integration:**
+   - Go to `Settings` > `Devices & Services` > `GoodWe SEMS API`
+   - Click the three dots menu (⋮) on the integration card
+   - Select `Delete`
+   - Confirm the deletion
+
+2. **Re-add the integration with new settings:**
+   - Click the `Add Integration` button
+   - Search for `GoodWe SEMS API`
+   - Enter your new credentials or settings
+   - Complete the setup process
+
+**Note**: When you delete and re-add the integration:
+- All entity IDs will remain the same (based on device/sensor names)
+- Historical data in Home Assistant's database will be preserved
+- Any dashboards, automations, or scripts referencing the entities will continue to work
+- You may want to restart Home Assistant after re-adding to ensure all automations reload properly
+
+### Common Scenarios for Changing Configuration
+
+#### Changing SEMS Account Credentials
+
+If you need to change your username or password (e.g., after a password reset on the SEMS portal):
+- Follow the removal and re-add process described above
+- Use your new credentials during the setup
+
+#### Switching Between Regular and Visitor Account
+
+If you want to switch from a regular account to a visitor account (or vice versa):
+- Create the visitor account first via the SEMS portal (see below)
+- Remove the integration and re-add it with the visitor account credentials
+
+For visitor account creation:
+- Login to www.semsportal.com
+- Go to https://semsportal.com/powerstation/stationInfonew
+- Create a new visitor account
+- Login to the visitor account once to accept the EULA
+- Use these credentials when re-adding the integration
+
+#### Adjusting Scan Interval
+
+To change how frequently the integration polls the SEMS API:
+- Remove and re-add the integration
+- During setup, specify your desired scan interval (in seconds)
+- Default is 60 seconds (1 minute)
+
+**Recommendation**: Only decrease the scan interval if necessary, as the SEMS API can be slow and may result in timeout errors if polled too frequently.
+
 ### Optional: control the invertor power output via the "switch" entity
 
 It is possible to temporarily pause the energy production via "downtime" functionality available on the invertor. This is exposed as a switch and can be used in your own automations.
