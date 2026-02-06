@@ -32,6 +32,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsConfigEntry, SemsCoordinator, SemsData
 from .const import (
@@ -47,6 +48,11 @@ from .device import device_info_for_inverter
 _LOGGER = logging.getLogger(__name__)
 
 type SemsValuePath = list[str | int]
+
+
+def convert_status_to_label(status: Any) -> str:
+    """Convert numeric status code to human-readable label."""
+    return STATUS_LABELS.get(int(status), "Unknown")
 
 
 @dataclass(slots=True)
@@ -120,9 +126,7 @@ def sensor_options_for_data(
                 f"{serial_number}-status",
                 [*path_to_inverter, "status"],
                 "Status",
-                data_type_converter=lambda status, labels=STATUS_LABELS: labels.get(
-                    int(status), "Unknown"
-                ),
+                data_type_converter=convert_status_to_label,
             ),
             SemsInverterSensorType(
                 device_info,
