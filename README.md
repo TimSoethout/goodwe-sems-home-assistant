@@ -174,7 +174,11 @@ station details or personal information before sharing logs.
 
 * Sometimes the SEMS API is a bit slow, so time-out messages may occur in the log as `[ERROR]`. The component should continue to work normally and try fetch again the next minute.
 
-## Development setup
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on how to contribute to this project.
+
+### Quick Development Setup
 
 Open this repository in VS Code with the Dev Containers extension and choose
 **Reopen in Container**. The container automatically:
@@ -220,7 +224,7 @@ The Home Assistant log is available at `/tmp/home-assistant.log` inside the
 container. VS Code tasks are provided for testing, linting, bootstrapping, and
 starting Home Assistant.
 
-## Linting
+### Linting
 
 Python 3.14 is the only supported and tested runtime for this integration.
 
@@ -238,6 +242,8 @@ To fix lint issues locally:
 ruff check --fix custom_components/
 ruff format custom_components/
 ```
+
+For more information, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits
 
