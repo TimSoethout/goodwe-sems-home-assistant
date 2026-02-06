@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
@@ -21,7 +21,7 @@ from .const import (
     GOODWE_SPELLING,
     PLATFORMS,
 )
-from .sems_api import SemsApi
+from .sems_api import AuthenticationError, SemsApi
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -104,6 +104,15 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             result = await self.hass.async_add_executor_job(
                 self.sems_api.getData, self.station_id
             )
+        except AuthenticationError as err:
+            _LOGGER.warning(
+                "Authentication failed for SEMS API, triggering reauthentication: %s",
+                err,
+            )
+            # Trigger reauthentication flow
+            if self.config_entry.state != ConfigEntryState.SETUP_RETRY:
+                self.config_entry.async_start_reauth(self.hass)
+            raise UpdateFailed(f"Authentication failed: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:

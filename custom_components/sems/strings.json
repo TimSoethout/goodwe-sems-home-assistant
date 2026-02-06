@@ -12,6 +12,14 @@
         "data_description": {
           "powerstation_id": "[%key:common::config_flow::data_description::powerstation_id%]"
         }
+      },
+      "reauth_confirm": {
+        "title": "[%key:common::config_flow::title::reauth%]",
+        "description": "The credentials for {username} are no longer valid. Please enter new credentials.",
+        "data": {
+          "username": "[%key:common::config_flow::data::username%]",
+          "password": "[%key:common::config_flow::data::password%]"
+        }
       }
     },
     "error": {
@@ -21,6 +29,17 @@
     },
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure GoodWe SEMS",
+        "description": "Update the integration settings",
+        "data": {
+          "scan_interval": "[%key:common::config_flow::data::scan_interval%]"
+        }
+      }
     }
   }
 }
