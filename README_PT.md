@@ -32,9 +32,9 @@ Neste exemplo o ID da Planta é: 12345678-1234-1234-1234-123456789012
 
 No HomeAssistant, ir a `Configuration` > `Integrations` ('Configuração' > 'Integrações') e clicar em `Add Integration` ('Adicionar Integração'). Pesquisar por `GoodWe SEMS API`
 
-Preencher a informação pedida e de imeadiato deve aparecer a lista de inversores.
+Preencher a informação pedida e de imediato deve aparecer a lista de inversores.
 
-Nota de que as alterações ao 'configuraion.yaml' não são mais necessárias e podem ser removidas.
+Nota de que as alterações ao 'configuration.yaml' não são mais necessárias e podem ser removidas.
 
 ## Como Alterar ou Verificar a Configuração
 
