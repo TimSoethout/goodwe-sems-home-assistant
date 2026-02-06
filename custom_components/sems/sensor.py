@@ -32,6 +32,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsConfigEntry, SemsCoordinator, SemsData
 from .const import (
@@ -706,6 +707,8 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
     def _get_data_dict(self) -> dict[str, Any] | None:
         """Return the dict to read values from."""
 
+        if self.coordinator.data is None:
+            return None
         return self.coordinator.data.inverters
 
     @property
@@ -746,6 +749,8 @@ class SemsInverterSensor(SemsSensor):
     def _get_data_dict(self) -> dict[str, Any] | None:
         """Return inverter dict."""
 
+        if self.coordinator.data is None:
+            return None
         return self.coordinator.data.inverters
 
     @property
@@ -760,6 +765,9 @@ class SemsInverterSensor(SemsSensor):
 
         inverter_sn = self._value_path[0]
         if not isinstance(inverter_sn, str):
+            return None
+
+        if self.coordinator.data is None:
             return None
 
         inverter_data = self.coordinator.data.inverters.get(inverter_sn)
@@ -790,4 +798,6 @@ class SemsHomekitSensor(SemsSensor):
     def _get_data_dict(self) -> dict[str, Any] | None:
         """Return HomeKit dict."""
 
+        if self.coordinator.data is None:
+            return None
         return self.coordinator.data.homekit
