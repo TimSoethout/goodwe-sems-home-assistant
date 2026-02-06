@@ -105,13 +105,22 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 self.sems_api.getData, self.station_id
             )
         except AuthenticationError as err:
-            _LOGGER.warning(
-                "Authentication failed for SEMS API, triggering reauthentication: %s",
-                err,
-            )
-            # Trigger reauthentication flow
-            if self.config_entry.state != ConfigEntryState.SETUP_RETRY:
+            # Trigger reauthentication flow if not already in progress
+            if self.config_entry.state not in (
+                ConfigEntryState.SETUP_RETRY,
+                ConfigEntryState.SETUP_ERROR,
+            ):
+                _LOGGER.warning(
+                    "Authentication failed for SEMS API, triggering reauthentication: %s",
+                    err,
+                )
                 self.config_entry.async_start_reauth(self.hass)
+            else:
+                _LOGGER.debug(
+                    "Authentication failed during setup (state: %s), not triggering reauth: %s",
+                    self.config_entry.state,
+                    err,
+                )
             raise UpdateFailed(f"Authentication failed: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
