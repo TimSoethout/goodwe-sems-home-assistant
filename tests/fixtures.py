@@ -31,6 +31,13 @@ def _load_json_fixture(relative_path: str) -> dict[str, Any]:
     return json.loads(fixture_path.read_text(encoding="utf-8"))
 
 
+def load_json_fixture(relative_path: str) -> dict[str, Any]:
+    """Public helper for loading JSON fixtures from the test data directory.
+
+    This wraps the internal `_load_json_fixture` so that other test modules
+    can import and reuse a single canonical implementation.
+    """
+    return _load_json_fixture(relative_path)
 # Anonymized login response based on SEMS API structure
 MOCK_LOGIN_RESPONSE = {
     "language": "en",
