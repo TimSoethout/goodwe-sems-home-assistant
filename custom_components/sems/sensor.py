@@ -19,7 +19,6 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
-    Platform,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
@@ -603,7 +602,7 @@ def _migrate_to_new_unique_id(hass: HomeAssistant, sn: str) -> None:
     old_unique_id = sn
     new_unique_id = f"{old_unique_id}-power"
     _LOGGER.debug("Old unique id: %s; new unique id: %s", old_unique_id, new_unique_id)
-    entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, old_unique_id)
+    entity_id = ent_reg.async_get_entity_id("sensor", DOMAIN, old_unique_id)
     _LOGGER.debug("Entity ID: %s", entity_id)
     if entity_id is not None:
         try:
