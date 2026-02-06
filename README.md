@@ -51,59 +51,56 @@ To view the current configuration of your GoodWe SEMS integration:
 2. Find the `GoodWe SEMS API` integration
 3. Click on it to view the configured entities and devices
 
-### Changing Username, Password, or Other Settings
+### Changing Username or Password (Reauthentication)
 
-**Important**: The GoodWe SEMS integration currently does not support changing configuration settings (username, password, station ID, or scan interval) through the Home Assistant user interface after initial setup.
+If your SEMS account credentials change (e.g., after a password reset), Home Assistant will automatically detect authentication failures and prompt you to re-enter your credentials:
 
-To change your configuration, you need to:
+1. When authentication fails, you'll see a notification in Home Assistant
+2. Click on the notification or go to `Settings` > `Devices & Services`
+3. Find the `GoodWe SEMS API` integration with the "Authentication required" message
+4. Click `REAUTHENTICATE`
+5. Enter your new username and password
+6. Click `Submit`
 
-1. **Remove the existing integration:**
-   - Go to `Settings` > `Devices & Services` > `GoodWe SEMS API`
-   - Click the three dots menu (⋮) on the integration card
-   - Select `Delete`
-   - Confirm the deletion
+The integration will update with your new credentials without losing any configuration, historical data, or entity IDs.
 
-2. **Re-add the integration with new settings:**
-   - Click the `Add Integration` button
-   - Search for `GoodWe SEMS API`
-   - Enter your new credentials or settings
-   - Complete the setup process
+**Manual Reauthentication:**
+If you want to update credentials proactively (before they fail):
+1. Go to `Settings` > `Devices & Services`
+2. Find the `GoodWe SEMS API` integration
+3. Click the three dots menu (⋮) on the integration card
+4. Select `Reauthenticate` from the menu
+5. Enter your new credentials
 
-**Note**: When you delete and re-add the integration:
-- All entity IDs will remain the same (based on device/sensor names)
-- Historical data in Home Assistant's database will be preserved
-- Any dashboards, automations, or scripts referencing the entities will continue to work
-- You may want to restart Home Assistant after re-adding to ensure all automations reload properly
+### Changing Scan Interval
 
-### Common Scenarios for Changing Configuration
+To adjust how frequently the integration polls the SEMS API:
 
-#### Changing SEMS Account Credentials
+1. Go to `Settings` > `Devices & Services`
+2. Find the `GoodWe SEMS API` integration
+3. Click `CONFIGURE` (or the three dots menu ⋮ > `Configure`)
+4. Adjust the `Update Interval (seconds)` setting
+5. Click `Submit`
 
-If you need to change your username or password (e.g., after a password reset on the SEMS portal):
-- Follow the removal and re-add process described above
-- Use your new credentials during the setup
+The integration will reload automatically with the new scan interval.
 
-#### Switching Between Regular and Visitor Account
-
-If you want to switch from a regular account to a visitor account (or vice versa):
-- Create the visitor account first via the SEMS portal (see below)
-- Remove the integration and re-add it with the visitor account credentials
-
-For visitor account creation:
-- Login to www.semsportal.com
-- Go to https://semsportal.com/powerstation/stationInfonew
-- Create a new visitor account
-- Login to the visitor account once to accept the EULA
-- Use these credentials when re-adding the integration
-
-#### Adjusting Scan Interval
-
-To change how frequently the integration polls the SEMS API:
-- Remove and re-add the integration
-- During setup, specify your desired scan interval (in seconds)
-- Default is 60 seconds (1 minute)
+**Default**: 60 seconds (1 minute)
 
 **Recommendation**: Only decrease the scan interval if necessary, as the SEMS API can be slow and may result in timeout errors if polled too frequently.
+
+### Switching Between Regular and Visitor Account
+
+If you want to switch from a regular account to a visitor account (or vice versa):
+
+1. First, create the visitor account via the SEMS portal:
+   - Login to www.semsportal.com
+   - Go to https://semsportal.com/powerstation/stationInfonew
+   - Create a new visitor account
+   - Login to the visitor account once to accept the EULA
+
+2. Then reauthenticate in Home Assistant:
+   - Follow the reauthentication steps above
+   - Use the visitor account credentials
 
 ### Optional: control the invertor power output via the "switch" entity
 
