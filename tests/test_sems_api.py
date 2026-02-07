@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch, MagicMock
 import pytest
 import requests
 
-from custom_components.sems.sems_api import SemsApi, OutOfRetries
+from custom_components.sems.sems_api import SemsApi, OutOfRetries, AuthenticationError
 
 
 class TestSemsApi:
@@ -233,11 +233,10 @@ class TestSemsApi:
         self.api._token = None
         mock_login.return_value = None
 
-        result = self.api._make_api_call(
-            "/test/endpoint", operation_name="test API call"
-        )
-
-        assert result is None
+        with pytest.raises(AuthenticationError, match="Authentication failed"):
+            self.api._make_api_call(
+                "/test/endpoint", operation_name="test API call"
+            )
 
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_make_http_request")

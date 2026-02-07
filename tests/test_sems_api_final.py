@@ -3,7 +3,7 @@
 import pytest
 import requests
 
-from custom_components.sems.sems_api import OutOfRetries, SemsApi
+from custom_components.sems.sems_api import OutOfRetries, SemsApi, AuthenticationError
 
 # Test data constants - anonymized for privacy
 MOCK_INVERTER_SN = "GW0000SN000TEST1"
@@ -226,16 +226,15 @@ class TestSemsApi:
         assert result["inverter"][0]["eday"] == 8.9
 
     def test_get_data_returns_empty_on_failure(self, requests_mock):
-        """Test getData returns empty dict on failure."""
+        """Test getData raises AuthenticationError on login failure."""
         # Mock login failure
         login_response = {"code": 1001, "msg": "Invalid credentials", "data": None}
         requests_mock.post(
             "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
         )
 
-        result = self.api.getData("station123")
-
-        assert result == {}
+        with pytest.raises(AuthenticationError, match="Authentication failed"):
+            self.api.getData("station123")
 
     def test_change_status_success(self, requests_mock):
         """Test successful inverter status change."""
