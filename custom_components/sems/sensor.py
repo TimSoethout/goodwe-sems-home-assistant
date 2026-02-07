@@ -505,12 +505,12 @@ def sensor_options_for_data(
             ),
         ]
         if data.homekit.get(GOODWE_SPELLING.hasEnergyStatisticsCharts):
-            if data.homekit.get(GOODWE_SPELLING.energyStatisticsCharts):
+            if data.homekit.get("Charts_buy") is not None:
                 sensors += [
                     SemsHomekitSensorType(
                         device_info,
                         f"{inverter_serial_number}-import-energy",
-                        [GOODWE_SPELLING.energyStatisticsCharts, "buy"],
+                        ["Charts_buy"],
                         "SEMS Import",
                         SensorDeviceClass.ENERGY,
                         UnitOfEnergy.KILO_WATT_HOUR,
@@ -519,19 +519,19 @@ def sensor_options_for_data(
                     SemsHomekitSensorType(
                         device_info,
                         f"{inverter_serial_number}-export-energy",
-                        [GOODWE_SPELLING.energyStatisticsCharts, "sell"],
+                        ["Charts_sell"],
                         "SEMS Export",
                         SensorDeviceClass.ENERGY,
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
                 ]
-            if data.homekit.get(GOODWE_SPELLING.energyStatisticsTotals):
+            if data.homekit.get("Totals_buy") is not None:
                 sensors += [
                     SemsHomekitSensorType(
                         device_info,
                         f"{inverter_serial_number}-import-energy-total",
-                        [GOODWE_SPELLING.energyStatisticsTotals, "buy"],
+                        ["Totals_buy"],
                         "SEMS Total Import",
                         SensorDeviceClass.ENERGY,
                         UnitOfEnergy.KILO_WATT_HOUR,
@@ -540,7 +540,7 @@ def sensor_options_for_data(
                     SemsHomekitSensorType(
                         device_info,
                         f"{inverter_serial_number}-export-energy-total",
-                        [GOODWE_SPELLING.energyStatisticsTotals, "sell"],
+                        ["Totals_sell"],
                         "SEMS Total Export",
                         SensorDeviceClass.ENERGY,
                         UnitOfEnergy.KILO_WATT_HOUR,
