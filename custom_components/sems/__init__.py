@@ -163,6 +163,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                         **{f"Totals_{key}": val for key, val in totals.items()},
                     }
 
+                # Add the flag so sensors can check if energy statistics are available
+                powerflow[GOODWE_SPELLING.hasEnergyStatisticsCharts] = (
+                    has_energy_statistics_charts
+                )
+
                 homekit_data = result.get(GOODWE_SPELLING.homeKit)
                 if not isinstance(homekit_data, dict):
                     homekit_data = {}

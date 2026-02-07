@@ -379,3 +379,174 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
     }
 
     assert actual_unique_ids == expected_unique_ids
+
+
+async def test_import_export_sensors_with_energy_statistics(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test that import/export sensors are created when energy statistics data is present."""
+    del enable_custom_integrations
+
+    # Mock data with energy statistics charts enabled
+    mock_data_with_charts = {
+        "inverter": [
+            {
+                "invert_full": {
+                    "name": "Test Inverter",
+                    "sn": "GW0000SN000TEST1",
+                    "powerstation_id": MOCK_POWER_STATION_ID,
+                    "status": 1,
+                    "capacity": 3.0,
+                    "pac": 589,
+                    "etotal": 18843.2,
+                    "hour_total": 1234,
+                    "tempperature": 32.0,
+                    "eday": 8.9,
+                    "thismonthetotle": 85.7,
+                    "lastmonthetotle": 76.8,
+                    "iday": 1.96,
+                    "itotal": 4145.5,
+                }
+            }
+        ],
+        "kpi": {
+            "currency": "EUR",
+            "total_power": 18843.2,
+        },
+        "homKit": {
+            "homeKitLimit": False,
+            "sn": None,
+        },
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": True,
+        "powerflow": {
+            "pv": "0(W)",
+            "pvStatus": 0,
+            "load": "100(W)",
+            "loadStatus": 1,
+            "grid": "100(W)",
+            "gridStatus": -1,
+            "bettery": "0(W)",
+            "betteryStatus": 0,
+            "genset": "0(W)",
+            "soc": 0,
+        },
+        "energeStatisticsCharts": {
+            "buy": 5.12,
+            "sell": 23.22,
+        },
+        "energeStatisticsTotals": {
+            "buy": 3977.33,
+            "sell": 12901.2,
+        },
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=mock_data_with_charts,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    sn = mock_data_with_charts["inverter"][0]["invert_full"]["sn"]
+    expected_unique_ids = {
+        # Regular inverter sensors
+        f"{sn}-capacity",
+        f"{sn}-eday",
+        f"{sn}-energy",
+        f"{sn}-fac1",
+        f"{sn}-fac2",
+        f"{sn}-fac3",
+        f"{sn}-hour-total",
+        f"{sn}-iac1",
+        f"{sn}-iac2",
+        f"{sn}-iac3",
+        f"{sn}-ibattery1",
+        f"{sn}-iday",
+        f"{sn}-itotal",
+        f"{sn}-lastmonthetotle",
+        f"{sn}-power",
+        f"{sn}-status",
+        f"{sn}-switch",
+        f"{sn}-temperature",
+        f"{sn}-thismonthetotle",
+        f"{sn}-vac1",
+        f"{sn}-vac2",
+        f"{sn}-vac3",
+        f"{sn}-vbattery1",
+        # HomeKit/powerflow sensors (no HomeKit serial -> fallback to `powerflow`)
+        "powerflow",
+        "powerflow-battery",
+        "powerflow-genset",
+        "powerflow-grid",
+        "powerflow-load-status",
+        "powerflow-pv",
+        "powerflow-soc",
+        # Import/Export sensors (restored by the fix)
+        "powerflow-import-energy",
+        "powerflow-export-energy",
+        "powerflow-import-energy-total",
+        "powerflow-export-energy-total",
+    }
+
+    ent_reg = er.async_get(hass)
+    actual_unique_ids = {
+        entity.unique_id
+        for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+    }
+
+    assert actual_unique_ids == expected_unique_ids
+
+    # Verify the import sensor exists and has correct attributes
+    import_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-import-energy"
+    )
+    assert import_entity_id is not None
+
+    import_state = hass.states.get(import_entity_id)
+    assert import_state is not None
+    assert float(import_state.state) == 5.12
+    assert import_state.attributes.get("unit_of_measurement") == "kWh"
+
+    # Verify the export sensor exists and has correct attributes
+    export_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-export-energy"
+    )
+    assert export_entity_id is not None
+
+    export_state = hass.states.get(export_entity_id)
+    assert export_state is not None
+    assert float(export_state.state) == 23.22
+    assert export_state.attributes.get("unit_of_measurement") == "kWh"
+
+    # Verify the total import sensor
+    total_import_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-import-energy-total"
+    )
+    assert total_import_entity_id is not None
+
+    total_import_state = hass.states.get(total_import_entity_id)
+    assert total_import_state is not None
+    assert float(total_import_state.state) == 3977.33
+
+    # Verify the total export sensor
+    total_export_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-export-energy-total"
+    )
+    assert total_export_entity_id is not None
+
+    total_export_state = hass.states.get(total_export_entity_id)
+    assert total_export_state is not None
+    assert float(total_export_state.state) == 12901.2
