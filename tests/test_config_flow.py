@@ -291,7 +291,7 @@ class TestOptionsFlow:
 
         # Mock the async_reload to avoid actual reload
         with patch.object(
-            hass.config_entries, "async_reload", return_value=AsyncMock()
+            hass.config_entries, "async_reload", new_callable=AsyncMock
         ) as mock_reload:
             result = await hass.config_entries.options.async_init(entry.entry_id)
 
