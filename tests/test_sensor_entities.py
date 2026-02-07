@@ -2,75 +2,23 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
-from custom_components.sems import SemsData
-from custom_components.sems.const import CONF_STATION_ID, DOMAIN
-from custom_components.sems.sensor import sensor_options_for_data
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
+from custom_components.sems import SemsData
+from custom_components.sems.const import CONF_STATION_ID, DOMAIN
+from custom_components.sems.sensor import sensor_options_for_data
 
-def _load_json_fixture(relative_path: str) -> dict[str, Any]:
-    fixture_path = Path(__file__).resolve().parent / relative_path
-    return json.loads(fixture_path.read_text(encoding="utf-8"))
-
-
-MOCK_GET_DATA_ACTUAL_JSON: dict[str, Any] = _load_json_fixture(
-    "test-data/20260110_singleInverter_getData.json"
+from .fixtures import (
+    MOCK_GET_DATA_ACTUAL_JSON,
+    MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
 )
 
-# Coordinator-compatible getData() result that includes HomeKit/powerflow data.
-MOCK_HOMEKIT_GET_DATA: dict[str, Any] = {
-    "inverter": [
-        {
-            "invert_full": {
-                "name": "Test Inverter",
-                "sn": "GW0000SN000TEST1",
-                "powerstation_id": "12345678-1234-5678-9abc-123456789abc",
-                "status": 1,
-                "capacity": 3.0,
-                "pac": 589,
-                "etotal": 18843.2,
-                "hour_total": 1234,
-                "tempperature": 32.0,
-                "eday": 8.9,
-                "thismonthetotle": 85.7,
-                "lastmonthetotle": 76.8,
-                "iday": 1.96,
-                "itotal": 4145.5,
-            }
-        }
-    ],
-    "kpi": {
-        "currency": "EUR",
-        "total_power": 18843.2,
-    },
-    "homKit": {
-        "homeKitLimit": False,
-        "sn": None,
-    },
-    "hasPowerflow": True,
-    "hasEnergeStatisticsCharts": False,
-    "powerflow": {
-        "pv": "0(W)",
-        "pvStatus": 0,
-        "load": "100(W)",
-        "loadStatus": 1,
-        "grid": "100(W)",
-        "gridStatus": -1,
-        "bettery": "0(W)",
-        "betteryStatus": 0,
-        "genset": "0(W)",
-        "soc": 0,
-    },
-}
 
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
 
@@ -331,12 +279,12 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
 
     with patch(
         "custom_components.sems.sems_api.SemsApi.getData",
-        return_value=MOCK_HOMEKIT_GET_DATA,
+        return_value=MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    sn = MOCK_HOMEKIT_GET_DATA["inverter"][0]["invert_full"]["sn"]
+    sn = MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON["inverter"][0]["invert_full"]["sn"]
     expected_unique_ids = {
         # Regular inverter sensors
         f"{sn}-capacity",
@@ -351,6 +299,10 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         f"{sn}-iac3",
         f"{sn}-ibattery1",
         f"{sn}-iday",
+        f"{sn}-ipv1",
+        f"{sn}-ipv2",
+        f"{sn}-ipv3",
+        f"{sn}-ipv4",
         f"{sn}-itotal",
         f"{sn}-lastmonthetotle",
         f"{sn}-power",
@@ -362,6 +314,10 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         f"{sn}-vac2",
         f"{sn}-vac3",
         f"{sn}-vbattery1",
+        f"{sn}-vpv1",
+        f"{sn}-vpv2",
+        f"{sn}-vpv3",
+        f"{sn}-vpv4",
         # HomeKit/powerflow sensors (no HomeKit serial -> fallback to `powerflow`)
         "powerflow",
         "powerflow-battery",
@@ -370,6 +326,11 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         "powerflow-load-status",
         "powerflow-pv",
         "powerflow-soc",
+        # Import/Export sensors
+        "powerflow-import-energy",
+        "powerflow-export-energy",
+        "powerflow-import-energy-total",
+        "powerflow-export-energy-total",
     }
 
     ent_reg = er.async_get(hass)
@@ -388,60 +349,6 @@ async def test_import_export_sensors_with_energy_statistics(
     """Test that import/export sensors are created when energy statistics data is present."""
     del enable_custom_integrations
 
-    # Mock data with energy statistics charts enabled
-    mock_data_with_charts = {
-        "inverter": [
-            {
-                "invert_full": {
-                    "name": "Test Inverter",
-                    "sn": "GW0000SN000TEST1",
-                    "powerstation_id": MOCK_POWER_STATION_ID,
-                    "status": 1,
-                    "capacity": 3.0,
-                    "pac": 589,
-                    "etotal": 18843.2,
-                    "hour_total": 1234,
-                    "tempperature": 32.0,
-                    "eday": 8.9,
-                    "thismonthetotle": 85.7,
-                    "lastmonthetotle": 76.8,
-                    "iday": 1.96,
-                    "itotal": 4145.5,
-                }
-            }
-        ],
-        "kpi": {
-            "currency": "EUR",
-            "total_power": 18843.2,
-        },
-        "homKit": {
-            "homeKitLimit": False,
-            "sn": None,
-        },
-        "hasPowerflow": True,
-        "hasEnergeStatisticsCharts": True,
-        "powerflow": {
-            "pv": "0(W)",
-            "pvStatus": 0,
-            "load": "100(W)",
-            "loadStatus": 1,
-            "grid": "100(W)",
-            "gridStatus": -1,
-            "bettery": "0(W)",
-            "betteryStatus": 0,
-            "genset": "0(W)",
-            "soc": 0,
-        },
-        "energeStatisticsCharts": {
-            "buy": 5.12,
-            "sell": 23.22,
-        },
-        "energeStatisticsTotals": {
-            "buy": 3977.33,
-            "sell": 12901.2,
-        },
-    }
-
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Test",
@@ -455,59 +362,12 @@ async def test_import_export_sensors_with_energy_statistics(
 
     with patch(
         "custom_components.sems.sems_api.SemsApi.getData",
-        return_value=mock_data_with_charts,
+        return_value=MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    sn = mock_data_with_charts["inverter"][0]["invert_full"]["sn"]
-    expected_unique_ids = {
-        # Regular inverter sensors
-        f"{sn}-capacity",
-        f"{sn}-eday",
-        f"{sn}-energy",
-        f"{sn}-fac1",
-        f"{sn}-fac2",
-        f"{sn}-fac3",
-        f"{sn}-hour-total",
-        f"{sn}-iac1",
-        f"{sn}-iac2",
-        f"{sn}-iac3",
-        f"{sn}-ibattery1",
-        f"{sn}-iday",
-        f"{sn}-itotal",
-        f"{sn}-lastmonthetotle",
-        f"{sn}-power",
-        f"{sn}-status",
-        f"{sn}-switch",
-        f"{sn}-temperature",
-        f"{sn}-thismonthetotle",
-        f"{sn}-vac1",
-        f"{sn}-vac2",
-        f"{sn}-vac3",
-        f"{sn}-vbattery1",
-        # HomeKit/powerflow sensors (no HomeKit serial -> fallback to `powerflow`)
-        "powerflow",
-        "powerflow-battery",
-        "powerflow-genset",
-        "powerflow-grid",
-        "powerflow-load-status",
-        "powerflow-pv",
-        "powerflow-soc",
-        # Import/Export sensors (restored by the fix)
-        "powerflow-import-energy",
-        "powerflow-export-energy",
-        "powerflow-import-energy-total",
-        "powerflow-export-energy-total",
-    }
-
     ent_reg = er.async_get(hass)
-    actual_unique_ids = {
-        entity.unique_id
-        for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
-    }
-
-    assert actual_unique_ids == expected_unique_ids
 
     # Verify the import sensor exists and has correct attributes
     import_entity_id = ent_reg.async_get_entity_id(

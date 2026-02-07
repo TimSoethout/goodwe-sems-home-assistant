@@ -38,6 +38,8 @@ def load_json_fixture(relative_path: str) -> dict[str, Any]:
     can import and reuse a single canonical implementation.
     """
     return _load_json_fixture(relative_path)
+
+
 # Anonymized login response based on SEMS API structure
 MOCK_LOGIN_RESPONSE = {
     "language": "en",
@@ -445,6 +447,10 @@ MOCK_HOMEKIT_GET_DATA = {
 
 MOCK_GET_DATA_ACTUAL_JSON: dict[str, Any] = _load_json_fixture(
     "tests/test-data/20260110_singleInverter_getData.json"
+)
+
+MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON: dict[str, Any] = _load_json_fixture(
+    "tests/test-data/20250623_homekit_getData.json"
 )
 
 # Anonymized inverter serial number for testing
