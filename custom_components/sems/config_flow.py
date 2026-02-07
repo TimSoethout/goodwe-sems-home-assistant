@@ -133,14 +133,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             # Validate the new credentials
-            await validate_input(
-                self.hass,
-                {
-                    CONF_USERNAME: user_input[CONF_USERNAME],
-                    CONF_PASSWORD: user_input[CONF_PASSWORD],
-                    CONF_STATION_ID: reauth_entry.data.get(CONF_STATION_ID),
-                },
-            )
+            # Only include station_id if it's a valid string
+            validation_data = {
+                CONF_USERNAME: user_input[CONF_USERNAME],
+                CONF_PASSWORD: user_input[CONF_PASSWORD],
+            }
+            station_id = reauth_entry.data.get(CONF_STATION_ID)
+            if isinstance(station_id, str) and station_id:
+                validation_data[CONF_STATION_ID] = station_id
+
+            await validate_input(self.hass, validation_data)
         except CannotConnect:
             errors["base"] = "cannot_connect"
         except InvalidAuth:
@@ -204,17 +206,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     ) -> config_entries.ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
-            # Update the scan interval in config entry data
-            self.hass.config_entries.async_update_entry(
-                self.config_entry,
-                data={
-                    **self.config_entry.data,
-                    CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
-                },
-            )
-            # Reload the integration for changes to take effect
-            await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-            return self.async_create_entry(title="", data={})
+            # Return the options to be stored in config_entry.options
+            return self.async_create_entry(title="", data=user_input)
+
+        # Get current scan interval from options (with fallback to data for migration)
+        current_scan_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
 
         return self.async_show_form(
             step_id="init",
@@ -222,9 +221,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     vol.Required(
                         CONF_SCAN_INTERVAL,
-                        default=self.config_entry.data.get(
-                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                        ),
+                        default=current_scan_interval,
                     ): int,
                 }
             ),

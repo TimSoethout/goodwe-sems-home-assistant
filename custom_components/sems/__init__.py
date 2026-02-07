@@ -62,7 +62,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool
     await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Register options update listener
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> None:
+    """Reload config entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
@@ -80,9 +88,13 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         self.sems_api = sems_api
         self.station_id = entry.data[CONF_STATION_ID]
 
-        update_interval = timedelta(
-            seconds=entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        # Read scan_interval from options (with fallback to data for migration)
+        scan_interval = entry.options.get(
+            CONF_SCAN_INTERVAL,
+            entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
         )
+        update_interval = timedelta(seconds=scan_interval)
+
         super().__init__(
             hass,
             _LOGGER,

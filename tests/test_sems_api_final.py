@@ -225,7 +225,7 @@ class TestSemsApi:
         assert result["inverter"][0]["out_pac"] == 589.0
         assert result["inverter"][0]["eday"] == 8.9
 
-    def test_get_data_returns_empty_on_failure(self, requests_mock):
+    def test_get_data_raises_authentication_error_on_failure(self, requests_mock):
         """Test getData raises AuthenticationError on login failure."""
         # Mock login failure
         login_response = {"code": 1001, "msg": "Invalid credentials", "data": None}

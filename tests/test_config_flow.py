@@ -1,6 +1,6 @@
 """Tests for the SEMS config flow."""
 
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant import config_entries, data_entry_flow
@@ -8,12 +8,6 @@ from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.sems.config_flow import (
-    CannotConnect,
-    ConfigFlow,
-    InvalidAuth,
-    OptionsFlowHandler,
-)
 from custom_components.sems.const import CONF_STATION_ID, DEFAULT_SCAN_INTERVAL, DOMAIN
 
 
@@ -289,20 +283,16 @@ class TestOptionsFlow:
         )
         entry.add_to_hass(hass)
 
-        # Mock the async_reload to avoid actual reload
-        with patch.object(
-            hass.config_entries, "async_reload", new_callable=AsyncMock
-        ) as mock_reload:
-            result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_init(entry.entry_id)
 
-            result = await hass.config_entries.options.async_configure(
-                result["flow_id"],
-                user_input={CONF_SCAN_INTERVAL: 120},
-            )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={CONF_SCAN_INTERVAL: 120},
+        )
 
-            assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-            assert entry.data[CONF_SCAN_INTERVAL] == 120
-            mock_reload.assert_called_once_with(entry.entry_id)
+        assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+        # Check that the scan_interval is now in options
+        assert result["data"][CONF_SCAN_INTERVAL] == 120
 
     async def test_options_flow_default_value(self, hass: HomeAssistant):
         """Test options flow shows default value."""
