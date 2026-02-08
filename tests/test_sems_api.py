@@ -5,7 +5,12 @@ from unittest.mock import Mock, patch, MagicMock
 import pytest
 import requests
 
-from custom_components.sems.sems_api import SemsApi, OutOfRetries
+from custom_components.sems.sems_api import OutOfRetries, SemsApi
+
+# Test data constants - anonymized for privacy
+MOCK_INVERTER_SN = "GW0000SN000TEST1"
+MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
+SUCCESS_MESSAGE = "操作成功"
 
 
 class TestSemsApi:
@@ -191,6 +196,72 @@ class TestSemsApi:
 
             assert result is False
 
+    def test_successful_login_real_structure(self, requests_mock):
+        """Test successful login token retrieval with real SEMS API response structure."""
+        login_response = {
+            "language": "en",
+            "function": [
+                "ADD",
+                "VIEW",
+                "EDIT",
+                "DELETE",
+                "INVERTER_A",
+                "INVERTER_E",
+                "INVERTER_D",
+            ],
+            "hasError": False,
+            "msg": SUCCESS_MESSAGE,
+            "code": "0",
+            "data": {
+                "uid": "test-uid-123",
+                "timestamp": 1757355815062,
+                "token": "test-token-abc123",
+                "client": "ios",
+                "version": "",
+                "language": "en",
+            },
+            "api": "https://eu.semsportal.com/api/",
+        }
+
+        requests_mock.post(
+            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
+        )
+
+        result = self.api.getLoginToken(self.username, self.password)
+
+        assert result is not None
+        assert result["uid"] == "test-uid-123"
+        assert result["token"] == "test-token-abc123"
+        assert result["api"] == "https://eu.semsportal.com/api/"
+
+    def test_failed_login_invalid_credentials(self, requests_mock):
+        """Test failed login with invalid credentials."""
+        login_response = {
+            "hasError": True,
+            "code": 1001,
+            "msg": "Invalid credentials",
+            "data": None,
+        }
+
+        requests_mock.post(
+            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
+        )
+
+        result = self.api.getLoginToken(self.username, self.password)
+
+        assert result is None
+
+    def test_login_network_error(self, requests_mock):
+        """Test login with network error."""
+        requests_mock.post(
+            "https://www.semsportal.com/api/v2/Common/CrossLogin",
+            exc=requests.ConnectionError("Network error"),
+        )
+
+        result = self.api.getLoginToken(self.username, self.password)
+
+        assert result is None
+
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_make_http_request")
     def test_make_api_call_success(self, mock_http_request, mock_login):
@@ -288,6 +359,31 @@ class TestSemsApi:
             operation_name="getPowerStationIds API call",
         )
 
+    def test_get_power_station_ids_success_real_structure(self, requests_mock):
+        """Test successful power station IDs retrieval with realistic response structure."""
+        login_response = {
+            "code": 0,
+            "data": {"uid": "test-uid", "token": "test-token"},
+            "api": "https://eu.semsportal.com/api/",
+        }
+        requests_mock.post(
+            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
+        )
+
+        station_response = {
+            "code": 0,
+            "data": MOCK_POWER_STATION_ID,
+            "msg": SUCCESS_MESSAGE,
+        }
+        requests_mock.post(
+            "https://eu.semsportal.com/api//PowerStation/GetPowerStationIdByOwner",
+            json=station_response,
+        )
+
+        result = self.api.getPowerStationIds()
+
+        assert result == MOCK_POWER_STATION_ID
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_data(self, mock_api_call):
         """Test getData method."""
@@ -304,10 +400,95 @@ class TestSemsApi:
             operation_name="getData API call",
         )
 
+    def test_get_data_success_real_structure(self, requests_mock):
+        """Test successful data retrieval with real SEMS API response structure."""
+        login_response = {
+            "code": 0,
+            "data": {"uid": "test-uid", "token": "test-token"},
+            "api": "https://eu.semsportal.com/api/",
+        }
+        requests_mock.post(
+            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
+        )
+
+        data_response = {
+            "language": "en",
+            "function": [
+                "ADD",
+                "VIEW",
+                "EDIT",
+                "DELETE",
+                "INVERTER_A",
+                "INVERTER_E",
+                "INVERTER_D",
+            ],
+            "hasError": False,
+            "msg": SUCCESS_MESSAGE,
+            "code": "0",
+            "data": {
+                "info": {
+                    "powerstation_id": MOCK_POWER_STATION_ID,
+                    "time": "09/08/2025 16:48:27",
+                    "stationname": "Impala",
+                    "address": "Utrecht, Netherlands",
+                    "capacity": 3.2,
+                    "status": 1,
+                },
+                "kpi": {
+                    "month_generation": 85.7,
+                    "pac": 589.0,
+                    "power": 8.9,
+                    "total_power": 18843.2,
+                    "day_income": 1.96,
+                    "total_income": 4145.5,
+                    "currency": "EUR",
+                },
+                "inverter": [
+                    {
+                        "sn": MOCK_INVERTER_SN,
+                        "name": "Zolder",
+                        "in_pac": 1.8,
+                        "out_pac": 589.0,
+                        "eday": 8.9,
+                        "emonth": 76.8,
+                        "etotal": 18843.2,
+                        "status": 1,
+                        "type": "GW3000-NS",
+                        "capacity": 3.0,
+                        "tempperature": 32.0,
+                    }
+                ],
+            },
+        }
+        endpoint = "https://eu.semsportal.com/api//v3/PowerStation/GetMonitorDetailByPowerstationId"
+        requests_mock.post(endpoint, json=data_response)
+
+        result = self.api.getData(MOCK_POWER_STATION_ID)
+
+        assert result["info"]["powerstation_id"] == MOCK_POWER_STATION_ID
+        assert result["info"]["stationname"] == "Impala"
+        assert result["kpi"]["pac"] == 589.0
+        assert result["kpi"]["total_power"] == 18843.2
+        assert len(result["inverter"]) == 1
+        assert result["inverter"][0]["sn"] == MOCK_INVERTER_SN
+        assert result["inverter"][0]["out_pac"] == 589.0
+        assert result["inverter"][0]["eday"] == 8.9
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_data_returns_empty_dict_on_none(self, mock_api_call):
         """Test getData method returns empty dict when API call returns None."""
         mock_api_call.return_value = None
+
+        result = self.api.getData("station123")
+
+        assert result == {}
+
+    def test_get_data_returns_empty_on_failure(self, requests_mock):
+        """Test getData returns empty dict on login failure."""
+        login_response = {"code": 1001, "msg": "Invalid credentials", "data": None}
+        requests_mock.post(
+            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
+        )
 
         result = self.api.getData("station123")
 
@@ -372,6 +553,24 @@ class TestSemsApi:
             maxTokenRetries=2,
             operation_name="power control command for inverter inverter123",
         )
+
+    def test_change_status_success_real_structure(self, requests_mock):
+        """Test successful inverter status change."""
+        login_response = {
+            "code": 0,
+            "data": {"uid": "test-uid", "token": "test-token"},
+            "api": "https://eu.semsportal.com/api/",
+        }
+        requests_mock.post(
+            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
+        )
+
+        endpoint = (
+            "https://eu.semsportal.com/api//PowerStation/SaveRemoteControlInverter"
+        )
+        requests_mock.post(endpoint, json={"status": "success"}, status_code=200)
+
+        self.api.change_status(MOCK_INVERTER_SN, 1)
 
     @patch.object(SemsApi, "_make_control_api_call")
     def test_change_status_failure(self, mock_control_call):
