@@ -433,17 +433,17 @@ def sensor_options_for_data(
             SemsHomekitSensorType(
                 device_info,
                 f"{inverter_serial_number}",  # backwards compatibility otherwise would be f"{serial_number}-load"
-                ["powerflow", "load"],
+                ["load"],
                 "HomeKit Load",
                 SensorDeviceClass.POWER,
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
-                custom_value_handler=status_value_handler(["powerflow", "loadStatus"]),
+                custom_value_handler=status_value_handler(["loadStatus"]),
             ),
             SemsHomekitSensorType(
                 device_info,
                 f"{inverter_serial_number}-pv",
-                ["powerflow", "pv"],
+                ["pv"],
                 "HomeKit PV",
                 SensorDeviceClass.POWER,
                 UnitOfPower.WATT,
@@ -452,7 +452,7 @@ def sensor_options_for_data(
             SemsHomekitSensorType(
                 device_info,
                 f"{inverter_serial_number}-grid",
-                ["powerflow", "grid"],
+                ["grid"],
                 "HomeKit Grid",
                 SensorDeviceClass.POWER,
                 UnitOfPower.WATT,
@@ -461,7 +461,7 @@ def sensor_options_for_data(
             SemsHomekitSensorType(
                 device_info,
                 f"{inverter_serial_number}-load-status",
-                ["powerflow", "loadStatus"],
+                ["loadStatus"],
                 "HomeKit Load Status",
                 None,
                 None,
@@ -471,24 +471,24 @@ def sensor_options_for_data(
                 # sensor above uses loadStatus to determine the sign of the load
                 # power value itself, while this sensor exposes the load state using
                 # the same import/export (sign) convention as the grid power sensor.
-                custom_value_handler=status_value_handler(["powerflow", "gridStatus"]),
+                custom_value_handler=status_value_handler(["gridStatus"]),
             ),
             SemsHomekitSensorType(
                 device_info,
                 f"{inverter_serial_number}-battery",
-                ["powerflow", GOODWE_SPELLING.battery],
+                [GOODWE_SPELLING.battery],
                 "HomeKit Battery",
                 SensorDeviceClass.POWER,
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
                 custom_value_handler=status_value_handler(
-                    ["powerflow", GOODWE_SPELLING.batteryStatus]
+                    [GOODWE_SPELLING.batteryStatus]
                 ),
             ),
             SemsHomekitSensorType(
                 device_info,
                 f"{inverter_serial_number}-genset",
-                ["powerflow", "genset"],
+                ["genset"],
                 "HomeKit generator",
                 SensorDeviceClass.POWER,
                 UnitOfPower.WATT,
@@ -497,7 +497,7 @@ def sensor_options_for_data(
             SemsHomekitSensorType(
                 device_info,
                 f"{inverter_serial_number}-soc",
-                ["powerflow", "soc"],
+                ["soc"],
                 "HomeKit State of Charge",
                 SensorDeviceClass.BATTERY,
                 PERCENTAGE,
