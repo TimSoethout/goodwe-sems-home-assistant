@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
@@ -21,7 +21,7 @@ from .const import (
     GOODWE_SPELLING,
     PLATFORMS,
 )
-from .sems_api import SemsApi
+from .sems_api import AuthenticationError, SemsApi
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -62,7 +62,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool
     await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Register options update listener
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> None:
+    """Reload config entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
@@ -80,9 +88,13 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         self.sems_api = sems_api
         self.station_id = entry.data[CONF_STATION_ID]
 
-        update_interval = timedelta(
-            seconds=entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        # Read scan_interval from options (with fallback to data for migration)
+        scan_interval = entry.options.get(
+            CONF_SCAN_INTERVAL,
+            entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
         )
+        update_interval = timedelta(seconds=scan_interval)
+
         super().__init__(
             hass,
             _LOGGER,
@@ -104,6 +116,24 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             result = await self.hass.async_add_executor_job(
                 self.sems_api.getData, self.station_id
             )
+        except AuthenticationError as err:
+            # Trigger reauthentication flow if not already in progress
+            if self.config_entry and self.config_entry.state not in (
+                ConfigEntryState.SETUP_RETRY,
+                ConfigEntryState.SETUP_ERROR,
+            ):
+                _LOGGER.warning(
+                    "Authentication failed for SEMS API, triggering reauthentication: %s",
+                    err,
+                )
+                self.config_entry.async_start_reauth(self.hass)
+            elif self.config_entry:
+                _LOGGER.debug(
+                    "Authentication failed during setup (state: %s), not triggering reauth: %s",
+                    self.config_entry.state,
+                    err,
+                )
+            raise UpdateFailed(f"Authentication failed: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:

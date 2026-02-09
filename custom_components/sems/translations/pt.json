@@ -19,6 +19,25 @@
                 "data_description": {
                     "powerstation_id": "Se vazio, irá consultar a API SEMS e usar o primeiro"
                 }
+            },
+            "reauth_confirm": {
+                "title": "Reautenticar Integração",
+                "description": "As credenciais para {username} já não são válidas. Por favor, introduza novas credenciais.",
+                "data": {
+                    "username": "Nome de Utilizador",
+                    "password": "Password"
+                }
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Configurar GoodWe SEMS",
+                "description": "Atualizar as definições da integração",
+                "data": {
+                    "scan_interval": "Intervalo de Atualização (segundos)"
+                }
             }
         }
     },

@@ -26,6 +26,14 @@ _DefaultHeaders = {
 }
 
 
+class AuthenticationError(exceptions.HomeAssistantError):
+    """Exception raised when authentication fails."""
+
+
+class OutOfRetries(exceptions.HomeAssistantError):
+    """Exception raised when maximum retries reached."""
+
+
 class SemsApi:
     """Interface to the SEMS API."""
 
@@ -150,8 +158,10 @@ class SemsApi:
             self._token = self.getLoginToken(self._username, self._password)
 
         if self._token is None:
-            _LOGGER.error("Failed to obtain API token")
-            return None
+            _LOGGER.error("Failed to obtain API token - authentication failed")
+            raise AuthenticationError(
+                "Authentication failed - unable to obtain API token"
+            )
 
         # Prepare headers
         headers = {
@@ -238,8 +248,10 @@ class SemsApi:
             self._token = self.getLoginToken(self._username, self._password)
 
         if self._token is None:
-            _LOGGER.error("Failed to obtain API token")
-            return False
+            _LOGGER.error("Failed to obtain API token - authentication failed")
+            raise AuthenticationError(
+                "Authentication failed - unable to obtain API token"
+            )
 
         # Prepare headers
         headers = {
@@ -303,7 +315,3 @@ class SemsApi:
 
         if not success:
             _LOGGER.error("Power control command failed after all retries")
-
-
-class OutOfRetries(exceptions.HomeAssistantError):
-    """Error to indicate too many error attempts."""

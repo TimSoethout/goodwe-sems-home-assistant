@@ -5,12 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import CONF_STATION_ID, DOMAIN, SEMS_CONFIG_SCHEMA
+from .const import CONF_STATION_ID, DEFAULT_SCAN_INTERVAL, DOMAIN, SEMS_CONFIG_SCHEMA
 from .sems_api import SemsApi
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,6 +100,91 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=SEMS_CONFIG_SCHEMA, errors=errors
         )
 
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """Handle reauth upon an API authentication error."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle reauth confirmation."""
+        errors = {}
+
+        reauth_entry = self._get_reauth_entry()
+
+        if user_input is None:
+            # Pre-fill username from existing config
+            return self.async_show_form(
+                step_id="reauth_confirm",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(
+                            CONF_USERNAME, default=reauth_entry.data.get(CONF_USERNAME)
+                        ): str,
+                        vol.Required(CONF_PASSWORD): str,
+                    }
+                ),
+                description_placeholders={
+                    "username": reauth_entry.data.get(CONF_USERNAME, ""),
+                },
+            )
+
+        try:
+            # Validate the new credentials
+            # Only include station_id if it's a valid string
+            validation_data = {
+                CONF_USERNAME: user_input[CONF_USERNAME],
+                CONF_PASSWORD: user_input[CONF_PASSWORD],
+            }
+            station_id = reauth_entry.data.get(CONF_STATION_ID)
+            if isinstance(station_id, str) and station_id:
+                validation_data[CONF_STATION_ID] = station_id
+
+            await validate_input(self.hass, validation_data)
+        except CannotConnect:
+            errors["base"] = "cannot_connect"
+        except InvalidAuth:
+            errors["base"] = "invalid_auth"
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception during reauth")
+            errors["base"] = "unknown"
+        else:
+            # Update the entry with new credentials
+            return self.async_update_reload_and_abort(
+                reauth_entry,
+                data={
+                    **reauth_entry.data,
+                    CONF_USERNAME: user_input[CONF_USERNAME],
+                    CONF_PASSWORD: user_input[CONF_PASSWORD],
+                },
+            )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_USERNAME, default=user_input.get(CONF_USERNAME)
+                    ): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "username": user_input.get(CONF_USERNAME, ""),
+            },
+        )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Get the options flow for this handler."""
+        return OptionsFlowHandler(config_entry)
+
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
@@ -106,3 +192,37 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
+
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for SEMS integration."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            # Return the options to be stored in config_entry.options
+            return self.async_create_entry(title="", data=user_input)
+
+        # Get current scan interval from options (with fallback to data for migration)
+        current_scan_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_SCAN_INTERVAL,
+                        default=current_scan_interval,
+                    ): int,
+                }
+            ),
+        )

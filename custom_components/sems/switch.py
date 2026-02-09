@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
 from .device import device_info_for_inverter
+from .sems_api import AuthenticationError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -72,19 +73,41 @@ class SemsStatusSwitch(CoordinatorEntity[SemsCoordinator], SwitchEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the inverter."""
         _LOGGER.debug("Inverter %s set to off", self._sn)
-        await self.hass.async_add_executor_job(
-            self.coordinator.sems_api.change_status,
-            self._sn,
-            _COMMAND_TURN_OFF,
-        )
+        try:
+            await self.hass.async_add_executor_job(
+                self.coordinator.sems_api.change_status,
+                self._sn,
+                _COMMAND_TURN_OFF,
+            )
+        except AuthenticationError as err:
+            _LOGGER.error(
+                "Authentication failed while turning off inverter %s: %s",
+                self._sn,
+                err,
+            )
+            # Trigger reauth through the coordinator
+            if self.coordinator.config_entry:
+                self.coordinator.config_entry.async_start_reauth(self.hass)
+            return
         await self.coordinator.async_request_refresh()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the inverter."""
         _LOGGER.debug("Inverter %s set to on", self._sn)
-        await self.hass.async_add_executor_job(
-            self.coordinator.sems_api.change_status,
-            self._sn,
-            _COMMAND_TURN_ON,
-        )
+        try:
+            await self.hass.async_add_executor_job(
+                self.coordinator.sems_api.change_status,
+                self._sn,
+                _COMMAND_TURN_ON,
+            )
+        except AuthenticationError as err:
+            _LOGGER.error(
+                "Authentication failed while turning on inverter %s: %s",
+                self._sn,
+                err,
+            )
+            # Trigger reauth through the coordinator
+            if self.coordinator.config_entry:
+                self.coordinator.config_entry.async_start_reauth(self.hass)
+            return
         await self.coordinator.async_request_refresh()

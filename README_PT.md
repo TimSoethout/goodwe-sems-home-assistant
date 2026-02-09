@@ -32,9 +32,70 @@ Neste exemplo o ID da Planta é: 12345678-1234-1234-1234-123456789012
 
 No HomeAssistant, ir a `Configuration` > `Integrations` ('Configuração' > 'Integrações') e clicar em `Add Integration` ('Adicionar Integração'). Pesquisar por `GoodWe SEMS API`
 
-Preencher a informação pedida e de imeadiato deve aparecer a lista de inversores.
+Preencher a informação pedida e de imediato deve aparecer a lista de inversores.
 
-Nota de que as alterações ao 'configuraion.yaml' não são mais necessárias e podem ser removidas.
+Nota de que as alterações ao 'configuration.yaml' não são mais necessárias e podem ser removidas.
+
+## Como Alterar ou Verificar a Configuração
+
+### Verificar a Configuração Atual
+
+Para visualizar a configuração atual da integração GoodWe SEMS:
+
+1. Ir a `Configurações` > `Dispositivos e Serviços` (ou `Configuração` > `Integrações` em versões antigas do HA)
+2. Encontrar a integração `GoodWe SEMS API`
+3. Clicar nela para visualizar as entidades e dispositivos configurados
+
+### Alterar Nome de Utilizador ou Senha (Reautenticação)
+
+Se as credenciais da conta SEMS mudarem (por exemplo, após uma redefinição de senha), o Home Assistant irá detetar automaticamente falhas de autenticação e solicitar que reintroduza as suas credenciais:
+
+1. Quando a autenticação falhar, verá uma notificação no Home Assistant
+2. Clicar na notificação ou ir a `Configurações` > `Dispositivos e Serviços`
+3. Encontrar a integração `GoodWe SEMS API` com a mensagem "Autenticação necessária"
+4. Clicar em `REAUTENTICAR`
+5. Introduzir o novo nome de utilizador e senha
+6. Clicar em `Submeter`
+
+A integração será atualizada com as novas credenciais sem perder qualquer configuração, dados históricos ou IDs de entidades.
+
+**Reautenticação Manual:**
+Se quiser atualizar as credenciais proativamente (antes de falharem):
+1. Ir a `Configurações` > `Dispositivos e Serviços`
+2. Encontrar a integração `GoodWe SEMS API`
+3. Clicar no menu de três pontos (⋮) no cartão da integração
+4. Selecionar `Reautenticar` do menu
+5. Introduzir as novas credenciais
+
+### Alterar Intervalo de Atualização
+
+Para ajustar a frequência com que a integração consulta a API SEMS:
+
+1. Ir a `Configurações` > `Dispositivos e Serviços`
+2. Encontrar a integração `GoodWe SEMS API`
+3. Clicar em `CONFIGURAR` (ou no menu de três pontos ⋮ > `Configurar`)
+4. Ajustar a configuração `Intervalo de Atualização (segundos)`
+5. Clicar em `Submeter`
+
+A integração será recarregada automaticamente com o novo intervalo de atualização.
+
+**Padrão**: 60 segundos (1 minuto)
+
+**Recomendação**: Só diminuir o intervalo de atualização se necessário, pois a API SEMS pode ser lenta e pode resultar em erros de timeout se consultada com demasiada frequência.
+
+### Alternar Entre Conta Regular e Conta de Visitante
+
+Se quiser mudar de uma conta regular para uma conta de visitante (ou vice-versa):
+
+1. Primeiro, criar a conta de visitante através do portal SEMS:
+   - Login em www.semsportal.com
+   - Ir a https://semsportal.com/powerstation/stationInfonew
+   - Criar uma nova conta de visitante
+   - Iniciar sessão na conta de visitante uma vez para aceitar o EULA
+
+2. Depois, reautenticar no Home Assistant:
+   - Seguir os passos de reautenticação acima
+   - Usar as credenciais da conta de visitante
 
 ### Recomendado: utilizar a conta de visitante como login para esta integração 
 
