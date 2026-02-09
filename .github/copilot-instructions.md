@@ -32,7 +32,7 @@
 
 ## Release workflow (HACS)
 - Update the semantic version in [custom_components/sems/manifest.json](../custom_components/sems/manifest.json).
-- For beta releases from branches, always use the `x.x.x-beta` version format, and a GitHub PreRelease.
+- For beta releases from branches, always use the `x.x.x-beta` version format, and always mark the GitHub Release as a Pre-release.
 - Create a git tag for the new version and publish a GitHub (Pre)Release for that tag (HACS uses the latest release tag as the remote version; tags alone are not enough).
 - Release notes should summarize changes since the latest release (e.g., list commits since the previous tag).
 
