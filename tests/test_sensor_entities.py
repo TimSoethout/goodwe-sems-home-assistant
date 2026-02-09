@@ -141,6 +141,64 @@ async def test_unique_id_migration_sn_to_sn_power(
     assert migrated_entry.unique_id == "GW0000SN000TEST1-power"
 
 
+async def test_unique_id_migration_powerflow_to_homekit_sn(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test migration from legacy powerflow unique IDs to HomeKit SN-based IDs."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    ent_reg = er.async_get(hass)
+    legacy_unique_ids = [
+        "powerflow-import-energy",
+        "powerflow-export-energy",
+        "powerflow-import-energy-total",
+        "powerflow-export-energy-total",
+    ]
+    legacy_entity_ids = {
+        legacy_unique_id: ent_reg.async_get_or_create(
+            Platform.SENSOR,
+            DOMAIN,
+            legacy_unique_id,
+            config_entry=entry,
+        ).entity_id
+        for legacy_unique_id in legacy_unique_ids
+    }
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    homekit_sn = (
+        MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON.get("homKit", {}).get("sn")
+        or "GW-HOMEKIT-NO-SERIAL"
+    )
+    expected_migrations = {
+        "powerflow-import-energy": f"{homekit_sn}-import-energy",
+        "powerflow-export-energy": f"{homekit_sn}-export-energy",
+        "powerflow-import-energy-total": f"{homekit_sn}-import-energy-total",
+        "powerflow-export-energy-total": f"{homekit_sn}-export-energy-total",
+    }
+
+    for legacy_unique_id, expected_unique_id in expected_migrations.items():
+        migrated_entry = ent_reg.async_get(legacy_entity_ids[legacy_unique_id])
+        assert migrated_entry is not None
+        assert migrated_entry.unique_id == expected_unique_id
+
+
 async def test_all_entities_exist(
     hass: HomeAssistant,
     enable_custom_integrations: None,
