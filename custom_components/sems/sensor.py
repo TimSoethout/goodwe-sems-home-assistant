@@ -572,8 +572,22 @@ async def async_setup_entry(
     # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
 
     # Backwards compatibility note: keep IDs stable for existing entity registry entries.
-    for _idx, ent in enumerate(coordinator.data.inverters):
-        _migrate_to_new_unique_id(hass, ent)
+    homekit_sn = get_homekit_sn(coordinator.data.homekit) or "GW-HOMEKIT-NO-SERIAL"
+    _migrate_unique_ids(
+        hass,
+        {
+            # Migrate old power sensor unique ids to new unique ids (with `-power`)
+            **{
+                inverter_sn: f"{inverter_sn}-power"
+                for inverter_sn in coordinator.data.inverters
+            },
+            # Migrate 8.0.0 powerflow unique id to legacy homekit-sn-based unique ids
+            "powerflow-import-energy": f"{homekit_sn}-import-energy",
+            "powerflow-export-energy": f"{homekit_sn}-export-energy",
+            "powerflow-import-energy-total": f"{homekit_sn}-import-energy-total",
+            "powerflow-export-energy-total": f"{homekit_sn}-export-energy-total",
+        },
+    )
 
     has_existing_homekit_entity = get_has_existing_homekit_entity(
         coordinator.data.homekit, hass, config_entry
@@ -615,17 +629,15 @@ async def async_setup_entry(
     #     for idx, ent in enumerate(coordinator.data)
 
 
-# Migrate old power sensor unique ids to new unique ids (with `-power`)
-def _migrate_to_new_unique_id(hass: HomeAssistant, sn: str) -> None:
-    """Migrate old unique ids to new unique ids."""
+def _migrate_unique_ids(hass: HomeAssistant, migrations: dict[str, str]) -> None:
+    """Migrate unique IDs based on the provided mapping."""
     ent_reg = er.async_get(hass)
 
-    old_unique_id = sn
-    new_unique_id = f"{old_unique_id}-power"
-    _LOGGER.debug("Old unique id: %s; new unique id: %s", old_unique_id, new_unique_id)
-    entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, old_unique_id)
-    _LOGGER.debug("Entity ID: %s", entity_id)
-    if entity_id is not None:
+    for old_unique_id, new_unique_id in migrations.items():
+        entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, old_unique_id)
+        _LOGGER.debug("Entity ID: %s", entity_id)
+        if entity_id is None:
+            continue
         try:
             ent_reg.async_update_entity(entity_id, new_unique_id=new_unique_id)
         except ValueError:
