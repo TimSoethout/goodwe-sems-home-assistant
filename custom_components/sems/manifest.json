@@ -11,5 +11,5 @@
   "issue_tracker": "https://github.com/TimSoethout/goodwe-sems-home-assistant/issues",
   "loggers": ["custom_components.sems"],
   "requirements": [],
-  "version": "8.2.1-beta"
+  "version": "9.0.0-beta"
 }
