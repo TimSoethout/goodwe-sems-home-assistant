@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sems import SemsData
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
@@ -18,7 +17,6 @@ from .fixtures import (
     MOCK_GET_DATA_ACTUAL_JSON,
     MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
 )
-
 
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
 
@@ -285,6 +283,10 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         await hass.async_block_till_done()
 
     sn = MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON["inverter"][0]["invert_full"]["sn"]
+    homekit_sn = (
+        MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON.get("homKit", {}).get("sn")
+        or "GW-HOMEKIT-NO-SERIAL"
+    )
     expected_unique_ids = {
         # Regular inverter sensors
         f"{sn}-capacity",
@@ -318,19 +320,19 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         f"{sn}-vpv2",
         f"{sn}-vpv3",
         f"{sn}-vpv4",
-        # HomeKit/powerflow sensors (no HomeKit serial -> fallback to `powerflow`)
-        "powerflow",
-        "powerflow-battery",
-        "powerflow-genset",
-        "powerflow-grid",
-        "powerflow-load-status",
-        "powerflow-pv",
-        "powerflow-soc",
+        # HomeKit/powerflow sensors
+        f"{homekit_sn}-homekit",
+        f"{homekit_sn}-battery",
+        f"{homekit_sn}-genset",
+        f"{homekit_sn}-grid",
+        f"{homekit_sn}-load-status",
+        f"{homekit_sn}-pv",
+        f"{homekit_sn}-soc",
         # Import/Export sensors
-        "powerflow-import-energy",
-        "powerflow-export-energy",
-        "powerflow-import-energy-total",
-        "powerflow-export-energy-total",
+        f"{homekit_sn}-import-energy",
+        f"{homekit_sn}-export-energy",
+        f"{homekit_sn}-import-energy-total",
+        f"{homekit_sn}-export-energy-total",
     }
 
     ent_reg = er.async_get(hass)
@@ -369,8 +371,13 @@ async def test_homekit_powerflow_values_from_api_fixture(
 
     ent_reg = er.async_get(hass)
 
+    homekit_sn = (
+        MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON.get("homKit", {}).get("sn")
+        or "GW-HOMEKIT-NO-SERIAL"
+    )
+
     load_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-homekit"
     )
     assert load_entity_id is not None
     load_state = hass.states.get(load_entity_id)
@@ -378,7 +385,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert float(load_state.state) == 2337.0
 
     grid_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-grid"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-grid"
     )
     assert grid_entity_id is not None
     grid_state = hass.states.get(grid_entity_id)
@@ -386,7 +393,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert float(grid_state.state) == 2337.0
 
     pv_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-pv"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-pv"
     )
     assert pv_entity_id is not None
     pv_state = hass.states.get(pv_entity_id)
@@ -394,7 +401,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert float(pv_state.state) == 0.0
 
     battery_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-battery"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-battery"
     )
     assert battery_entity_id is not None
     battery_state = hass.states.get(battery_entity_id)
@@ -402,7 +409,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert float(battery_state.state) == 0.0
 
     genset_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-genset"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-genset"
     )
     assert genset_entity_id is not None
     genset_state = hass.states.get(genset_entity_id)
@@ -410,7 +417,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert float(genset_state.state) == 0.0
 
     soc_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-soc"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-soc"
     )
     assert soc_entity_id is not None
     soc_state = hass.states.get(soc_entity_id)
@@ -418,7 +425,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert float(soc_state.state) == 0.0
 
     load_status_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-load-status"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-load-status"
     )
     assert load_status_entity_id is not None
     load_status_state = hass.states.get(load_status_entity_id)
@@ -427,7 +434,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
 
     # Verify the import sensor exists and has correct attributes
     import_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-import-energy"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-import-energy"
     )
     assert import_entity_id is not None
 
@@ -438,7 +445,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
 
     # Verify the export sensor exists and has correct attributes
     export_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-export-energy"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-export-energy"
     )
     assert export_entity_id is not None
 
@@ -449,7 +456,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
 
     # Verify the total import sensor
     total_import_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-import-energy-total"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-import-energy-total"
     )
     assert total_import_entity_id is not None
 
@@ -459,7 +466,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
 
     # Verify the total export sensor
     total_export_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "powerflow-export-energy-total"
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-export-energy-total"
     )
     assert total_export_entity_id is not None
 

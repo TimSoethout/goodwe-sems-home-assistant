@@ -395,9 +395,7 @@ def sensor_options_for_data(
 
     # HomeKit powerflow + SEMS charts live in `SemsData.homekit`.
     if data.homekit is not None:
-        inverter_serial_number = get_homekit_sn(data.homekit)
-        if not has_existing_homekit_entity or inverter_serial_number is None:
-            inverter_serial_number = "powerflow"
+        homekit_sn = get_homekit_sn(data.homekit) or "GW-HOMEKIT-NO-SERIAL"
         serial_backwards_compatibility = (
             "homeKit"  # the old code uses homeKit for the serial number
         )
@@ -429,10 +427,23 @@ def sensor_options_for_data(
 
             return value_status_handler
 
+        # Note: the powerflow value handler is not used currently, but left here for reference in case we want to add legacy "powerflow" sensors in the future that apply the grid status sign like the HomeKit sensors do.
+        # def powerflow_value_handler(value: Any, data: dict[str, Any]) -> Any:
+        #     """Return the legacy powerflow value based on grid status."""
+        #     if value is None:
+        #         return None
+        #     grid_status = get_value_from_path(data, ["gridStatus"])
+        #     if grid_status is None:
+        #         return value
+        #     try:
+        #         return Decimal(str(value)) if int(grid_status) == 1 else Decimal("0")
+        #     except (TypeError, ValueError):
+        #         return value
+
         sensors += [
             SemsHomekitSensorType(
                 device_info,
-                f"{inverter_serial_number}",  # backwards compatibility otherwise would be f"{serial_number}-load"
+                f"{homekit_sn}-homekit",  # backwards compatibility otherwise would be f"{serial_number}-load"
                 ["load"],
                 "HomeKit Load",
                 SensorDeviceClass.POWER,
@@ -442,7 +453,7 @@ def sensor_options_for_data(
             ),
             SemsHomekitSensorType(
                 device_info,
-                f"{inverter_serial_number}-pv",
+                f"{homekit_sn}-pv",
                 ["pv"],
                 "HomeKit PV",
                 SensorDeviceClass.POWER,
@@ -451,7 +462,7 @@ def sensor_options_for_data(
             ),
             SemsHomekitSensorType(
                 device_info,
-                f"{inverter_serial_number}-grid",
+                f"{homekit_sn}-grid",
                 ["grid"],
                 "HomeKit Grid",
                 SensorDeviceClass.POWER,
@@ -460,7 +471,7 @@ def sensor_options_for_data(
             ),
             SemsHomekitSensorType(
                 device_info,
-                f"{inverter_serial_number}-load-status",
+                f"{homekit_sn}-load-status",
                 ["loadStatus"],
                 "HomeKit Load Status",
                 None,
@@ -475,7 +486,7 @@ def sensor_options_for_data(
             ),
             SemsHomekitSensorType(
                 device_info,
-                f"{inverter_serial_number}-battery",
+                f"{homekit_sn}-battery",
                 [GOODWE_SPELLING.battery],
                 "HomeKit Battery",
                 SensorDeviceClass.POWER,
@@ -487,7 +498,7 @@ def sensor_options_for_data(
             ),
             SemsHomekitSensorType(
                 device_info,
-                f"{inverter_serial_number}-genset",
+                f"{homekit_sn}-genset",
                 ["genset"],
                 "HomeKit generator",
                 SensorDeviceClass.POWER,
@@ -496,7 +507,7 @@ def sensor_options_for_data(
             ),
             SemsHomekitSensorType(
                 device_info,
-                f"{inverter_serial_number}-soc",
+                f"{homekit_sn}-soc",
                 ["soc"],
                 "HomeKit State of Charge",
                 SensorDeviceClass.BATTERY,
@@ -509,7 +520,7 @@ def sensor_options_for_data(
                 sensors += [
                     SemsHomekitSensorType(
                         device_info,
-                        f"{inverter_serial_number}-import-energy",
+                        f"{homekit_sn}-import-energy",
                         ["Charts_buy"],
                         "SEMS Import",
                         SensorDeviceClass.ENERGY,
@@ -518,7 +529,7 @@ def sensor_options_for_data(
                     ),
                     SemsHomekitSensorType(
                         device_info,
-                        f"{inverter_serial_number}-export-energy",
+                        f"{homekit_sn}-export-energy",
                         ["Charts_sell"],
                         "SEMS Export",
                         SensorDeviceClass.ENERGY,
@@ -530,7 +541,7 @@ def sensor_options_for_data(
                 sensors += [
                     SemsHomekitSensorType(
                         device_info,
-                        f"{inverter_serial_number}-import-energy-total",
+                        f"{homekit_sn}-import-energy-total",
                         ["Totals_buy"],
                         "SEMS Total Import",
                         SensorDeviceClass.ENERGY,
@@ -539,7 +550,7 @@ def sensor_options_for_data(
                     ),
                     SemsHomekitSensorType(
                         device_info,
-                        f"{inverter_serial_number}-export-energy-total",
+                        f"{homekit_sn}-export-energy-total",
                         ["Totals_sell"],
                         "SEMS Total Export",
                         SensorDeviceClass.ENERGY,
