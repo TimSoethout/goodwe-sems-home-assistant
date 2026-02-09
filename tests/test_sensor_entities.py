@@ -342,11 +342,11 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
     assert actual_unique_ids == expected_unique_ids
 
 
-async def test_import_export_sensors_with_energy_statistics(
+async def test_homekit_powerflow_values_from_api_fixture(
     hass: HomeAssistant,
     enable_custom_integrations: None,
 ) -> None:
-    """Test that import/export sensors are created when energy statistics data is present."""
+    """Test HomeKit/powerflow values extracted from the real API fixture."""
     del enable_custom_integrations
 
     entry = MockConfigEntry(
@@ -368,6 +368,62 @@ async def test_import_export_sensors_with_energy_statistics(
         await hass.async_block_till_done()
 
     ent_reg = er.async_get(hass)
+
+    load_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow"
+    )
+    assert load_entity_id is not None
+    load_state = hass.states.get(load_entity_id)
+    assert load_state is not None
+    assert float(load_state.state) == 2337.0
+
+    grid_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-grid"
+    )
+    assert grid_entity_id is not None
+    grid_state = hass.states.get(grid_entity_id)
+    assert grid_state is not None
+    assert float(grid_state.state) == 2337.0
+
+    pv_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-pv"
+    )
+    assert pv_entity_id is not None
+    pv_state = hass.states.get(pv_entity_id)
+    assert pv_state is not None
+    assert float(pv_state.state) == 0.0
+
+    battery_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-battery"
+    )
+    assert battery_entity_id is not None
+    battery_state = hass.states.get(battery_entity_id)
+    assert battery_state is not None
+    assert float(battery_state.state) == 0.0
+
+    genset_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-genset"
+    )
+    assert genset_entity_id is not None
+    genset_state = hass.states.get(genset_entity_id)
+    assert genset_state is not None
+    assert float(genset_state.state) == 0.0
+
+    soc_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-soc"
+    )
+    assert soc_entity_id is not None
+    soc_state = hass.states.get(soc_entity_id)
+    assert soc_state is not None
+    assert float(soc_state.state) == 0.0
+
+    load_status_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "powerflow-load-status"
+    )
+    assert load_status_entity_id is not None
+    load_status_state = hass.states.get(load_status_entity_id)
+    assert load_status_state is not None
+    assert int(float(load_status_state.state)) == -1
 
     # Verify the import sensor exists and has correct attributes
     import_entity_id = ent_reg.async_get_entity_id(
