@@ -656,7 +656,15 @@ async def test_homekit_sensors_handle_empty_strings_at_night(
     assert load_entity_id is not None
     load_state = hass.states.get(load_entity_id)
     assert load_state is not None
-    assert float(load_state.state) == 2337.0
+    assert float(load_state.state) == 0.0
+
+    load_alias_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-load"
+    )
+    assert load_alias_entity_id is not None
+    load_alias_state = hass.states.get(load_alias_entity_id)
+    assert load_alias_state is not None
+    assert float(load_alias_state.state) == 2337.0
 
     battery_entity_id = ent_reg.async_get_entity_id(
         Platform.SENSOR, DOMAIN, f"{homekit_sn}-battery"
