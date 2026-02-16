@@ -533,6 +533,71 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert float(total_export_state.state) == 12901.2
 
 
+def _build_homekit_test_data(
+    inverter_status: int = 1,
+    inverter_pac: int = 500,
+    inverter_temp: float = 32.0,
+    inverter_eday: float = 8.9,
+    inverter_iday: float = 1.96,
+    total_power: float = 500.0,
+    pv_value: str = "100(W)",
+    pv_status: int = 1,
+    load_value: str = "2337(W)",
+    load_status: int = 1,
+    grid_value: str = "2337(W)",
+    grid_status: int = -1,
+    battery_value: str = "0(W)",
+    battery_status: int = 0,
+    genset_value: str = "0(W)",
+    soc: int = 50,
+) -> dict:
+    """Build test data for homekit sensors with configurable values."""
+    return {
+        "inverter": [
+            {
+                "invert_full": {
+                    "name": "Test Inverter",
+                    "sn": "GW0000SN000TEST1",
+                    "powerstation_id": MOCK_POWER_STATION_ID,
+                    "status": inverter_status,
+                    "capacity": 3.0,
+                    "pac": inverter_pac,
+                    "etotal": 18843.2,
+                    "hour_total": 1234,
+                    "tempperature": inverter_temp,
+                    "eday": inverter_eday,
+                    "thismonthetotle": 85.7,
+                    "lastmonthetotle": 76.8,
+                    "iday": inverter_iday,
+                    "itotal": 4145.5,
+                }
+            }
+        ],
+        "kpi": {
+            "currency": "EUR",
+            "total_power": total_power,
+        },
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": False,
+        "homKit": {
+            "sn": None,  # Will use GW-HOMEKIT-NO-SERIAL as default
+            "homeKitLimit": False,
+        },
+        "powerflow": {
+            "pv": pv_value,
+            "pvStatus": pv_status,
+            "load": load_value,
+            "loadStatus": load_status,
+            "grid": grid_value,
+            "gridStatus": grid_status,
+            "bettery": battery_value,
+            "betteryStatus": battery_status,
+            "genset": genset_value,
+            "soc": soc,
+        },
+    }
+
+
 async def test_homekit_sensors_handle_empty_strings_at_night(
     hass: HomeAssistant,
     enable_custom_integrations: None,
@@ -544,51 +609,8 @@ async def test_homekit_sensors_handle_empty_strings_at_night(
     """
     del enable_custom_integrations
 
-    # First, set up with valid homekit data
-    initial_data = {
-        "inverter": [
-            {
-                "invert_full": {
-                    "name": "Test Inverter",
-                    "sn": "GW0000SN000TEST1",
-                    "powerstation_id": MOCK_POWER_STATION_ID,
-                    "status": 1,  # Online
-                    "capacity": 3.0,
-                    "pac": 500,
-                    "etotal": 18843.2,
-                    "hour_total": 1234,
-                    "tempperature": 32.0,
-                    "eday": 8.9,
-                    "thismonthetotle": 85.7,
-                    "lastmonthetotle": 76.8,
-                    "iday": 1.96,
-                    "itotal": 4145.5,
-                }
-            }
-        ],
-        "kpi": {
-            "currency": "EUR",
-            "total_power": 500.0,
-        },
-        "hasPowerflow": True,
-        "hasEnergeStatisticsCharts": False,
-        "homKit": {
-            "sn": None,  # Will use GW-HOMEKIT-NO-SERIAL as default
-            "homeKitLimit": False,
-        },
-        "powerflow": {
-            "pv": "100(W)",  # Valid value during day
-            "pvStatus": 1,
-            "load": "2337(W)",  # Valid value during day
-            "loadStatus": 1,
-            "grid": "2337(W)",
-            "gridStatus": -1,
-            "bettery": "0(W)",
-            "betteryStatus": 0,
-            "genset": "0(W)",
-            "soc": 50,
-        },
-    }
+    # Set up with valid homekit data (daytime)
+    initial_data = _build_homekit_test_data()
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -628,51 +650,22 @@ async def test_homekit_sensors_handle_empty_strings_at_night(
     assert battery_state is not None
     assert float(battery_state.state) == 0.0
 
-    # Now simulate nighttime with empty strings - this was causing the crash
-    nighttime_data = {
-        "inverter": [
-            {
-                "invert_full": {
-                    "name": "Test Inverter",
-                    "sn": "GW0000SN000TEST1",
-                    "powerstation_id": MOCK_POWER_STATION_ID,
-                    "status": -1,  # Offline
-                    "capacity": 3.0,
-                    "pac": 0,
-                    "etotal": 18843.2,
-                    "hour_total": 1234,
-                    "tempperature": 0.0,
-                    "eday": 0.0,
-                    "thismonthetotle": 85.7,
-                    "lastmonthetotle": 76.8,
-                    "iday": 0.0,
-                    "itotal": 4145.5,
-                }
-            }
-        ],
-        "kpi": {
-            "currency": "EUR",
-            "total_power": 0.0,
-        },
-        "hasPowerflow": True,
-        "hasEnergeStatisticsCharts": False,
-        "homKit": {
-            "sn": None,
-            "homeKitLimit": False,
-        },
-        "powerflow": {
-            "pv": "",  # Empty string when offline - this was causing the crash
-            "pvStatus": 0,
-            "load": "",  # Empty string when offline - this was causing the crash
-            "loadStatus": 1,
-            "grid": "-817(W)",
-            "gridStatus": -1,
-            "bettery": "",  # Empty string when offline - this was causing the crash
-            "betteryStatus": 0,
-            "genset": "",
-            "soc": 0,
-        },
-    }
+    # Simulate nighttime with empty strings - this was causing the crash
+    nighttime_data = _build_homekit_test_data(
+        inverter_status=-1,  # Offline
+        inverter_pac=0,
+        inverter_temp=0.0,
+        inverter_eday=0.0,
+        inverter_iday=0.0,
+        total_power=0.0,
+        pv_value="",  # Empty string when offline
+        pv_status=0,
+        load_value="",  # Empty string when offline
+        grid_value="-817(W)",
+        battery_value="",  # Empty string when offline
+        genset_value="",
+        soc=0,
+    )
 
     # Update coordinator data with nighttime empty strings
     coordinator = entry.runtime_data.coordinator
