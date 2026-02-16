@@ -77,6 +77,11 @@ class SemsHomekitSensorType(SemsSensorType):
 
 
 @dataclass(slots=True)
+class SemsLegacyPowerflowSensorType(SemsHomekitSensorType):
+    """SEMS legacy HomeKit/powerflow sensor definition."""
+
+
+@dataclass(slots=True)
 class SemsInverterSensorType(SemsSensorType):
     """SEMS inverter sensor definition."""
 
@@ -427,23 +432,19 @@ def sensor_options_for_data(
 
             return value_status_handler
 
-        # Note: the powerflow value handler is not used currently, but left here for reference in case we want to add legacy "powerflow" sensors in the future that apply the grid status sign like the HomeKit sensors do.
-        # def powerflow_value_handler(value: Any, data: dict[str, Any]) -> Any:
-        #     """Return the legacy powerflow value based on grid status."""
-        #     if value is None:
-        #         return None
-        #     grid_status = get_value_from_path(data, ["gridStatus"])
-        #     if grid_status is None:
-        #         return value
-        #     try:
-        #         return Decimal(str(value)) if int(grid_status) == 1 else Decimal("0")
-        #     except (TypeError, ValueError):
-        #         return value
-
         sensors += [
-            SemsHomekitSensorType(
+            SemsLegacyPowerflowSensorType(
                 device_info,
                 f"{homekit_sn}-homekit",  # backwards compatibility otherwise would be f"{serial_number}-load"
+                ["load"],
+                "HomeKit Load",
+                SensorDeviceClass.POWER,
+                UnitOfPower.WATT,
+                SensorStateClass.MEASUREMENT,
+            ),
+            SemsHomekitSensorType(
+                device_info,
+                f"{homekit_sn}-load",
                 ["load"],
                 "HomeKit Load",
                 SensorDeviceClass.POWER,
@@ -596,26 +597,30 @@ async def async_setup_entry(
     sensor_options: list[SemsSensorType] = sensor_options_for_data(
         coordinator.data, has_existing_homekit_entity
     )
-    sensors = [
-        (
-            SemsHomekitSensor
-            if isinstance(sensor_option, SemsHomekitSensorType)
-            else SemsInverterSensor
-        )(
-            coordinator,
-            sensor_option.device_info,
-            sensor_option.unique_id,
-            sensor_option.name,
-            sensor_option.value_path,
-            sensor_option.data_type_converter,
-            sensor_option.device_class,
-            sensor_option.native_unit_of_measurement,
-            sensor_option.state_class,
-            sensor_option.empty_value,
-            sensor_option.custom_value_handler,
+    sensors = []
+    for sensor_option in sensor_options:
+        if isinstance(sensor_option, SemsLegacyPowerflowSensorType):
+            sensor_class = SemsLegacyPowerflowSensor
+        elif isinstance(sensor_option, SemsHomekitSensorType):
+            sensor_class = SemsHomekitSensor
+        else:
+            sensor_class = SemsInverterSensor
+
+        sensors.append(
+            sensor_class(
+                coordinator,
+                sensor_option.device_info,
+                sensor_option.unique_id,
+                sensor_option.name,
+                sensor_option.value_path,
+                sensor_option.data_type_converter,
+                sensor_option.device_class,
+                sensor_option.native_unit_of_measurement,
+                sensor_option.state_class,
+                sensor_option.empty_value,
+                sensor_option.custom_value_handler,
+            )
         )
-        for sensor_option in sensor_options
-    ]
     async_add_entities(sensors)
 
     # async_add_entities(
@@ -826,3 +831,82 @@ class SemsHomekitSensor(SemsSensor):
         """Return HomeKit dict."""
 
         return self.coordinator.data.homekit
+
+
+class SemsLegacyPowerflowSensor(SemsHomekitSensor):
+    """HomeKit sensor exposing legacy attributes on `-homekit`."""
+
+    @property
+    def native_value(self) -> Any:
+        """Return legacy HomeKit load value based on grid status."""
+
+        value = super().native_value
+
+        if not self._attr_unique_id.endswith("-homekit"):
+            return value
+
+        if value is None:
+            return None
+
+        data = self._get_data_dict()
+        if data is None:
+            return value
+
+        grid_status = data.get("gridStatus")
+        if grid_status is None:
+            return value
+
+        try:
+            return Decimal(str(value)) if int(grid_status) == 1 else Decimal("0")
+        except (TypeError, ValueError):
+            return value
+
+    @staticmethod
+    def _status_text(status: Any) -> str:
+        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
+        try:
+            return labels[int(status)]
+        except (TypeError, ValueError, KeyError):
+            return "Unknown"
+
+    @staticmethod
+    def _strip_watt_suffix(value: Any) -> Any:
+        if isinstance(value, str):
+            return value.replace("(W)", "")
+        return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return legacy HomeKit attributes for backwards compatibility."""
+
+        if not self._attr_unique_id.endswith("-homekit"):
+            return None
+
+        data = self.coordinator.data.homekit
+        if data is None:
+            return None
+
+        attributes = {
+            key: value
+            for key, value in data.items()
+            if key is not None and value is not None
+        }
+
+        for key in ("pv", "bettery", "load", "grid"):
+            if key in data:
+                attributes[key] = self._strip_watt_suffix(data.get(key))
+
+        attributes["statusText"] = self._status_text(data.get("gridStatus"))
+
+        load_status = data.get("loadStatus")
+        try:
+            load_status_int = int(load_status)
+        except (TypeError, ValueError):
+            load_status_int = None
+
+        if load_status_int == -1:
+            attributes["PowerFlowDirection"] = f"Export {data.get('grid')}"
+        if load_status_int == 1:
+            attributes["PowerFlowDirection"] = f"Import {data.get('grid')}"
+
+        return attributes

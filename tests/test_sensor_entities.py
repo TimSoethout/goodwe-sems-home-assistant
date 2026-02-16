@@ -380,6 +380,7 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         f"{sn}-vpv4",
         # HomeKit/powerflow sensors
         f"{homekit_sn}-homekit",
+        f"{homekit_sn}-load",
         f"{homekit_sn}-battery",
         f"{homekit_sn}-genset",
         f"{homekit_sn}-grid",
@@ -440,7 +441,22 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert load_entity_id is not None
     load_state = hass.states.get(load_entity_id)
     assert load_state is not None
-    assert float(load_state.state) == 2337.0
+    # `-homekit` follows legacy powerflow behavior: return 0 unless gridStatus == 1
+    assert float(load_state.state) == 0.0
+    assert load_state.attributes.get("pv") == "0"
+    assert load_state.attributes.get("bettery") == "0"
+    assert load_state.attributes.get("load") == "2337"
+    assert load_state.attributes.get("grid") == "2337"
+    assert load_state.attributes.get("statusText") == "Offline"
+    assert load_state.attributes.get("PowerFlowDirection") == "Import 2337(W)"
+
+    load_alias_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-load"
+    )
+    assert load_alias_entity_id is not None
+    load_alias_state = hass.states.get(load_alias_entity_id)
+    assert load_alias_state is not None
+    assert float(load_alias_state.state) == 2337.0
 
     grid_entity_id = ent_reg.async_get_entity_id(
         Platform.SENSOR, DOMAIN, f"{homekit_sn}-grid"
