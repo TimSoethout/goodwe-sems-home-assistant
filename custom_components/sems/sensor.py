@@ -599,6 +599,7 @@ async def async_setup_entry(
     )
     sensors = []
     for sensor_option in sensor_options:
+        sensor_class: type[SemsSensor]
         if isinstance(sensor_option, SemsLegacyPowerflowSensorType):
             sensor_class = SemsLegacyPowerflowSensor
         elif isinstance(sensor_option, SemsHomekitSensorType):
@@ -842,7 +843,8 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
 
         value = super().native_value
 
-        if not self._attr_unique_id.endswith("-homekit"):
+        unique_id = self._attr_unique_id
+        if not unique_id or not unique_id.endswith("-homekit"):
             return value
 
         if value is None:
@@ -864,6 +866,8 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
     @staticmethod
     def _status_text(status: Any) -> str:
         labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
+        if status is None:
+            return "Unknown"
         try:
             return labels[int(status)]
         except (TypeError, ValueError, KeyError):
@@ -879,7 +883,8 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return legacy HomeKit attributes for backwards compatibility."""
 
-        if not self._attr_unique_id.endswith("-homekit"):
+        unique_id = self._attr_unique_id
+        if not unique_id or not unique_id.endswith("-homekit"):
             return None
 
         data = self.coordinator.data.homekit
@@ -900,7 +905,7 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
 
         load_status = data.get("loadStatus")
         try:
-            load_status_int = int(load_status)
+            load_status_int = int(load_status) if load_status is not None else None
         except (TypeError, ValueError):
             load_status_int = None
 
