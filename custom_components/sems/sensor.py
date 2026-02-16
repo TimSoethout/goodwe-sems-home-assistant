@@ -415,7 +415,7 @@ def sensor_options_for_data(
 
             def value_status_handler(value: Any, data: dict[str, Any]) -> Any:
                 """Apply the grid status sign to the given value."""
-                if value is None:
+                if value is None or value == "":
                     return None
                 grid_status = get_value_from_path(data, status_path)
                 if grid_status is None:
@@ -749,6 +749,9 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         if isinstance(value, str):
             if match := self.str_clean_regex.search(value):
                 value = match.group(1)
+            else:
+                # If no match found (e.g., empty string), treat as unavailable
+                value = None
 
         if value is None:
             return None

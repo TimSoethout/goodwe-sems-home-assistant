@@ -531,3 +531,167 @@ async def test_homekit_powerflow_values_from_api_fixture(
     total_export_state = hass.states.get(total_export_entity_id)
     assert total_export_state is not None
     assert float(total_export_state.state) == 12901.2
+
+
+def _build_homekit_test_data(
+    inverter_status: int = 1,
+    inverter_pac: int = 500,
+    inverter_temp: float = 32.0,
+    inverter_eday: float = 8.9,
+    inverter_iday: float = 1.96,
+    total_power: float = 500.0,
+    pv_value: str = "100(W)",
+    pv_status: int = 1,
+    load_value: str = "2337(W)",
+    load_status: int = 1,
+    grid_value: str = "2337(W)",
+    grid_status: int = -1,
+    battery_value: str = "0(W)",
+    battery_status: int = 0,
+    genset_value: str = "0(W)",
+    soc: int = 50,
+) -> dict:
+    """Build test data for homekit sensors with configurable values."""
+    return {
+        "inverter": [
+            {
+                "invert_full": {
+                    "name": "Test Inverter",
+                    "sn": "GW0000SN000TEST1",
+                    "powerstation_id": MOCK_POWER_STATION_ID,
+                    "status": inverter_status,
+                    "capacity": 3.0,
+                    "pac": inverter_pac,
+                    "etotal": 18843.2,
+                    "hour_total": 1234,
+                    "tempperature": inverter_temp,
+                    "eday": inverter_eday,
+                    "thismonthetotle": 85.7,
+                    "lastmonthetotle": 76.8,
+                    "iday": inverter_iday,
+                    "itotal": 4145.5,
+                }
+            }
+        ],
+        "kpi": {
+            "currency": "EUR",
+            "total_power": total_power,
+        },
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": False,
+        "homKit": {
+            "sn": None,  # Will use GW-HOMEKIT-NO-SERIAL as default
+            "homeKitLimit": False,
+        },
+        "powerflow": {
+            "pv": pv_value,
+            "pvStatus": pv_status,
+            "load": load_value,
+            "loadStatus": load_status,
+            "grid": grid_value,
+            "gridStatus": grid_status,
+            "bettery": battery_value,
+            "betteryStatus": battery_status,
+            "genset": genset_value,
+            "soc": soc,
+        },
+    }
+
+
+async def test_homekit_sensors_handle_empty_strings_at_night(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test that HomeKit sensors handle empty string values without crashing.
+
+    This simulates the scenario where sensors are first created with valid values,
+    then receive empty strings when the inverter goes offline at night.
+    """
+    del enable_custom_integrations
+
+    # Set up with valid homekit data (daytime)
+    initial_data = _build_homekit_test_data()
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=initial_data,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    homekit_sn = "GW-HOMEKIT-NO-SERIAL"  # Default when sn is None
+
+    # Verify entities are created and have values
+    load_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-homekit"
+    )
+    assert load_entity_id is not None
+    load_state = hass.states.get(load_entity_id)
+    assert load_state is not None
+    assert float(load_state.state) == 2337.0
+
+    battery_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-battery"
+    )
+    assert battery_entity_id is not None
+    battery_state = hass.states.get(battery_entity_id)
+    assert battery_state is not None
+    assert float(battery_state.state) == 0.0
+
+    # Simulate nighttime with empty strings - this was causing the crash
+    nighttime_data = _build_homekit_test_data(
+        inverter_status=-1,  # Offline
+        inverter_pac=0,
+        inverter_temp=0.0,
+        inverter_eday=0.0,
+        inverter_iday=0.0,
+        total_power=0.0,
+        pv_value="",  # Empty string when offline
+        pv_status=0,
+        load_value="",  # Empty string when offline
+        grid_value="-817(W)",
+        battery_value="",  # Empty string when offline
+        genset_value="",
+        soc=0,
+    )
+
+    # Update coordinator data with nighttime empty strings
+    coordinator = entry.runtime_data.coordinator
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=nighttime_data,
+    ):
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    # The sensors should now be unknown (not crash) when values are empty strings
+    load_state = hass.states.get(load_entity_id)
+    assert load_state is not None
+    assert load_state.state == "unknown"
+
+    battery_state = hass.states.get(battery_entity_id)
+    assert battery_state is not None
+    assert battery_state.state == "unknown"
+
+    # Load status sensor still has valid status values (not empty strings)
+    # so it should have a numeric value
+    load_status_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-load-status"
+    )
+    assert load_status_entity_id is not None
+    load_status_state = hass.states.get(load_status_entity_id)
+    assert load_status_state is not None
+    # loadStatus=1 * gridStatus=-1 = -1
+    assert load_status_state.state == "-1"
