@@ -14,8 +14,10 @@ from custom_components.sems.const import CONF_STATION_ID, DOMAIN
 from custom_components.sems.sensor import sensor_options_for_data
 
 from .fixtures import (
+    MOCK_EV_CHARGER_SN,
     MOCK_GET_DATA_ACTUAL_JSON,
     MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
+    MOCK_GET_DATA_RESULT_WITH_EV_CHARGER,
 )
 
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
@@ -719,3 +721,107 @@ async def test_homekit_sensors_handle_empty_strings_at_night(
     assert load_status_state is not None
     # loadStatus=1 * gridStatus=-1 = -1
     assert load_status_state.state == "-1"
+
+
+async def test_ev_charger_sensors_created(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test that EV charger sensors are created when evCharge data is present."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=MOCK_GET_DATA_RESULT_WITH_EV_CHARGER,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+
+    # Status sensor
+    status_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{MOCK_EV_CHARGER_SN}-ev-status"
+    )
+    assert status_entity_id is not None
+    state = hass.states.get(status_entity_id)
+    assert state is not None
+    assert state.state == "Charging"
+
+    # Power sensor
+    power_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{MOCK_EV_CHARGER_SN}-ev-power"
+    )
+    assert power_entity_id is not None
+    state = hass.states.get(power_entity_id)
+    assert state is not None
+    assert state.state == "7.5"
+
+    # Current sensor
+    current_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{MOCK_EV_CHARGER_SN}-ev-current"
+    )
+    assert current_entity_id is not None
+    state = hass.states.get(current_entity_id)
+    assert state is not None
+    assert state.state == "32"
+
+    # Charge energy sensor
+    energy_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{MOCK_EV_CHARGER_SN}-ev-charge-energy"
+    )
+    assert energy_entity_id is not None
+    state = hass.states.get(energy_entity_id)
+    assert state is not None
+    assert state.state == "12.5"
+
+    # SOC sensor
+    soc_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{MOCK_EV_CHARGER_SN}-ev-soc"
+    )
+    assert soc_entity_id is not None
+    state = hass.states.get(soc_entity_id)
+    assert state is not None
+    assert state.state == "65"
+
+
+async def test_ev_charger_sensors_not_created_without_ev_charge(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test that no EV charger sensors are created when isEvCharge is False."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=MOCK_GET_DATA_RESULT_MINIMAL,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    all_unique_ids = {
+        entity.unique_id
+        for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+    }
+    assert not any("ev-" in uid for uid in all_unique_ids)

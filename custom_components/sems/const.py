@@ -43,3 +43,5 @@ class GOODWE_SPELLING:
     energyStatisticsTotals = "energeStatisticsTotals"
     thisMonthTotalE = "thismonthetotle"
     lastMonthTotalE = "lastmonthetotle"
+    # EV charger API misspelling
+    firmware = "fireware"

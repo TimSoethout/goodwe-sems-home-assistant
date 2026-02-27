@@ -46,6 +46,7 @@ class SemsData:
     inverters: dict[str, dict[str, Any]]
     homekit: dict[str, Any] | None = None
     currency: str | None = None
+    ev_chargers: dict[str, dict[str, Any]] | None = None
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -184,8 +185,31 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
                 homekit = powerflow
 
+            # Extract EV charger data
+            has_ev_charge = bool(result.get("isEvCharge"))
+            ev_chargers_by_sn: dict[str, dict[str, Any]] = {}
+            if has_ev_charge:
+                ev_charge_raw = result.get("evCharge")
+                ev_charger_list: list[dict[str, Any]] = []
+                if isinstance(ev_charge_raw, list):
+                    ev_charger_list = ev_charge_raw
+                elif isinstance(ev_charge_raw, dict):
+                    ev_charger_list = [ev_charge_raw]
+
+                for ev_charger in ev_charger_list:
+                    if not isinstance(ev_charger, dict):
+                        continue
+                    sn = ev_charger.get("sn")
+                    if not isinstance(sn, str):
+                        continue
+                    _LOGGER.debug("Found EV charger %s", sn)
+                    ev_chargers_by_sn[sn] = ev_charger
+
             data = SemsData(
-                inverters=inverters_by_sn, homekit=homekit, currency=currency
+                inverters=inverters_by_sn,
+                homekit=homekit,
+                currency=currency,
+                ev_chargers=ev_chargers_by_sn if ev_chargers_by_sn else None,
             )
             _LOGGER.debug("Resulting data: %s", data)
             return data

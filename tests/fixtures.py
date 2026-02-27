@@ -459,5 +459,36 @@ MOCK_INVERTER_SN = "GW0000SN000TEST1"
 # Anonymized power station ID for testing
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
 
+# Anonymized EV charger serial number for testing
+MOCK_EV_CHARGER_SN = "GW0000EV000TEST1"
+
+# Coordinator-compatible getData() result with an EV charger
+MOCK_GET_DATA_RESULT_WITH_EV_CHARGER = {
+    **MOCK_GET_DATA_RESULT_MINIMAL,
+    "isEvCharge": True,
+    "evCharge": [
+        {
+            "sn": MOCK_EV_CHARGER_SN,
+            "name": "Test EV Charger",
+            "state": 2,
+            "status": "EVDetail_Status_Title_Charging",
+            "workstate": 1,
+            "workstatus": None,
+            "lastUpdate": "2026-02-27 12:25:48",
+            "model": "GW-EV-TEST",
+            "fireware": "1.0.0",
+            "chargeEnergy": 12.5,
+            "power": 7.5,
+            "current": 32.0,
+            "time": None,
+            "chargeMode": 1,
+            "soc": 65.0,
+            "max_charge_power": 22.0,
+            "min_charge_power": 1.4,
+            "set_charge_power": 7.4,
+        }
+    ],
+}
+
 # Success message in Chinese as returned by SEMS API (unchanged as it's not personal data)
 SUCCESS_MESSAGE = "操作成功"

@@ -43,16 +43,28 @@ from .const import (
     GOODWE_SPELLING,
     STATUS_LABELS,
 )
-from .device import device_info_for_inverter
+from .device import device_info_for_ev_charger, device_info_for_inverter
 
 _LOGGER = logging.getLogger(__name__)
 
 type SemsValuePath = list[str | int]
 
+EV_CHARGER_STATUS_LABELS = {
+    # Keys are the raw status strings returned by the SEMS API EV charger endpoint
+    "EVDetail_Status_Title_Charging": "Charging",
+    "EVDetail_Status_Title_Waiting": "Standby",
+    "EVDetail_Status_Title_Offline": "Offline",
+}
+
 
 def convert_status_to_label(status: Any) -> str:
     """Convert numeric status code to human-readable label."""
     return STATUS_LABELS.get(int(status), "Unknown")
+
+
+def convert_ev_charger_status(status: Any) -> str:
+    """Convert EV charger API status string to a human-readable label."""
+    return EV_CHARGER_STATUS_LABELS.get(str(status), "Unknown")
 
 
 @dataclass(slots=True)
@@ -84,6 +96,11 @@ class SemsLegacyPowerflowSensorType(SemsHomekitSensorType):
 @dataclass(slots=True)
 class SemsInverterSensorType(SemsSensorType):
     """SEMS inverter sensor definition."""
+
+
+@dataclass(slots=True)
+class SemsEVChargerSensorType(SemsSensorType):
+    """SEMS EV charger sensor definition."""
 
 
 def get_homekit_sn(homekit_data: dict[str, Any] | None) -> str | None:
@@ -559,6 +576,53 @@ def sensor_options_for_data(
                         SensorStateClass.TOTAL_INCREASING,
                     ),
                 ]
+    # EV charger sensors
+    if data.ev_chargers:
+        for ev_sn, ev_charger_data in data.ev_chargers.items():
+            path_to_ev: SemsValuePath = [ev_sn]
+            ev_device_info = device_info_for_ev_charger(ev_sn, ev_charger_data)
+            sensors += [
+                SemsEVChargerSensorType(
+                    ev_device_info,
+                    f"{ev_sn}-ev-status",
+                    [*path_to_ev, "status"],
+                    "Status",
+                    data_type_converter=convert_ev_charger_status,
+                ),
+                SemsEVChargerSensorType(
+                    ev_device_info,
+                    f"{ev_sn}-ev-power",
+                    [*path_to_ev, "power"],
+                    device_class=SensorDeviceClass.POWER,
+                    native_unit_of_measurement=UnitOfPower.KILO_WATT,
+                    state_class=SensorStateClass.MEASUREMENT,
+                ),
+                SemsEVChargerSensorType(
+                    ev_device_info,
+                    f"{ev_sn}-ev-current",
+                    [*path_to_ev, "current"],
+                    device_class=SensorDeviceClass.CURRENT,
+                    native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+                    state_class=SensorStateClass.MEASUREMENT,
+                ),
+                SemsEVChargerSensorType(
+                    ev_device_info,
+                    f"{ev_sn}-ev-charge-energy",
+                    [*path_to_ev, "chargeEnergy"],
+                    "Charge Energy",
+                    SensorDeviceClass.ENERGY,
+                    UnitOfEnergy.KILO_WATT_HOUR,
+                    SensorStateClass.TOTAL_INCREASING,
+                ),
+                SemsEVChargerSensorType(
+                    ev_device_info,
+                    f"{ev_sn}-ev-soc",
+                    [*path_to_ev, "soc"],
+                    device_class=SensorDeviceClass.BATTERY,
+                    native_unit_of_measurement=PERCENTAGE,
+                    state_class=SensorStateClass.MEASUREMENT,
+                ),
+            ]
     return sensors
 
 
@@ -604,6 +668,8 @@ async def async_setup_entry(
             sensor_class = SemsLegacyPowerflowSensor
         elif isinstance(sensor_option, SemsHomekitSensorType):
             sensor_class = SemsHomekitSensor
+        elif isinstance(sensor_option, SemsEVChargerSensorType):
+            sensor_class = SemsEVChargerSensor
         else:
             sensor_class = SemsInverterSensor
 
@@ -915,3 +981,29 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
             attributes["PowerFlowDirection"] = f"Import {data.get('grid')}"
 
         return attributes
+
+
+class SemsEVChargerSensor(SemsSensor):
+    """Sensor that reads from EV charger data."""
+
+    def _get_data_dict(self) -> dict[str, Any] | None:
+        """Return EV charger dict."""
+
+        return self.coordinator.data.ev_chargers
+
+    @property
+    def native_value(self) -> Any:
+        """Return the current value, without string-cleaning for EV charger fields."""
+
+        value = self._get_native_value_from_coordinator()
+
+        if value is None:
+            return None
+
+        if self._empty_value is not None and value == self._empty_value:
+            return None
+
+        try:
+            return self._data_type_converter(value)
+        except (TypeError, ValueError):
+            return value
