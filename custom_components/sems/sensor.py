@@ -55,6 +55,16 @@ def convert_status_to_label(status: Any) -> str:
     return STATUS_LABELS.get(int(status), "Unknown")
 
 
+def _percentage_handler(value: Any, _data: dict[str, Any]) -> Any:
+    """Convert a 0-1 ratio to a percentage."""
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value)) * 100
+    except (TypeError, ValueError):
+        return value
+
+
 @dataclass(slots=True)
 class SemsSensorType:
     """SEMS sensor definition."""
@@ -396,6 +406,46 @@ def sensor_options_for_data(
                         SensorStateClass.MEASUREMENT,
                     ),
                 ]
+        # Per-inverter meter and energy data (hybrid/storage inverters)
+        if (
+            get_value_from_path(data.inverters, [*path_to_inverter, "pmeter"])
+            is not None
+        ):
+            sensors.append(
+                SemsInverterSensorType(
+                    device_info,
+                    f"{serial_number}-pmeter",
+                    [*path_to_inverter, "pmeter"],
+                    "Grid Meter Power",
+                    SensorDeviceClass.POWER,
+                    UnitOfPower.WATT,
+                    SensorStateClass.MEASUREMENT,
+                ),
+            )
+        if (
+            get_value_from_path(data.inverters, [*path_to_inverter, "eChargeDay"])
+            is not None
+        ):
+            sensors += [
+                SemsInverterSensorType(
+                    device_info,
+                    f"{serial_number}-eChargeDay",
+                    [*path_to_inverter, "eChargeDay"],
+                    "Battery Charge Today",
+                    SensorDeviceClass.ENERGY,
+                    UnitOfEnergy.KILO_WATT_HOUR,
+                    SensorStateClass.TOTAL_INCREASING,
+                ),
+                SemsInverterSensorType(
+                    device_info,
+                    f"{serial_number}-eDischargeDay",
+                    [*path_to_inverter, "eDischargeDay"],
+                    "Battery Discharge Today",
+                    SensorDeviceClass.ENERGY,
+                    UnitOfEnergy.KILO_WATT_HOUR,
+                    SensorStateClass.TOTAL_INCREASING,
+                ),
+            ]
         _LOGGER.debug("Sensors for inverter %s: %s", serial_number, sensors)
 
     # HomeKit powerflow + SEMS charts live in `SemsData.homekit`.
@@ -537,6 +587,62 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-daily-load-consumption",
+                        ["Charts_consumptionOfLoad"],
+                        "SEMS Daily Load Consumption",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-daily-self-use",
+                        ["Charts_selfUseOfPv"],
+                        "SEMS Daily Self Use",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-daily-battery-charge",
+                        ["Charts_charge"],
+                        "SEMS Daily Battery Charge",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-daily-battery-discharge",
+                        ["Charts_disCharge"],
+                        "SEMS Daily Battery Discharge",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-daily-self-sufficiency-rate",
+                        ["Charts_contributingRate"],
+                        "SEMS Daily Self Sufficiency Rate",
+                        None,
+                        PERCENTAGE,
+                        SensorStateClass.MEASUREMENT,
+                        custom_value_handler=_percentage_handler,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-daily-self-use-rate",
+                        ["Charts_selfUseRate"],
+                        "SEMS Daily Self Use Rate",
+                        None,
+                        PERCENTAGE,
+                        SensorStateClass.MEASUREMENT,
+                        custom_value_handler=_percentage_handler,
+                    ),
                 ]
             if data.homekit.get("Totals_buy") is not None:
                 sensors += [
@@ -557,6 +663,62 @@ def sensor_options_for_data(
                         SensorDeviceClass.ENERGY,
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-total-load-consumption",
+                        ["Totals_consumptionOfLoad"],
+                        "SEMS Total Load Consumption",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-total-self-use",
+                        ["Totals_selfUseOfPv"],
+                        "SEMS Total Self Use",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-total-battery-charge",
+                        ["Totals_charge"],
+                        "SEMS Total Battery Charge",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-total-battery-discharge",
+                        ["Totals_disCharge"],
+                        "SEMS Total Battery Discharge",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-total-self-sufficiency-rate",
+                        ["Totals_contributingRate"],
+                        "SEMS Total Self Sufficiency Rate",
+                        None,
+                        PERCENTAGE,
+                        SensorStateClass.MEASUREMENT,
+                        custom_value_handler=_percentage_handler,
+                    ),
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-total-self-use-rate",
+                        ["Totals_selfUseRate"],
+                        "SEMS Total Self Use Rate",
+                        None,
+                        PERCENTAGE,
+                        SensorStateClass.MEASUREMENT,
+                        custom_value_handler=_percentage_handler,
                     ),
                 ]
     return sensors
