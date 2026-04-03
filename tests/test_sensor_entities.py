@@ -304,6 +304,10 @@ async def test_exact_unique_ids_single_inverter_fixture(
         f"{sn}-vpv2",
         f"{sn}-vpv3",
         f"{sn}-vpv4",
+        # Per-inverter meter and energy data
+        f"{sn}-pmeter",
+        f"{sn}-eChargeDay",
+        f"{sn}-eDischargeDay",
     }
 
     ent_reg = er.async_get(hass)
@@ -392,6 +396,24 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         f"{homekit_sn}-export-energy",
         f"{homekit_sn}-import-energy-total",
         f"{homekit_sn}-export-energy-total",
+        # Daily energy statistics
+        f"{homekit_sn}-daily-load-consumption",
+        f"{homekit_sn}-daily-self-use",
+        f"{homekit_sn}-daily-battery-charge",
+        f"{homekit_sn}-daily-battery-discharge",
+        f"{homekit_sn}-daily-self-sufficiency-rate",
+        f"{homekit_sn}-daily-self-use-rate",
+        # Total energy statistics
+        f"{homekit_sn}-total-load-consumption",
+        f"{homekit_sn}-total-self-use",
+        f"{homekit_sn}-total-battery-charge",
+        f"{homekit_sn}-total-battery-discharge",
+        f"{homekit_sn}-total-self-sufficiency-rate",
+        f"{homekit_sn}-total-self-use-rate",
+        # Per-inverter meter and energy data
+        f"{sn}-pmeter",
+        f"{sn}-eChargeDay",
+        f"{sn}-eDischargeDay",
     }
 
     ent_reg = er.async_get(hass)
@@ -547,6 +569,44 @@ async def test_homekit_powerflow_values_from_api_fixture(
     total_export_state = hass.states.get(total_export_entity_id)
     assert total_export_state is not None
     assert float(total_export_state.state) == 12901.2
+
+    # Verify daily load consumption sensor
+    daily_load_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-daily-load-consumption"
+    )
+    assert daily_load_entity_id is not None
+    daily_load_state = hass.states.get(daily_load_entity_id)
+    assert daily_load_state is not None
+    assert float(daily_load_state.state) == 12.2
+    assert daily_load_state.attributes.get("unit_of_measurement") == "kWh"
+
+    # Verify daily self use sensor
+    daily_self_use_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-daily-self-use"
+    )
+    assert daily_self_use_entity_id is not None
+    daily_self_use_state = hass.states.get(daily_self_use_entity_id)
+    assert daily_self_use_state is not None
+    assert float(daily_self_use_state.state) == 7.08
+
+    # Verify total load consumption sensor
+    total_load_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-total-load-consumption"
+    )
+    assert total_load_entity_id is not None
+    total_load_state = hass.states.get(total_load_entity_id)
+    assert total_load_state is not None
+    assert float(total_load_state.state) == 7927.13
+
+    # Verify daily self-sufficiency rate (0.5803 → 58.03%)
+    daily_sufficiency_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-daily-self-sufficiency-rate"
+    )
+    assert daily_sufficiency_entity_id is not None
+    daily_sufficiency_state = hass.states.get(daily_sufficiency_entity_id)
+    assert daily_sufficiency_state is not None
+    assert float(daily_sufficiency_state.state) == 58.03
+    assert daily_sufficiency_state.attributes.get("unit_of_measurement") == "%"
 
 
 def _build_homekit_test_data(
