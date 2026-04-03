@@ -4,12 +4,14 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
+from __future__ import annotations
+
 import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
+from typing import Any, Union
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -47,7 +49,7 @@ from .device import device_info_for_inverter
 
 _LOGGER = logging.getLogger(__name__)
 
-type SemsValuePath = list[str | int]
+SemsValuePath = list[Union[str, int]]
 
 
 def convert_status_to_label(status: Any) -> str:

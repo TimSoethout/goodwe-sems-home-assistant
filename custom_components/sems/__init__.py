@@ -36,7 +36,7 @@ class SemsRuntimeData:
     coordinator: SemsDataUpdateCoordinator
 
 
-type SemsConfigEntry = ConfigEntry[SemsRuntimeData]
+SemsConfigEntry = ConfigEntry[SemsRuntimeData]
 
 
 @dataclass(slots=True)
@@ -111,9 +111,9 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
             inverters = result.get("inverter")
             inverters_by_sn: dict[str, dict[str, Any]] = {}
-            if not inverters or not isinstance(inverters, list):
+            if inverters is not None and not isinstance(inverters, list):
                 raise UpdateFailed(
-                    "Error communicating with API: invalid or missing inverter data. See debug logs."
+                    "Error communicating with API: invalid inverter data. See debug logs."
                 )
 
             # Get Inverter Data
@@ -184,6 +184,9 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
                 homekit = powerflow
 
+            if not inverters_by_sn and homekit is None:
+                raise UpdateFailed("No data available from API")
+
             data = SemsData(
                 inverters=inverters_by_sn, homekit=homekit, currency=currency
             )
@@ -192,4 +195,4 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
 
 # Type alias to make type inference working for pylance
-type SemsCoordinator = SemsDataUpdateCoordinator
+SemsCoordinator = SemsDataUpdateCoordinator
