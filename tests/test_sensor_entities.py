@@ -393,6 +393,9 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         f"{homekit_sn}-export-energy",
         f"{homekit_sn}-import-energy-total",
         f"{homekit_sn}-export-energy-total",
+        # Generation sensors
+        f"{homekit_sn}-generation",
+        f"{homekit_sn}-generation-total",
     }
 
     ent_reg = er.async_get(hass)

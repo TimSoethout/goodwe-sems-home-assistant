@@ -49,7 +49,7 @@ from .device import device_info_for_inverter
 
 _LOGGER = logging.getLogger(__name__)
 
-SemsValuePath = list[Union[str, int]]
+SemsValuePath = list[str | int]
 
 
 def convert_status_to_label(status: Any) -> str:
