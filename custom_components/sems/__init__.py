@@ -116,6 +116,9 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                     "Error communicating with API: invalid inverter data. See debug logs."
                 )
 
+            if inverters is None:
+                inverters = []
+
             # Get Inverter Data
             for inverter in inverters:
                 inverter_full = inverter.get("invert_full")
