@@ -552,6 +552,22 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert total_export_state is not None
     assert float(total_export_state.state) == 12901.2
 
+    generation_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation"
+    )
+    assert generation_entity_id is not None
+    generation_state = hass.states.get(generation_entity_id)
+    assert generation_state is not None
+    assert float(generation_state.state) == 30.3
+
+    generation_total_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total"
+    )
+    assert generation_total_entity_id is not None
+    generation_total_state = hass.states.get(generation_total_entity_id)
+    assert generation_total_state is not None
+    assert float(generation_total_state.state) == 16851.0
+
 
 async def test_homekit_only_api_response_without_inverter_data(
     hass: HomeAssistant,
@@ -648,7 +664,21 @@ async def test_homekit_only_api_response_without_inverter_data(
         ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total")
         is not None
     )
+    generation_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation"
+    )
+    assert generation_entity_id is not None
+    generation_state = hass.states.get(generation_entity_id)
+    assert generation_state is not None
+    assert float(generation_state.state) == 0.43
 
+    generation_total_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total"
+    )
+    assert generation_total_entity_id is not None
+    generation_total_state = hass.states.get(generation_total_entity_id)
+    assert generation_total_state is not None
+    assert float(generation_total_state.state) == 2315.36
     assert entry.state is ConfigEntryState.LOADED
 
 
