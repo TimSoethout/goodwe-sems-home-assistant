@@ -633,7 +633,7 @@ async def test_no_data_available_response_fails_setup(
     hass: HomeAssistant,
     enable_custom_integrations: None,
 ) -> None:
-    """Test the coordinator fails setup when neither inverter nor HomeKit data is present."""
+    """Test the coordinator retries setup when neither inverter nor HomeKit data is present."""
     del enable_custom_integrations
 
     entry = MockConfigEntry(
@@ -660,7 +660,7 @@ async def test_no_data_available_response_fails_setup(
         assert not await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
 def _build_homekit_test_data(
