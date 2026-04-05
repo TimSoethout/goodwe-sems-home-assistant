@@ -11,7 +11,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Union
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
