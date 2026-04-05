@@ -36,7 +36,7 @@ class SemsRuntimeData:
     coordinator: SemsDataUpdateCoordinator
 
 
-type SemsConfigEntry = ConfigEntry[SemsRuntimeData]
+SemsConfigEntry = ConfigEntry[SemsRuntimeData]
 
 
 @dataclass(slots=True)
@@ -184,7 +184,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 # This seems more accurate than the Chart_sum
                 powerflow["all_time_generation"] = kpi.get("total_power")
 #
-                hosmekit = powerflow
+                homekit = powerflow
 
             if not inverters_by_sn and homekit is None:
                 raise UpdateFailed("No data available from API")
@@ -197,4 +197,4 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
 
 # Type alias to make type inference working for pylance
-type sSemsCoordinator = SemsDataUpdateCoordinator
+sSemsCoordinator = SemsDataUpdateCoordinator
