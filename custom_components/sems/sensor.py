@@ -561,6 +561,30 @@ def sensor_options_for_data(
                         SensorStateClass.TOTAL_INCREASING,
                     ),
                 ]
+            if data.homekit.get("Charts_sum") is not None:
+                sensors += [
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-generation",
+                        ["Charts_sum"],
+                        "SEMS Generation",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                ]
+            if data.homekit.get("Totals_sum") is not None:
+                sensors += [
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-generation-total",
+                        ["Totals_sum"],
+                        "SEMS Total Generation",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                ]
     return sensors
 
 

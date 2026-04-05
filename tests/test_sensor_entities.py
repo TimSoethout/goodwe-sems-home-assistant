@@ -571,7 +571,7 @@ async def test_homekit_only_api_response_without_inverter_data(
     payload = {
         "kpi": {"currency": "EUR", "total_power": 123.4},
         "hasPowerflow": True,
-        "hasEnergeStatisticsCharts": False,
+        "hasEnergeStatisticsCharts": True,
         "homKit": {"sn": "HOMEKIT123", "homeKitLimit": False},
         "powerflow": {
             "pv": "0(W)",
@@ -584,6 +584,16 @@ async def test_homekit_only_api_response_without_inverter_data(
             "betteryStatus": 0,
             "genset": "0(W)",
             "soc": 50,
+        },
+        "energeStatisticsCharts": {
+            "sum": 0.43,
+            "buy": 0.37,
+            "sell": 0.99,
+        },
+        "energeStatisticsTotals": {
+            "sum": 2315.36,
+            "buy": 18605.64,
+            "sell": 5734.17,
         },
     }
 
@@ -623,6 +633,16 @@ async def test_homekit_only_api_response_without_inverter_data(
     )
     assert (
         ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-load-status")
+        is not None
+    )
+
+    # Check new generation sensors
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total")
         is not None
     )
 
