@@ -682,6 +682,134 @@ async def test_homekit_only_api_response_without_inverter_data(
     assert entry.state is ConfigEntryState.LOADED
 
 
+async def test_homekit_only_api_response_with_none_inverter_data(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test that HomeKit-only responses work when inverter data is explicitly None."""
+    del enable_custom_integrations
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    payload = {
+        "inverter": None,
+        "kpi": {"currency": "EUR", "total_power": 123.4},
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": False,
+        "homKit": {"sn": "HOMEKIT123", "homeKitLimit": False},
+        "powerflow": {
+            "pv": "0(W)",
+            "pvStatus": 0,
+            "load": "100(W)",
+            "loadStatus": 1,
+            "grid": "100(W)",
+            "gridStatus": -1,
+            "bettery": "0(W)",
+            "betteryStatus": 0,
+            "genset": "0(W)",
+            "soc": 50,
+        },
+    }
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=payload,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"HOMEKIT123-generation")
+        is not None
+    )
+
+
+async def test_invalid_inverter_data_fails_setup_retry(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test setup retry when inverter data is not a list."""
+    del enable_custom_integrations
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    payload = {
+        "inverter": "invalid",
+        "kpi": {"currency": "EUR", "total_power": 0.0},
+        "hasPowerflow": False,
+        "hasEnergeStatisticsCharts": False,
+    }
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=payload,
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_powerflow_invalid_payload_defaults_homekit_sn(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test that invalid powerflow/homeKit payloads still create HomeKit sensors."""
+    del enable_custom_integrations
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    payload = {
+        "inverter": [],
+        "kpi": {"currency": "EUR", "total_power": 0.0},
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": False,
+        "homKit": None,
+        "powerflow": None,
+    }
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=payload,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, "GW-HOMEKIT-NO-SERIAL-homekit")
+        is not None
+    )
+
+
 async def test_no_data_available_response_fails_setup(
     hass: HomeAssistant,
     enable_custom_integrations: None,
