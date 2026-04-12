@@ -183,7 +183,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 # _LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
                 # This seems more accurate than the Chart_sum
                 powerflow["all_time_generation"] = kpi.get("total_power")
-#
+                #
                 homekit = powerflow
 
             if not inverters_by_sn and homekit is None:
@@ -197,4 +197,4 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
 
 # Type alias to make type inference working for pylance
-sSemsCoordinator = SemsDataUpdateCoordinator
+SemsCoordinator = SemsDataUpdateCoordinator
