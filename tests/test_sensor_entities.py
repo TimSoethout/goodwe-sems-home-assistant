@@ -704,7 +704,7 @@ async def test_homekit_only_api_response_with_none_inverter_data(
         "inverter": None,
         "kpi": {"currency": "EUR", "total_power": 123.4},
         "hasPowerflow": True,
-        "hasEnergeStatisticsCharts": False,
+        "hasEnergeStatisticsCharts": True,
         "homKit": {"sn": "HOMEKIT123", "homeKitLimit": False},
         "powerflow": {
             "pv": "0(W)",
@@ -718,6 +718,16 @@ async def test_homekit_only_api_response_with_none_inverter_data(
             "genset": "0(W)",
             "soc": 50,
         },
+        "energeStatisticsCharts": {
+            "sum": 0.43,
+            "buy": 0.37,
+            "sell": 0.99,
+        },
+        "energeStatisticsTotals": {
+            "sum": 2315.36,
+            "buy": 18605.64,
+            "sell": 5734.17,
+        },
     }
 
     with patch(
@@ -728,10 +738,61 @@ async def test_homekit_only_api_response_with_none_inverter_data(
         await hass.async_block_till_done()
 
     ent_reg = er.async_get(hass)
+    homekit_sn = "HOMEKIT123"
+
     assert (
-        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"HOMEKIT123-generation")
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-homekit")
         is not None
     )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-load")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-grid")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-pv")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-soc")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-battery")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-load-status")
+        is not None
+    )
+
+    # Check new generation sensors
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total")
+        is not None
+    )
+    generation_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation"
+    )
+    assert generation_entity_id is not None
+    generation_state = hass.states.get(generation_entity_id)
+    assert generation_state is not None
+    assert float(generation_state.state) == 0.43
+
+    generation_total_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total"
+    )
+    assert generation_total_entity_id is not None
+    generation_total_state = hass.states.get(generation_total_entity_id)
+    assert generation_total_state is not None
+    assert float(generation_total_state.state) == 2315.36
 
 
 async def test_invalid_inverter_data_fails_setup_retry(
