@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
-OLD_LOGIN_URL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
+OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
 NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
 _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
@@ -25,22 +25,27 @@ _RateLimitRetryAfterSeconds = 300
 
 _SuccessCodes = {0, "0", "00000"}
 _RateLimitCode = "GY0429"
+_SensitiveLogKeys = {
+    "account",
+    "pwd",
+    "password",
+    "token",
+    "uid",
+}
 
 _DefaultHeaders = {
     "Content-Type": "application/json",
     "Accept": "application/json",
-    "token": '{"version":"","client":"ios","language":"en"}',
+    "token": '{"version":"3.1.1","client":"ios","language":"en"}',
 }
 
 _NewLoginHeaders = {
     "Content-Type": "application/json",
-    "Accept": "application/json, text/plain, */*",
-    "token": '{"uid":"","timestamp":0,"token":"","client":"semsPlusWeb","version":"","language":"en"}',
-    "Origin": "https://semsplus.goodwe.com",
-    "Referer": "https://semsplus.goodwe.com/",
-    "currentLang": "en",
-    "neutral": "0",
+    "Accept": "application/json, */*;q=0.5",
 }
+
+_NewLoginFallbackApi = "https://eu-gateway.semsportal.com/web/sems"
+_LegacyApiFallback = "https://eu.semsportal.com/api"
 
 
 class SemsApi:
@@ -58,7 +63,7 @@ class SemsApi:
         """Test if we can authenticate with the host."""
         try:
             self._token = self.getLoginToken(self._username, self._password)
-        except Exception as exception:
+        except (AttributeError, KeyError, TypeError, ValueError) as exception:
             _LOGGER.exception("SEMS Authentication exception: %s", exception)
             return False
         else:
@@ -76,6 +81,13 @@ class SemsApi:
         """Make a generic HTTP request with error handling and optional code validation."""
         try:
             _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                request_payload = json_data if json_data is not None else data
+                _LOGGER.debug(
+                    "SEMS - %s request payload: %s",
+                    operation_name,
+                    self._sanitize_for_log(request_payload),
+                )
 
             response = requests.post(
                 url,
@@ -91,6 +103,23 @@ class SemsApi:
             response.raise_for_status()
             jsonResponse: dict[str, Any] = response.json()
             response_code = jsonResponse.get("code")
+
+            if "login" in operation_name.lower():
+                _LOGGER.debug(
+                    "SEMS - %s response payload: %s",
+                    operation_name,
+                    self._sanitize_for_log(jsonResponse),
+                )
+
+            _LOGGER.debug(
+                "SEMS - %s response summary: code=%s msg=%s description=%s api=%s has_data=%s",
+                operation_name,
+                response_code,
+                jsonResponse.get("msg"),
+                jsonResponse.get("description"),
+                jsonResponse.get("api"),
+                jsonResponse.get("data") not in (None, "", [], {}),
+            )
 
             if str(response_code) == _RateLimitCode:
                 raise SemsRateLimitedError(
@@ -118,25 +147,108 @@ class SemsApi:
 
             return jsonResponse
 
+        except requests.HTTPError as exception:
+            if (response := exception.response) is not None:
+                _LOGGER.error(
+                    "Unable to complete %s: status=%s url=%s body=%s",
+                    operation_name,
+                    response.status_code,
+                    response.url,
+                    response.text,
+                )
+            else:
+                _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
+            raise
         except (requests.RequestException, ValueError, KeyError) as exception:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             raise
+
+    def _sanitize_for_log(self, value: Any) -> Any:
+        """Return a redacted structure suitable for debug logging."""
+        if isinstance(value, dict):
+            return {
+                key: (
+                    "<redacted>"
+                    if key.lower() in _SensitiveLogKeys
+                    else self._sanitize_for_log(sub_value)
+                )
+                for key, sub_value in value.items()
+            }
+
+        if isinstance(value, list):
+            return [self._sanitize_for_log(item) for item in value]
+
+        return value
 
     def _hash_password_for_new_login(self, password: str) -> str:
         """Return the SEMS+ password encoding."""
         md5_password = hashlib.md5(password.encode("utf-8")).hexdigest()
         return base64.b64encode(md5_password.encode("utf-8")).decode("utf-8")
 
+    def _resolve_api_base_for_url_part(self, api_base: str, url_part: str) -> str:
+        """Return the effective API base for a given endpoint path."""
+        if not (
+            url_part.startswith("/PowerStation")
+            or url_part.startswith("/v3/PowerStation")
+        ):
+            return api_base
+
+        # Gateway bases from both old and new login flows do not host the
+        # legacy PowerStation routes this integration calls.
+        if (
+            "/web/sems" not in api_base
+            and "/sems/" not in api_base
+            and "-gateway.semsportal.com" not in api_base
+        ):
+            return api_base
+
+        if isinstance(self._token, dict) and isinstance(self._token.get("region"), str):
+            region = self._token["region"]
+            if region:
+                rewritten_base = f"https://{region}.semsportal.com/api"
+                _LOGGER.debug(
+                    "SEMS - Rewriting API base from %s to %s for %s",
+                    api_base,
+                    rewritten_base,
+                    url_part,
+                )
+                return rewritten_base
+
+        host = api_base.split("//", 1)[-1].split("/", 1)[0]
+        if host.endswith("-gateway.semsportal.com"):
+            region_prefix = host.removesuffix("-gateway.semsportal.com")
+            if region_prefix:
+                rewritten_base = f"https://{region_prefix}.semsportal.com/api"
+                _LOGGER.debug(
+                    "SEMS - Rewriting API base from %s to %s for %s",
+                    api_base,
+                    rewritten_base,
+                    url_part,
+                )
+                return rewritten_base
+
+        _LOGGER.debug(
+            "SEMS - Rewriting API base from %s to fallback %s for %s",
+            api_base,
+            _LegacyApiFallback,
+            url_part,
+        )
+        return _LegacyApiFallback
+
     def _get_login_mode_order(self) -> list[str]:
         """Return login modes in preferred order."""
-        login_modes = ["legacy", "new"]
+        login_modes = ["new", "legacy"]
         if self._preferred_login_mode in login_modes:
             login_modes.remove(self._preferred_login_mode)
             login_modes.insert(0, self._preferred_login_mode)
         return login_modes
 
     def _extract_login_token(
-        self, json_response: dict[str, Any] | None, login_mode: str, operation_name: str
+        self,
+        json_response: dict[str, Any] | None,
+        login_mode: str,
+        operation_name: str,
+        fallback_api_url: str | None = None,
     ) -> dict[str, Any] | None:
         """Normalize a login response into the token payload expected elsewhere."""
         if json_response is None:
@@ -144,20 +256,49 @@ class SemsApi:
 
         code = json_response.get("code")
         if code not in _SuccessCodes:
-            _LOGGER.debug("SEMS %s login failed with code %s", login_mode, code)
+            _LOGGER.debug(
+                "SEMS %s login failed during %s with code %s, msg=%s, description=%s, api=%s, data_type=%s",
+                login_mode,
+                operation_name,
+                code,
+                json_response.get("msg"),
+                json_response.get("description"),
+                json_response.get("api"),
+                type(json_response.get("data")).__name__,
+            )
             return None
 
         token_data = json_response.get("data")
         if not isinstance(token_data, dict) or not token_data:
             _LOGGER.error(
-                "SEMS %s login response data was missing or invalid", login_mode
+                "SEMS %s login response data was missing or invalid: data_type=%s, keys=%s",
+                login_mode,
+                type(token_data).__name__,
+                list(json_response.keys()),
             )
             return None
 
         api_url = json_response.get("api")
+        if (not isinstance(api_url, str) or not api_url) and isinstance(
+            token_data.get("api"), str
+        ):
+            api_url = token_data.get("api")
+
         if not isinstance(api_url, str) or not api_url:
-            _LOGGER.error("SEMS %s login response missing api field", login_mode)
-            return None
+            if fallback_api_url is None:
+                _LOGGER.error(
+                    "SEMS %s login response missing api field: keys=%s",
+                    login_mode,
+                    list(json_response.keys()),
+                )
+                return None
+
+            _LOGGER.debug(
+                "SEMS %s login response missing api field, falling back to %s",
+                login_mode,
+                fallback_api_url,
+            )
+            api_url = fallback_api_url
 
         token_dict = dict(token_data)
         token_dict["api"] = api_url
@@ -190,23 +331,23 @@ class SemsApi:
     ) -> dict[str, Any] | None:
         """Get a token from the SEMS+ login endpoint."""
         _LOGGER.debug("SEMS - Trying new SEMS+ login")
-        login_data = json.dumps(
-            {
-                "account": userName,
-                "pwd": self._hash_password_for_new_login(password),
-                "agreement": 1,
-                "isLocal": False,
-                "isChinese": False,
-            }
-        )
+        login_data = {
+            "account": userName,
+            "pwd": self._hash_password_for_new_login(password),
+        }
         json_response = self._make_http_request(
             NEW_LOGIN_URL,
             _NewLoginHeaders,
-            data=login_data,
+            json_data=login_data,
             operation_name="SEMS+ login API call",
             validate_code=False,
         )
-        return self._extract_login_token(json_response, "new", "SEMS+ login API call")
+        return self._extract_login_token(
+            json_response,
+            "new",
+            "SEMS+ login API call",
+            _NewLoginFallbackApi,
+        )
 
     def getLoginToken(self, userName: str, password: str) -> dict[str, Any] | None:
         """Get the login token for the SEMS API."""
@@ -261,7 +402,16 @@ class SemsApi:
             "token": json.dumps(self._token),
         }
 
-        api_url = self._token["api"] + url_part
+        api_base = self._resolve_api_base_for_url_part(self._token["api"], url_part)
+        api_url = api_base + url_part
+        _LOGGER.debug(
+            "SEMS - %s request context: api_base=%s effective_api_base=%s url_part=%s token=%s",
+            operation_name,
+            self._token.get("api"),
+            api_base,
+            url_part,
+            self._sanitize_for_log(self._token),
+        )
 
         try:
             jsonResponse: dict[str, Any] | None = self._make_http_request(
@@ -287,7 +437,12 @@ class SemsApi:
             # Response is valid, return the data
             return jsonResponse["data"]
 
-        except SemsRateLimitedError:
+        except SemsRateLimitedError as exception:
+            _LOGGER.debug(
+                "SEMS - Propagating rate limit from %s to coordinator: retry_after=%s",
+                operation_name,
+                exception.retry_after,
+            )
             raise
         except (requests.RequestException, ValueError, KeyError) as exception:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
@@ -351,7 +506,10 @@ class SemsApi:
             "token": json.dumps(self._token),
         }
 
-        api_url = self._token["api"] + _PowerControlURLPart
+        api_base = self._resolve_api_base_for_url_part(
+            self._token["api"], _PowerControlURLPart
+        )
+        api_url = api_base + _PowerControlURLPart
 
         try:
             # Control API uses different validation (HTTP status code), so don't validate JSON response code
