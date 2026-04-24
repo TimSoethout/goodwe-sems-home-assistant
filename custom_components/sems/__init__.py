@@ -21,7 +21,7 @@ from .const import (
     GOODWE_SPELLING,
     PLATFORMS,
 )
-from .sems_api import SemsApi
+from .sems_api import SemsApi, SemsRateLimitedError
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -104,6 +104,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             result = await self.hass.async_add_executor_job(
                 self.sems_api.getData, self.station_id
             )
+        except SemsRateLimitedError as err:
+            raise UpdateFailed(
+                "SEMS API rate limited",
+                retry_after=err.retry_after,
+            ) from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
 from typing import Any
@@ -10,7 +12,8 @@ from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
 
-_LoginURL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
+OLD_LOGIN_URL = "https://www.semsportal.com/api/v2/Common/CrossLogin"
+NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
 _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
 # _PowerControlURL = (
@@ -18,11 +21,25 @@ _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
 # )
 _PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
 _RequestTimeout = 30  # seconds
+_RateLimitRetryAfterSeconds = 300
+
+_SuccessCodes = {0, "0", "00000"}
+_RateLimitCode = "GY0429"
 
 _DefaultHeaders = {
     "Content-Type": "application/json",
     "Accept": "application/json",
     "token": '{"version":"","client":"ios","language":"en"}',
+}
+
+_NewLoginHeaders = {
+    "Content-Type": "application/json",
+    "Accept": "application/json, text/plain, */*",
+    "token": '{"uid":"","timestamp":0,"token":"","client":"semsPlusWeb","version":"","language":"en"}',
+    "Origin": "https://semsplus.goodwe.com",
+    "Referer": "https://semsplus.goodwe.com/",
+    "currentLang": "en",
+    "neutral": "0",
 }
 
 
@@ -35,6 +52,7 @@ class SemsApi:
         self._username = username
         self._password = password
         self._token: dict[str, Any] | None = None
+        self._preferred_login_mode: str | None = None
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
@@ -72,19 +90,29 @@ class SemsApi:
 
             response.raise_for_status()
             jsonResponse: dict[str, Any] = response.json()
+            response_code = jsonResponse.get("code")
+
+            if str(response_code) == _RateLimitCode:
+                raise SemsRateLimitedError(
+                    retry_after=_RateLimitRetryAfterSeconds,
+                    message=(
+                        f"{operation_name} returned rate-limit code {_RateLimitCode}"
+                    ),
+                )
 
             # Validate response code if requested
             if validate_code:
-                if jsonResponse.get("code") not in (0, "0"):
+                if response_code not in _SuccessCodes:
                     _LOGGER.error(
                         "%s failed with code: %s, message: %s",
                         operation_name,
-                        jsonResponse.get("code"),
+                        response_code,
                         jsonResponse.get("msg", "Unknown error"),
                     )
                     return None
 
-                if jsonResponse.get("data") is None:
+                data = jsonResponse.get("data")
+                if data is None or data == "" or data == [] or data == {}:
                     _LOGGER.error("%s response missing data field", operation_name)
                     return None
 
@@ -94,34 +122,107 @@ class SemsApi:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             raise
 
+    def _hash_password_for_new_login(self, password: str) -> str:
+        """Return the SEMS+ password encoding."""
+        md5_password = hashlib.md5(password.encode("utf-8")).hexdigest()
+        return base64.b64encode(md5_password.encode("utf-8")).decode("utf-8")
+
+    def _get_login_mode_order(self) -> list[str]:
+        """Return login modes in preferred order."""
+        login_modes = ["legacy", "new"]
+        if self._preferred_login_mode in login_modes:
+            login_modes.remove(self._preferred_login_mode)
+            login_modes.insert(0, self._preferred_login_mode)
+        return login_modes
+
+    def _extract_login_token(
+        self, json_response: dict[str, Any] | None, login_mode: str, operation_name: str
+    ) -> dict[str, Any] | None:
+        """Normalize a login response into the token payload expected elsewhere."""
+        if json_response is None:
+            return None
+
+        code = json_response.get("code")
+        if code not in _SuccessCodes:
+            _LOGGER.debug("SEMS %s login failed with code %s", login_mode, code)
+            return None
+
+        token_data = json_response.get("data")
+        if not isinstance(token_data, dict) or not token_data:
+            _LOGGER.error(
+                "SEMS %s login response data was missing or invalid", login_mode
+            )
+            return None
+
+        api_url = json_response.get("api")
+        if not isinstance(api_url, str) or not api_url:
+            _LOGGER.error("SEMS %s login response missing api field", login_mode)
+            return None
+
+        token_dict = dict(token_data)
+        token_dict["api"] = api_url
+
+        _LOGGER.debug(
+            "SEMS - API Token received via %s login: %s", login_mode, token_dict
+        )
+        self._preferred_login_mode = login_mode
+        return token_dict
+
+    def _get_legacy_login_token(
+        self, userName: str, password: str
+    ) -> dict[str, Any] | None:
+        """Get a token from the legacy SEMS login endpoint."""
+        _LOGGER.debug("SEMS - Trying legacy login")
+        login_data = json.dumps({"account": userName, "pwd": password})
+        json_response = self._make_http_request(
+            OLD_LOGIN_URL,
+            _DefaultHeaders,
+            data=login_data,
+            operation_name="legacy login API call",
+            validate_code=False,
+        )
+        return self._extract_login_token(
+            json_response, "legacy", "legacy login API call"
+        )
+
+    def _get_new_login_token(
+        self, userName: str, password: str
+    ) -> dict[str, Any] | None:
+        """Get a token from the SEMS+ login endpoint."""
+        _LOGGER.debug("SEMS - Trying new SEMS+ login")
+        login_data = json.dumps(
+            {
+                "account": userName,
+                "pwd": self._hash_password_for_new_login(password),
+                "agreement": 1,
+                "isLocal": False,
+                "isChinese": False,
+            }
+        )
+        json_response = self._make_http_request(
+            NEW_LOGIN_URL,
+            _NewLoginHeaders,
+            data=login_data,
+            operation_name="SEMS+ login API call",
+            validate_code=False,
+        )
+        return self._extract_login_token(json_response, "new", "SEMS+ login API call")
+
     def getLoginToken(self, userName: str, password: str) -> dict[str, Any] | None:
         """Get the login token for the SEMS API."""
         try:
-            # Prepare Login Data to retrieve Authentication Token
-            # Dict won't work here somehow, so this magic string creation must do.
-            login_data = '{"account":"' + userName + '","pwd":"' + password + '"}'
+            for login_mode in self._get_login_mode_order():
+                if login_mode == "legacy":
+                    token = self._get_legacy_login_token(userName, password)
+                else:
+                    token = self._get_new_login_token(userName, password)
 
-            jsonResponse = self._make_http_request(
-                _LoginURL,
-                _DefaultHeaders,
-                data=login_data,
-                operation_name="login API call",
-                validate_code=True,
-            )
+                if token is not None:
+                    # Keep preferred mode in sync even when login helpers are mocked in tests.
+                    self._preferred_login_mode = login_mode
+                    return token
 
-            if jsonResponse is None:
-                return None
-
-            # Get all the details from our response, needed to make the next POST request (the one that really fetches the data)
-            # Also store the api url send with the authentication request for later use
-            tokenDict = jsonResponse["data"]
-            if not isinstance(tokenDict, dict):
-                _LOGGER.error("Login response data was not a dict")
-                return None
-            tokenDict["api"] = jsonResponse["api"]
-
-            _LOGGER.debug("SEMS - API Token received: %s", tokenDict)
-            return tokenDict
+            return None
 
         except (requests.RequestException, ValueError, KeyError) as exception:
             _LOGGER.error("Unable to fetch login token from SEMS API: %s", exception)
@@ -186,6 +287,8 @@ class SemsApi:
             # Response is valid, return the data
             return jsonResponse["data"]
 
+        except SemsRateLimitedError:
+            raise
         except (requests.RequestException, ValueError, KeyError) as exception:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             return None
@@ -276,6 +379,9 @@ class SemsApi:
                 )
             _LOGGER.error("Unable to execute %s: %s", operation_name, e)
             return False
+        except SemsRateLimitedError as exception:
+            _LOGGER.warning("Unable to execute %s: %s", operation_name, exception)
+            return False
         except (requests.RequestException, ValueError, KeyError) as exception:
             _LOGGER.error("Unable to execute %s: %s", operation_name, exception)
             return False
@@ -307,3 +413,12 @@ class SemsApi:
 
 class OutOfRetries(exceptions.HomeAssistantError):
     """Error to indicate too many error attempts."""
+
+
+class SemsRateLimitedError(exceptions.HomeAssistantError):
+    """Error to indicate the SEMS API requested retry with backoff."""
+
+    def __init__(self, retry_after: int, message: str = "SEMS API rate limited"):
+        """Initialize rate limit exception."""
+        super().__init__(message)
+        self.retry_after = retry_after
