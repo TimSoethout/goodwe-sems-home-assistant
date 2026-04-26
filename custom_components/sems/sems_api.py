@@ -86,12 +86,18 @@ class SemsApi:
         try:
             _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
             if _LOGGER.isEnabledFor(logging.DEBUG):
-                request_payload = json_data if json_data is not None else data
-                _LOGGER.debug(
-                    "SEMS - %s request payload: %s",
-                    operation_name,
-                    self._sanitize_for_log(request_payload),
-                )
+                if "login" in operation_name.lower():
+                    _LOGGER.debug(
+                        "SEMS - %s request payload logging skipped for security",
+                        operation_name,
+                    )
+                else:
+                    request_payload = json_data if json_data is not None else data
+                    _LOGGER.debug(
+                        "SEMS - %s request payload: %s",
+                        operation_name,
+                        self._sanitize_for_log(request_payload),
+                    )
 
             response = requests.post(
                 url,
@@ -153,13 +159,21 @@ class SemsApi:
 
         except requests.HTTPError as exception:
             if (response := exception.response) is not None:
-                _LOGGER.error(
-                    "Unable to complete %s: status=%s url=%s body=%s",
-                    operation_name,
-                    response.status_code,
-                    response.url,
-                    response.text,
-                )
+                if "login" in operation_name.lower():
+                    _LOGGER.error(
+                        "Unable to complete %s: status=%s url=%s (response body redacted)",
+                        operation_name,
+                        response.status_code,
+                        response.url,
+                    )
+                else:
+                    _LOGGER.error(
+                        "Unable to complete %s: status=%s url=%s body=%s",
+                        operation_name,
+                        response.status_code,
+                        response.url,
+                        response.text,
+                    )
             else:
                 _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             raise
@@ -378,7 +392,9 @@ class SemsApi:
         token_dict["api"] = api_url
 
         _LOGGER.debug(
-            "SEMS - API Token received via %s login: %s", login_mode, token_dict
+            "SEMS - API Token received via %s login: %s",
+            login_mode,
+            self._sanitize_for_log(token_dict),
         )
         self._preferred_login_mode = login_mode
         return token_dict
@@ -447,7 +463,7 @@ class SemsApi:
         renewToken: bool = False,
         maxTokenRetries: int = 2,
         operation_name: str = "API call",
-    ) -> dict[str, Any] | None:
+    ) -> Any:
         """Make a generic API call with token management and retry logic."""
         _LOGGER.debug("SEMS - Making %s", operation_name)
         if maxTokenRetries <= 0:
@@ -499,7 +515,7 @@ class SemsApi:
 
     def getPowerStationIds(
         self, renewToken: bool = False, maxTokenRetries: int = 2
-    ) -> dict[str, Any] | None:
+    ) -> Any:
         """Get the power station ids from the SEMS API."""
         return self._make_api_call(
             _GetPowerStationIdByOwnerURLPart,
