@@ -91,12 +91,11 @@ class SemsApi:
                         "SEMS - %s request payload logging skipped for security",
                         operation_name,
                     )
-                else:
-                    request_payload = json_data if json_data is not None else data
+                elif json_data is not None:
                     _LOGGER.debug(
                         "SEMS - %s request payload: %s",
                         operation_name,
-                        self._sanitize_for_log(request_payload),
+                        self._sanitize_for_log(json_data),
                     )
 
             response = requests.post(
