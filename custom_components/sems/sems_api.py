@@ -86,7 +86,7 @@ class SemsApi:
         try:
             _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
             if _LOGGER.isEnabledFor(logging.DEBUG):
-                if "login" in operation_name.lower():
+                if self._is_sensitive_operation(operation_name):
                     _LOGGER.debug(
                         "SEMS - %s request payload logging skipped for security",
                         operation_name,
@@ -114,7 +114,7 @@ class SemsApi:
             json_response: dict[str, Any] = response.json()
             response_code = json_response.get("code")
 
-            if "login" in operation_name.lower():
+            if self._is_sensitive_operation(operation_name):
                 _LOGGER.debug(
                     "SEMS - %s response payload: %s",
                     operation_name,
@@ -159,7 +159,7 @@ class SemsApi:
 
         except requests.HTTPError as exception:
             if (response := exception.response) is not None:
-                if "login" in operation_name.lower():
+                if self._is_sensitive_operation(operation_name):
                     _LOGGER.error(
                         "Unable to complete %s: status=%s url=%s (response body redacted)",
                         operation_name,
@@ -183,6 +183,14 @@ class SemsApi:
 
     def _sanitize_for_log(self, value: Any) -> Any:
         """Return a redacted structure suitable for debug logging."""
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                sanitized = self._sanitize_for_log(parsed)
+                return json.dumps(sanitized)
+            except (ValueError, TypeError):
+                return value
+
         if isinstance(value, dict):
             return {
                 key: (
@@ -197,6 +205,10 @@ class SemsApi:
             return [self._sanitize_for_log(item) for item in value]
 
         return value
+
+    def _is_sensitive_operation(self, operation_name: str) -> bool:
+        """Return True if the operation name indicates it handles sensitive credentials."""
+        return "login" in operation_name.lower()
 
     def _hash_password_for_new_login(self, password: str) -> str:
         """Return the SEMS+ password encoding."""
