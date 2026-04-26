@@ -526,7 +526,7 @@ class SemsApi:
 
     def getPowerStationIds(
         self, renewToken: bool = False, maxTokenRetries: int = 2
-    ) -> Any:
+    ) -> str | None:
         """Get the power station ids from the SEMS API."""
         return self._make_api_call(
             _GetPowerStationIdByOwnerURLPart,
