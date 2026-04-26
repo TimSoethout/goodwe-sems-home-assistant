@@ -85,19 +85,6 @@ class SemsApi:
         """Make a generic HTTP request with error handling and optional code validation."""
         try:
             _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
-            if _LOGGER.isEnabledFor(logging.DEBUG):
-                if self._is_sensitive_operation(operation_name):
-                    _LOGGER.debug(
-                        "SEMS - %s request payload logging skipped for security",
-                        operation_name,
-                    )
-                elif json_data is not None:
-                    _LOGGER.debug(
-                        "SEMS - %s request payload: %s",
-                        operation_name,
-                        self._sanitize_for_log(json_data),
-                    )
-
             response = requests.post(
                 url,
                 headers=headers,
