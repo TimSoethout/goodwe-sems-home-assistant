@@ -4,7 +4,7 @@ import base64
 import hashlib
 import json
 import logging
-from typing import Any
+from typing import Any, Callable, Literal
 
 import requests
 from homeassistant import exceptions
@@ -47,6 +47,9 @@ _NewLoginHeaders = {
 _NewLoginFallbackApi = "https://eu-gateway.semsportal.com/web/sems"
 _LegacyApiFallback = "https://eu.semsportal.com/api"
 
+type LoginMode = Literal["new", "legacy"]
+type LoginHandler = Callable[[str, str], dict[str, Any] | None]
+
 
 class SemsApi:
     """Interface to the SEMS API."""
@@ -57,7 +60,7 @@ class SemsApi:
         self._username = username
         self._password = password
         self._token: dict[str, Any] | None = None
-        self._preferred_login_mode: str | None = None
+        self._preferred_login_mode: LoginMode | None = None
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
@@ -101,24 +104,24 @@ class SemsApi:
             # _LOGGER.debug("%s Response text: %s", operation_name, response.text)
 
             response.raise_for_status()
-            jsonResponse: dict[str, Any] = response.json()
-            response_code = jsonResponse.get("code")
+            json_response: dict[str, Any] = response.json()
+            response_code = json_response.get("code")
 
             if "login" in operation_name.lower():
                 _LOGGER.debug(
                     "SEMS - %s response payload: %s",
                     operation_name,
-                    self._sanitize_for_log(jsonResponse),
+                    self._sanitize_for_log(json_response),
                 )
 
             _LOGGER.debug(
                 "SEMS - %s response summary: code=%s msg=%s description=%s api=%s has_data=%s",
                 operation_name,
                 response_code,
-                jsonResponse.get("msg"),
-                jsonResponse.get("description"),
-                jsonResponse.get("api"),
-                jsonResponse.get("data") not in (None, "", [], {}),
+                json_response.get("msg"),
+                json_response.get("description"),
+                json_response.get("api"),
+                json_response.get("data") not in (None, "", [], {}),
             )
 
             if str(response_code) == _RateLimitCode:
@@ -136,16 +139,16 @@ class SemsApi:
                         "%s failed with code: %s, message: %s",
                         operation_name,
                         response_code,
-                        jsonResponse.get("msg", "Unknown error"),
+                        json_response.get("msg", "Unknown error"),
                     )
                     return None
 
-                data = jsonResponse.get("data")
+                data = json_response.get("data")
                 if data is None or data == "" or data == [] or data == {}:
                     _LOGGER.error("%s response missing data field", operation_name)
                     return None
 
-            return jsonResponse
+            return json_response
 
         except requests.HTTPError as exception:
             if (response := exception.response) is not None:
@@ -185,47 +188,46 @@ class SemsApi:
         md5_password = hashlib.md5(password.encode("utf-8")).hexdigest()
         return base64.b64encode(md5_password.encode("utf-8")).decode("utf-8")
 
-    def _resolve_api_base_for_url_part(self, api_base: str, url_part: str) -> str:
-        """Return the effective API base for a given endpoint path."""
-        if not (
-            url_part.startswith("/PowerStation")
-            or url_part.startswith("/v3/PowerStation")
-        ):
-            return api_base
+    def _is_powerstation_route(self, url_part: str) -> bool:
+        """Return whether the route should use the legacy PowerStation host."""
+        return url_part.startswith("/PowerStation") or url_part.startswith(
+            "/v3/PowerStation"
+        )
 
-        # Gateway bases from both old and new login flows do not host the
-        # legacy PowerStation routes this integration calls.
-        if (
-            "/web/sems" not in api_base
-            and "/sems/" not in api_base
-            and "-gateway.semsportal.com" not in api_base
-        ):
-            return api_base
-
-        if isinstance(self._token, dict) and isinstance(self._token.get("region"), str):
-            region = self._token["region"]
-            if region:
-                rewritten_base = f"https://{region}.semsportal.com/api"
-                _LOGGER.debug(
-                    "SEMS - Rewriting API base from %s to %s for %s",
-                    api_base,
-                    rewritten_base,
-                    url_part,
-                )
-                return rewritten_base
-
+    def _extract_gateway_region(self, api_base: str) -> str | None:
+        """Return the SEMS region prefix from a gateway API base."""
         host = api_base.split("//", 1)[-1].split("/", 1)[0]
         if host.endswith("-gateway.semsportal.com"):
-            region_prefix = host.removesuffix("-gateway.semsportal.com")
-            if region_prefix:
-                rewritten_base = f"https://{region_prefix}.semsportal.com/api"
-                _LOGGER.debug(
-                    "SEMS - Rewriting API base from %s to %s for %s",
-                    api_base,
-                    rewritten_base,
-                    url_part,
-                )
-                return rewritten_base
+            return host.removesuffix("-gateway.semsportal.com") or None
+
+        if host.endswith(".semsportal.com"):
+            return host.split(".", 1)[0] or None
+
+        return None
+
+    def _normalize_powerstation_api_base(self, api_base: str, url_part: str) -> str:
+        """Return the effective API base for PowerStation requests."""
+        if not self._is_powerstation_route(url_part):
+            return api_base
+
+        if "/web/sems" not in api_base and "/sems/" not in api_base:
+            return api_base
+
+        region = None
+        if isinstance(self._token, dict) and isinstance(self._token.get("region"), str):
+            region = self._token["region"] or None
+        if region is None:
+            region = self._extract_gateway_region(api_base)
+
+        if region:
+            rewritten_base = f"https://{region}.semsportal.com/api"
+            _LOGGER.debug(
+                "SEMS - Rewriting API base from %s to %s for %s",
+                api_base,
+                rewritten_base,
+                url_part,
+            )
+            return rewritten_base
 
         _LOGGER.debug(
             "SEMS - Rewriting API base from %s to fallback %s for %s",
@@ -235,18 +237,102 @@ class SemsApi:
         )
         return _LegacyApiFallback
 
-    def _get_login_mode_order(self) -> list[str]:
+    def _resolve_api_base_for_url_part(self, api_base: str, url_part: str) -> str:
+        """Return the effective API base for a given endpoint path."""
+        return self._normalize_powerstation_api_base(api_base, url_part)
+
+    def _get_authenticated_request_context(
+        self,
+        url_part: str,
+        renewToken: bool,
+        operation_name: str,
+    ) -> tuple[str, dict[str, str]] | None:
+        """Return the request URL and headers for an authenticated call."""
+        if self._token is None or renewToken:
+            _LOGGER.debug(
+                "API token not set (%s) or new token requested (%s), fetching",
+                self._token,
+                renewToken,
+            )
+            self._token = self.getLoginToken(self._username, self._password)
+
+        if self._token is None:
+            _LOGGER.error("Failed to obtain API token")
+            return None
+
+        api_base = self._resolve_api_base_for_url_part(self._token["api"], url_part)
+        api_url = api_base + url_part
+        headers = self._build_authenticated_headers(self._token)
+
+        _LOGGER.debug(
+            "SEMS - %s request context: api_base=%s effective_api_base=%s url_part=%s token=%s",
+            operation_name,
+            self._token.get("api"),
+            api_base,
+            url_part,
+            self._sanitize_for_log(self._token),
+        )
+        return api_url, headers
+
+    def _build_authenticated_headers(
+        self, token_data: dict[str, Any]
+    ) -> dict[str, str]:
+        """Build request headers for authenticated API calls."""
+        return {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "token": json.dumps(token_data),
+        }
+
+    def _get_login_mode_order(self) -> list[LoginMode]:
         """Return login modes in preferred order."""
-        login_modes = ["new", "legacy"]
+        login_modes: list[LoginMode] = ["new", "legacy"]
         if self._preferred_login_mode in login_modes:
             login_modes.remove(self._preferred_login_mode)
             login_modes.insert(0, self._preferred_login_mode)
         return login_modes
 
+    def _login_handler_for_mode(self, login_mode: LoginMode) -> LoginHandler:
+        """Return the login handler for a given mode."""
+        if login_mode == "legacy":
+            return self._get_legacy_login_token
+        return self._get_new_login_token
+
+    def _resolve_login_api_url(
+        self,
+        json_response: dict[str, Any],
+        token_data: dict[str, Any],
+        login_mode: LoginMode,
+        fallback_api_url: str | None,
+    ) -> str | None:
+        """Resolve API URL from login response with optional fallback."""
+        api_url = (
+            json_response.get("api")
+            if isinstance(json_response.get("api"), str)
+            else token_data.get("api")
+        )
+        if isinstance(api_url, str) and api_url:
+            return api_url
+
+        if fallback_api_url is None:
+            _LOGGER.error(
+                "SEMS %s login response missing api field: keys=%s",
+                login_mode,
+                list(json_response.keys()),
+            )
+            return None
+
+        _LOGGER.debug(
+            "SEMS %s login response missing api field, falling back to %s",
+            login_mode,
+            fallback_api_url,
+        )
+        return fallback_api_url
+
     def _extract_login_token(
         self,
         json_response: dict[str, Any] | None,
-        login_mode: str,
+        login_mode: LoginMode,
         operation_name: str,
         fallback_api_url: str | None = None,
     ) -> dict[str, Any] | None:
@@ -278,27 +364,14 @@ class SemsApi:
             )
             return None
 
-        api_url = json_response.get("api")
-        if (not isinstance(api_url, str) or not api_url) and isinstance(
-            token_data.get("api"), str
-        ):
-            api_url = token_data.get("api")
-
-        if not isinstance(api_url, str) or not api_url:
-            if fallback_api_url is None:
-                _LOGGER.error(
-                    "SEMS %s login response missing api field: keys=%s",
-                    login_mode,
-                    list(json_response.keys()),
-                )
-                return None
-
-            _LOGGER.debug(
-                "SEMS %s login response missing api field, falling back to %s",
-                login_mode,
-                fallback_api_url,
-            )
-            api_url = fallback_api_url
+        api_url = self._resolve_login_api_url(
+            json_response,
+            token_data,
+            login_mode,
+            fallback_api_url,
+        )
+        if api_url is None:
+            return None
 
         token_dict = dict(token_data)
         token_dict["api"] = api_url
@@ -353,10 +426,7 @@ class SemsApi:
         """Get the login token for the SEMS API."""
         try:
             for login_mode in self._get_login_mode_order():
-                if login_mode == "legacy":
-                    token = self._get_legacy_login_token(userName, password)
-                else:
-                    token = self._get_new_login_token(userName, password)
+                token = self._login_handler_for_mode(login_mode)(userName, password)
 
                 if token is not None:
                     # Keep preferred mode in sync even when login helpers are mocked in tests.
@@ -383,38 +453,16 @@ class SemsApi:
             _LOGGER.info("SEMS - Maximum token fetch tries reached, aborting for now")
             raise OutOfRetries
 
-        if self._token is None or renewToken:
-            _LOGGER.debug(
-                "API token not set (%s) or new token requested (%s), fetching",
-                self._token,
-                renewToken,
-            )
-            self._token = self.getLoginToken(self._username, self._password)
-
-        if self._token is None:
-            _LOGGER.error("Failed to obtain API token")
+        context = self._get_authenticated_request_context(
+            url_part, renewToken, operation_name
+        )
+        if context is None:
             return None
 
-        # Prepare headers
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "token": json.dumps(self._token),
-        }
-
-        api_base = self._resolve_api_base_for_url_part(self._token["api"], url_part)
-        api_url = api_base + url_part
-        _LOGGER.debug(
-            "SEMS - %s request context: api_base=%s effective_api_base=%s url_part=%s token=%s",
-            operation_name,
-            self._token.get("api"),
-            api_base,
-            url_part,
-            self._sanitize_for_log(self._token),
-        )
+        api_url, headers = context
 
         try:
-            jsonResponse: dict[str, Any] | None = self._make_http_request(
+            json_response: dict[str, Any] | None = self._make_http_request(
                 api_url,
                 headers,
                 data=data,
@@ -423,7 +471,7 @@ class SemsApi:
             )
 
             # _make_http_request already validated the response, so if we get here, it's successful
-            if jsonResponse is None:
+            if json_response is None:
                 # Response validation failed in _make_http_request
                 _LOGGER.debug(
                     "%s not successful, retrying with new token, %s retries remaining",
@@ -435,7 +483,7 @@ class SemsApi:
                 )
 
             # Response is valid, return the data
-            return jsonResponse["data"]
+            return json_response["data"]
 
         except SemsRateLimitedError as exception:
             _LOGGER.debug(
@@ -487,29 +535,13 @@ class SemsApi:
             _LOGGER.info("SEMS - Maximum token fetch tries reached, aborting for now")
             raise OutOfRetries
 
-        if self._token is None or renewToken:
-            _LOGGER.debug(
-                "API token not set (%s) or new token requested (%s), fetching",
-                self._token,
-                renewToken,
-            )
-            self._token = self.getLoginToken(self._username, self._password)
-
-        if self._token is None:
-            _LOGGER.error("Failed to obtain API token")
+        context = self._get_authenticated_request_context(
+            _PowerControlURLPart, renewToken, operation_name
+        )
+        if context is None:
             return False
 
-        # Prepare headers
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "token": json.dumps(self._token),
-        }
-
-        api_base = self._resolve_api_base_for_url_part(
-            self._token["api"], _PowerControlURLPart
-        )
-        api_url = api_base + _PowerControlURLPart
+        api_url, headers = context
 
         try:
             # Control API uses different validation (HTTP status code), so don't validate JSON response code
