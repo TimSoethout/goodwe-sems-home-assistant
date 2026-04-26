@@ -252,7 +252,7 @@ class SemsApi:
         if self._token is None or renewToken:
             _LOGGER.debug(
                 "API token not set (%s) or new token requested (%s), fetching",
-                self._token,
+                self._sanitize_for_log(self._token),
                 renewToken,
             )
             self._token = self.getLoginToken(self._username, self._password)
