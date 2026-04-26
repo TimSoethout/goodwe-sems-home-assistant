@@ -4,7 +4,8 @@ import base64
 import hashlib
 import json
 import logging
-from typing import Any, Callable, Literal
+from collections.abc import Callable
+from typing import Any, Literal
 
 import requests
 from homeassistant import exceptions
