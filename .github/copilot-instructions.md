@@ -29,6 +29,7 @@
 - Tests (from tests/README):
   - `python -m pytest tests/ -v`
   - In HA core repo workspaces, add `--confcutdir=config/goodwe-sems-home-assistant`.
+- Make sure all log messages are redacted of sensitive info (e.g., no email addresses, serial numbers, or API tokens in logs).
 
 ## Release workflow (HACS)
 - Update the semantic version in [custom_components/sems/manifest.json](../custom_components/sems/manifest.json).
