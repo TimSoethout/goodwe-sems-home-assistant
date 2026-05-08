@@ -106,8 +106,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             )
         except SemsRateLimitedError as err:
             raise UpdateFailed(
-                "SEMS API rate limited",
-                retry_after=err.retry_after,
+                f"SEMS API rate limited (retry after {err.retry_after}s)"
             ) from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err

@@ -198,7 +198,11 @@ class SemsApi:
 
     def _hash_password_for_new_login(self, password: str) -> str:
         """Return the SEMS+ password encoding."""
-        md5_password = hashlib.md5(password.encode("utf-8")).hexdigest()
+        # MD5 is required by the SEMS+ API protocol; usedforsecurity=False avoids
+        # failures on FIPS-enabled systems where MD5 is disabled for security use.
+        md5_password = hashlib.md5(
+            password.encode("utf-8"), usedforsecurity=False
+        ).hexdigest()
         return base64.b64encode(md5_password.encode("utf-8")).decode("utf-8")
 
     def _is_powerstation_route(self, url_part: str) -> bool:
@@ -461,7 +465,7 @@ class SemsApi:
         renewToken: bool = False,
         maxTokenRetries: int = 2,
         operation_name: str = "API call",
-    ) -> Any:
+    ) -> Any | None:
         """Make a generic API call with token management and retry logic."""
         _LOGGER.debug("SEMS - Making %s", operation_name)
         if maxTokenRetries <= 0:
@@ -513,7 +517,7 @@ class SemsApi:
 
     def getPowerStationIds(
         self, renewToken: bool = False, maxTokenRetries: int = 2
-    ) -> str | None:
+    ) -> Any | None:
         """Get the power station ids from the SEMS API."""
         return self._make_api_call(
             _GetPowerStationIdByOwnerURLPart,
