@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
+from custom_components.sems.const import redact_for_log
 from custom_components.sems.sems_api import (
     NEW_LOGIN_URL,
     OLD_LOGIN_URL,
@@ -418,6 +419,38 @@ class TestSemsApi:
         assert result["uid"] == "new-uid-123"
         assert result["token"] == "new-token-abc123"
         assert result["api"] == "https://eu-gateway.semsportal.com/web/sems"
+
+    def test_redact_for_log_redacts_known_patterns_and_keys(self):
+        """Test that shared redaction handles serial-like values and sensitive keys."""
+        value = {
+            "sn": "GW0000SN000TEST1",
+            "powerstation_id": "12345678-1234-5678-9abc-123456789abc",
+            "exact_serial": "GW0000SN000TEST1",
+            "inverters": {
+                "GW0000SN000TEST1": {
+                    "owner_email": "test@example.com",
+                    "relation_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                }
+            },
+            "message": "Device connected",
+        }
+
+        redacted = redact_for_log(value)
+
+        assert "sn" not in redacted
+        assert "powerstation_id" not in redacted
+        assert redacted["exact_serial"] == "<GW0...ST1>"
+        assert "GW0000SN000TEST1" not in redacted["inverters"]
+        assert (
+            "owner_email"
+            not in redacted["inverters"][next(iter(redacted["inverters"]))]
+        )
+        assert (
+            "relation_id"
+            not in redacted["inverters"][next(iter(redacted["inverters"]))]
+        )
+        assert redacted["message"] == "Device connected"
+        assert redacted["inverters"]
 
     def test_failed_login_invalid_credentials(self, requests_mock):
         """Test failed login with invalid credentials."""
