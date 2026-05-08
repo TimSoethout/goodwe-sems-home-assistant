@@ -29,7 +29,11 @@
 - Tests (from tests/README):
   - `python -m pytest tests/ -v`
   - In HA core repo workspaces, add `--confcutdir=config/goodwe-sems-home-assistant`.
+- For any code change, run the narrowest relevant validation before wrapping up: format if needed, run `ruff check`, and run the most relevant tests for the touched area. Use the targeted test file(s) first, then expand only if necessary.
 - Make sure all log messages are redacted of sensitive info (e.g., no email addresses, serial numbers, or API tokens in logs).
+
+## Session Wrap-Up
+- Before ending a copilot session, ask the user whether the work is finished or whether they want to continue with feedback. Use a short prompt so the user can choose to stop or iterate.
 
 ## Release workflow (HACS)
 - Update the semantic version in [custom_components/sems/manifest.json](../custom_components/sems/manifest.json).
