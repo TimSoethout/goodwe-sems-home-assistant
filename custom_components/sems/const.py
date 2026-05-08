@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -92,29 +93,42 @@ _SENSITIVE_LOG_KEYS = {
     "owner_phone",
 }
 
+_EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_UUID_PATTERN = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+_SERIAL_PATTERN = re.compile(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]{12,20}$")
 
-def redact_for_log(value: Any, parent_key: str | None = None) -> Any:
+
+def _matches_sensitive_pattern(value: str) -> bool:
+    """Return whether a string looks sensitive by format."""
+    return bool(
+        _EMAIL_PATTERN.fullmatch(value)
+        or _UUID_PATTERN.fullmatch(value)
+        or _SERIAL_PATTERN.fullmatch(value)
+    )
+
+
+def _is_sensitive_key(key: Any) -> bool:
+    """Return whether a dictionary key should be redacted."""
+    return isinstance(key, str) and (
+        key.lower() in _SENSITIVE_LOG_KEYS or _matches_sensitive_pattern(key)
+    )
+
+
+def redact_for_log(value: Any) -> Any:
     """Return a redacted structure suitable for debug logging."""
     if isinstance(value, str):
-        return value
+        return redact_value(value) if _matches_sensitive_pattern(value) else value
 
     if isinstance(value, dict):
         sanitized: dict[Any, Any] = {}
         for key, sub_value in value.items():
-            key_is_sensitive = isinstance(key, str) and (
-                key.lower() in _SENSITIVE_LOG_KEYS or parent_key == "inverters"
-            )
-            sanitized_key = redact_value(key) if key_is_sensitive and isinstance(key, str) else key
-            sanitized[sanitized_key] = (
-                redact_value(sub_value)
-                if key_is_sensitive and isinstance(sub_value, str)
-                else redact_for_log(
-                    sub_value, parent_key=key if isinstance(key, str) else None
-                )
-            )
+            sanitized_key = redact_value(key) if _is_sensitive_key(key) else key
+            sanitized[sanitized_key] = redact_for_log(sub_value)
         return sanitized
 
     if isinstance(value, list):
-        return [redact_for_log(item, parent_key=parent_key) for item in value]
+        return [redact_for_log(item) for item in value]
 
     return value

@@ -99,7 +99,7 @@ class SemsApi:
                 _LOGGER.debug(
                     "SEMS - %s response payload: %s",
                     operation_name,
-                    self._sanitize_for_log(json_response),
+                    redact_for_log(json_response),
                 )
 
             _LOGGER.debug(
@@ -161,15 +161,6 @@ class SemsApi:
         except (requests.RequestException, ValueError, KeyError) as exception:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             raise
-
-    def _sanitize_for_log(self, value: Any) -> Any:
-        """Return a redacted structure suitable for debug logging."""
-        if isinstance(value, str):
-            try:
-                return json.dumps(redact_for_log(json.loads(value)))
-            except (ValueError, TypeError):
-                return value
-        return redact_for_log(value)
 
     def _is_sensitive_operation(self, operation_name: str) -> bool:
         """Return True if the operation name indicates it handles sensitive credentials."""
@@ -247,7 +238,7 @@ class SemsApi:
         if self._token is None or renewToken:
             _LOGGER.debug(
                 "API token not set (%s) or new token requested (%s), fetching",
-                self._sanitize_for_log(self._token),
+                redact_for_log(self._token),
                 renewToken,
             )
             self._token = self.getLoginToken(self._username, self._password)
@@ -266,7 +257,7 @@ class SemsApi:
             self._token.get("api"),
             api_base,
             url_part,
-            self._sanitize_for_log(self._token),
+            redact_for_log(self._token),
         )
         return api_url, headers
 
@@ -375,7 +366,7 @@ class SemsApi:
         _LOGGER.debug(
             "SEMS - API Token received via %s login: %s",
             login_mode,
-            self._sanitize_for_log(token_dict),
+            redact_for_log(token_dict),
         )
         self._preferred_login_mode = login_mode
         return token_dict

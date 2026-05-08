@@ -21,7 +21,6 @@ from .const import (
     GOODWE_SPELLING,
     PLATFORMS,
     redact_for_log,
-    redact_value,
 )
 from .sems_api import SemsApi, SemsRateLimitedError
 
@@ -114,7 +113,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
             _LOGGER.debug(
-                "semsApi.getData result: %s", self.sems_api._sanitize_for_log(result)
+                "semsApi.getData result: %s", redact_for_log(result)
             )
 
             inverters = result.get("inverter")
@@ -135,7 +134,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 if not isinstance(sn, str):
                     continue
 
-                _LOGGER.debug("Found inverter attribute %s %s", name, redact_value(sn))
+                _LOGGER.debug(
+                    "Found inverter attribute %s %s",
+                    name,
+                    redact_for_log(sn),
+                )
                 inverters_by_sn[sn] = inverter_full
 
             # Add currency
