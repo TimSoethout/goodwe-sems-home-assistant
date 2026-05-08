@@ -111,7 +111,9 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
-            _LOGGER.debug("semsApi.getData result: %s", result)
+            _LOGGER.debug(
+                "semsApi.getData result: %s", self.sems_api._sanitize_for_log(result)
+            )
 
             inverters = result.get("inverter")
             inverters_by_sn: dict[str, dict[str, Any]] = {}
@@ -191,7 +193,16 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             data = SemsData(
                 inverters=inverters_by_sn, homekit=homekit, currency=currency
             )
-            _LOGGER.debug("Resulting data: %s", data)
+            _LOGGER.debug(
+                "Resulting data: %s",
+                self.sems_api._sanitize_for_log(
+                    {
+                        "inverters": inverters_by_sn,
+                        "homekit": homekit,
+                        "currency": currency,
+                    }
+                ),
+            )
             return data
 
 
