@@ -32,6 +32,15 @@ _SensitiveLogKeys = {
     "password",
     "token",
     "uid",
+    "sn",
+    "serialnum",
+    "relationid",
+    "relation_id",
+    "pw_id",
+    "powerstation_id",
+    "owner_email",
+    "owner_name",
+    "owner_phone",
 }
 
 _DefaultHeaders = {
@@ -167,6 +176,31 @@ class SemsApi:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             raise
 
+    def _redact_sensitive_value(self, value: Any) -> str:
+        """Return a partial redaction of a sensitive value for logging.
+
+        Shows enough of the value to remain unique/recognizable while hiding
+        the sensitive information.
+        """
+        if not isinstance(value, str) or not value:
+            return "<redacted>"
+
+        # For email addresses, show domain but redact local part
+        if "@" in value:
+            parts = value.rsplit("@", 1)
+            return f"<***@{parts[1]}>"
+
+        # For UUIDs (8-4-4-4-12 pattern with hyphens)
+        if value.count("-") == 4 and len(value) == 36:
+            return f"<{value[:4]}...{value[-4:]}>"
+
+        # For longer strings (SNs, IDs), show first and last few chars
+        if len(value) > 8:
+            return f"<{value[:3]}...{value[-3:]}>"
+
+        # For short strings, just show pattern
+        return f"<{value[0]}{'*' * (len(value) - 1)}>"
+
     def _sanitize_for_log(self, value: Any) -> Any:
         """Return a redacted structure suitable for debug logging."""
         if isinstance(value, str):
@@ -180,7 +214,7 @@ class SemsApi:
         if isinstance(value, dict):
             return {
                 key: (
-                    "<redacted>"
+                    self._redact_sensitive_value(sub_value)
                     if key.lower() in _SensitiveLogKeys
                     else self._sanitize_for_log(sub_value)
                 )
