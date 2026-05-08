@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
     GOODWE_SPELLING,
     PLATFORMS,
+    redact_value,
 )
 from .sems_api import SemsApi, SemsRateLimitedError
 
@@ -133,7 +134,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 if not isinstance(sn, str):
                     continue
 
-                _LOGGER.debug("Found inverter attribute %s %s", name, sn)
+                _LOGGER.debug("Found inverter attribute %s %s", name, redact_value(sn))
                 inverters_by_sn[sn] = inverter_full
 
             # Add currency
