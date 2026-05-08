@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
     GOODWE_SPELLING,
     PLATFORMS,
+    redact_for_log,
     redact_value,
 )
 from .sems_api import SemsApi, SemsRateLimitedError
@@ -196,7 +197,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             )
             _LOGGER.debug(
                 "Resulting data: %s",
-                self.sems_api._sanitize_for_log(
+                redact_for_log(
                     {
                         "inverters": inverters_by_sn,
                         "homekit": homekit,

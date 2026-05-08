@@ -1,5 +1,9 @@
 """Constants for the SEMS integration."""
 
+from __future__ import annotations
+
+from typing import Any
+
 import voluptuous as vol
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 
@@ -69,3 +73,48 @@ def redact_value(value: str) -> str:
 
     # For short strings, just show pattern
     return f"<{value[0]}{'*' * (len(value) - 1)}>"
+
+
+_SENSITIVE_LOG_KEYS = {
+    "account",
+    "pwd",
+    "password",
+    "token",
+    "uid",
+    "sn",
+    "serialnum",
+    "relationid",
+    "relation_id",
+    "pw_id",
+    "powerstation_id",
+    "owner_email",
+    "owner_name",
+    "owner_phone",
+}
+
+
+def redact_for_log(value: Any, parent_key: str | None = None) -> Any:
+    """Return a redacted structure suitable for debug logging."""
+    if isinstance(value, str):
+        return value
+
+    if isinstance(value, dict):
+        sanitized: dict[Any, Any] = {}
+        for key, sub_value in value.items():
+            key_is_sensitive = isinstance(key, str) and (
+                key.lower() in _SENSITIVE_LOG_KEYS or parent_key == "inverters"
+            )
+            sanitized_key = redact_value(key) if key_is_sensitive and isinstance(key, str) else key
+            sanitized[sanitized_key] = (
+                redact_value(sub_value)
+                if key_is_sensitive and isinstance(sub_value, str)
+                else redact_for_log(
+                    sub_value, parent_key=key if isinstance(key, str) else None
+                )
+            )
+        return sanitized
+
+    if isinstance(value, list):
+        return [redact_for_log(item, parent_key=parent_key) for item in value]
+
+    return value

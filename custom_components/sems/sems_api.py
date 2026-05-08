@@ -11,7 +11,7 @@ import requests
 from homeassistant import exceptions
 from homeassistant.core import HomeAssistant
 
-from .const import redact_value
+from .const import redact_for_log
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,22 +28,6 @@ _RateLimitRetryAfterSeconds = 300
 
 _SuccessCodes = {0, "0", "00000"}
 _RateLimitCode = "GY0429"
-_SensitiveLogKeys = {
-    "account",
-    "pwd",
-    "password",
-    "token",
-    "uid",
-    "sn",
-    "serialnum",
-    "relationid",
-    "relation_id",
-    "pw_id",
-    "powerstation_id",
-    "owner_email",
-    "owner_name",
-    "owner_phone",
-}
 
 _DefaultHeaders = {
     "Content-Type": "application/json",
@@ -178,36 +162,14 @@ class SemsApi:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             raise
 
-    def _redact_sensitive_value(self, value: Any) -> str:
-        """Return a partial redaction of a sensitive value for logging."""
-        if not isinstance(value, str) or not value:
-            return "<redacted>"
-        return redact_value(value)
-
     def _sanitize_for_log(self, value: Any) -> Any:
         """Return a redacted structure suitable for debug logging."""
         if isinstance(value, str):
             try:
-                parsed = json.loads(value)
-                sanitized = self._sanitize_for_log(parsed)
-                return json.dumps(sanitized)
+                return json.dumps(redact_for_log(json.loads(value)))
             except (ValueError, TypeError):
                 return value
-
-        if isinstance(value, dict):
-            return {
-                key: (
-                    self._redact_sensitive_value(sub_value)
-                    if key.lower() in _SensitiveLogKeys
-                    else self._sanitize_for_log(sub_value)
-                )
-                for key, sub_value in value.items()
-            }
-
-        if isinstance(value, list):
-            return [self._sanitize_for_log(item) for item in value]
-
-        return value
+        return redact_for_log(value)
 
     def _is_sensitive_operation(self, operation_name: str) -> bool:
         """Return True if the operation name indicates it handles sensitive credentials."""
