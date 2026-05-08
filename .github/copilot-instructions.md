@@ -35,11 +35,8 @@
 ## Session Wrap-Up
 - Before ending a copilot session, ask the user whether the work is finished or whether they want to continue with feedback. Use a short prompt so the user can choose to stop or iterate.
 
-## Release workflow (HACS)
-- Update the semantic version in [custom_components/sems/manifest.json](../custom_components/sems/manifest.json).
-- For beta releases from branches, always use the `x.x.x-beta` version format, and always mark the GitHub Release as a Pre-release.
-- Create a git tag for the new version and publish a GitHub (Pre)Release for that tag (HACS uses the latest release tag as the remote version; tags alone are not enough).
-- Release notes should summarize changes since the latest release (e.g., list commits since the previous tag).
+## Release Workflow
+- Use the [release-workflow skill](.github/skills/release-workflow/SKILL.md) when preparing HACS releases, including version bumps, tags, beta/pre-release publishing, and release notes.
 
 ## Examples to follow
 - Coordinator data shaping: `SemsDataUpdateCoordinator._async_update_data()` in [custom_components/sems/__init__.py](../custom_components/sems/__init__.py).
