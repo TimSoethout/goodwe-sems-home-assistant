@@ -42,6 +42,7 @@ from .const import (
     DOMAIN,
     GOODWE_SPELLING,
     STATUS_LABELS,
+    redact_for_log,
 )
 from .device import device_info_for_inverter
 
@@ -396,7 +397,11 @@ def sensor_options_for_data(
                         SensorStateClass.MEASUREMENT,
                     ),
                 ]
-        _LOGGER.debug("Sensors for inverter %s: %s", serial_number, sensors)
+        _LOGGER.debug(
+            "Sensors for inverter %s: %s",
+            redact_for_log(serial_number),
+            redact_for_log(sensors),
+        )
 
     # HomeKit powerflow + SEMS charts live in `SemsData.homekit`.
     if data.homekit is not None:

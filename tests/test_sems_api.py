@@ -1,11 +1,17 @@
 """Tests for the SEMS API module."""
 
-import json
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
 import pytest
 import requests
 
-from custom_components.sems.sems_api import OutOfRetries, SemsApi
+from custom_components.sems.sems_api import (
+    NEW_LOGIN_URL,
+    OLD_LOGIN_URL,
+    OutOfRetries,
+    SemsApi,
+    SemsRateLimitedError,
+)
 
 # Test data constants - anonymized for privacy
 MOCK_INVERTER_SN = "GW0000SN000TEST1"
@@ -150,6 +156,101 @@ class TestSemsApi:
         assert result == expected_token
         mock_http_request.assert_called_once()
 
+    def test_hash_password_for_new_login(self):
+        """Test SEMS+ password encoding."""
+        assert self.api._hash_password_for_new_login("sems_test_password") == (
+            "ZTJmYTRkNDJhZTk4Y2NiMTFkYzg0NWJhYWY1YWUxYzc="
+        )
+
+    def test_get_login_token_new_success_skips_legacy(self):
+        """Test new login success without calling the legacy fallback."""
+        new_token = {
+            "uid": "legacy-uid",
+            "token": "legacy-token",
+            "api": "https://api.test.com/",
+        }
+
+        with (
+            patch.object(self.api, "_get_legacy_login_token") as mock_legacy,
+            patch.object(self.api, "_get_new_login_token") as mock_new,
+        ):
+            mock_new.return_value = new_token
+
+            result = self.api.getLoginToken("test_user", "test_pass")
+
+            assert result == new_token
+            mock_new.assert_called_once_with("test_user", "test_pass")
+            mock_legacy.assert_not_called()
+            assert self.api._preferred_login_mode == "new"
+
+    def test_get_login_token_new_failure_legacy_success(self):
+        """Test fallback from new login to legacy login."""
+        legacy_token = {
+            "uid": "new-uid",
+            "token": "new-token",
+            "api": "https://api.test.com/",
+        }
+
+        with (
+            patch.object(self.api, "_get_legacy_login_token") as mock_legacy,
+            patch.object(self.api, "_get_new_login_token") as mock_new,
+        ):
+            mock_new.return_value = None
+            mock_legacy.return_value = legacy_token
+
+            result = self.api.getLoginToken("test_user", "test_pass")
+
+            assert result == legacy_token
+            mock_new.assert_called_once_with("test_user", "test_pass")
+            mock_legacy.assert_called_once_with("test_user", "test_pass")
+            assert self.api._preferred_login_mode == "legacy"
+
+    def test_get_login_token_both_fail(self):
+        """Test login failure when both login modes fail."""
+        with (
+            patch.object(self.api, "_get_legacy_login_token") as mock_legacy,
+            patch.object(self.api, "_get_new_login_token") as mock_new,
+        ):
+            mock_legacy.return_value = None
+            mock_new.return_value = None
+
+            result = self.api.getLoginToken("test_user", "test_pass")
+
+            assert result is None
+            mock_legacy.assert_called_once_with("test_user", "test_pass")
+            mock_new.assert_called_once_with("test_user", "test_pass")
+
+    def test_get_login_token_rate_limit_backoff(self):
+        """Test rate-limit handling is propagated for coordinator retry scheduling."""
+        with (
+            patch.object(self.api, "_get_legacy_login_token") as mock_legacy,
+            patch.object(self.api, "_get_new_login_token") as mock_new,
+        ):
+            mock_new.side_effect = SemsRateLimitedError(retry_after=300)
+
+            with pytest.raises(SemsRateLimitedError):
+                self.api.getLoginToken("test_user", "test_pass")
+
+            mock_legacy.assert_not_called()
+
+    @patch("custom_components.sems.sems_api.requests.post")
+    def test_make_http_request_rate_limit_raises(self, mock_post):
+        """Test HTTP request raises SemsRateLimitedError on rate-limit code."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = '{"code": "GY0429", "msg": "Too many requests"}'
+        mock_response.json.return_value = {"code": "GY0429", "msg": "Too many requests"}
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        with pytest.raises(SemsRateLimitedError):
+            self.api._make_http_request(
+                "http://test.com",
+                {"Content-Type": "application/json"},
+                operation_name="test operation",
+                validate_code=False,
+            )
+
     @patch.object(SemsApi, "_make_http_request")
     def test_get_login_token_failure(self, mock_http_request):
         """Test failed login token retrieval."""
@@ -190,7 +291,7 @@ class TestSemsApi:
     def test_test_authentication_exception(self):
         """Test authentication test with exception."""
         with patch.object(self.api, "getLoginToken") as mock_login:
-            mock_login.side_effect = Exception("Test error")
+            mock_login.side_effect = TypeError("Test error")
 
             result = self.api.test_authentication()
 
@@ -198,6 +299,7 @@ class TestSemsApi:
 
     def test_successful_login_real_structure(self, requests_mock):
         """Test successful login token retrieval with real SEMS API response structure."""
+        self.api._preferred_login_mode = "legacy"
         login_response = {
             "language": "en",
             "function": [
@@ -223,9 +325,7 @@ class TestSemsApi:
             "api": "https://eu.semsportal.com/api/",
         }
 
-        requests_mock.post(
-            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
-        )
+        requests_mock.post(OLD_LOGIN_URL, json=login_response)
 
         result = self.api.getLoginToken(self.username, self.password)
 
@@ -234,18 +334,107 @@ class TestSemsApi:
         assert result["token"] == "test-token-abc123"
         assert result["api"] == "https://eu.semsportal.com/api/"
 
+    def test_new_login_real_structure(self, requests_mock):
+        """Test successful SEMS+ login token retrieval with real response structure."""
+        legacy_response = {"code": 1001, "msg": "Invalid credentials", "data": None}
+        new_login_response = {
+            "code": "00000",
+            "description": "成功",
+            "data": {
+                "uid": "new-uid-123",
+                "timestamp": "1777037615323",
+                "token": "new-token-abc123",
+                "client": "semsPlusWeb",
+                "version": "",
+                "language": "en",
+                "api": "https://eu-gateway.semsportal.com/web/sems",
+                "region": "eu",
+            },
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
+
+        requests_mock.post(OLD_LOGIN_URL, json=legacy_response)
+        requests_mock.post(NEW_LOGIN_URL, json=new_login_response)
+
+        result = self.api.getLoginToken(self.username, self.password)
+
+        assert result is not None
+        assert result["uid"] == "new-uid-123"
+        assert result["token"] == "new-token-abc123"
+        assert result["api"] == "https://eu-gateway.semsportal.com/web/sems"
+
+    def test_new_login_missing_api_uses_fallback(self, requests_mock):
+        """Test SEMS+ login still succeeds when the response omits api."""
+        legacy_response = {"code": 1001, "msg": "Invalid credentials", "data": None}
+        new_login_response = {
+            "code": "00000",
+            "description": "成功",
+            "data": {
+                "uid": "new-uid-123",
+                "timestamp": "1777037615323",
+                "token": "new-token-abc123",
+                "client": "semsPlusWeb",
+                "version": "",
+                "language": "en",
+                "region": "eu",
+            },
+        }
+
+        requests_mock.post(OLD_LOGIN_URL, json=legacy_response)
+        requests_mock.post(NEW_LOGIN_URL, json=new_login_response)
+
+        result = self.api.getLoginToken(self.username, self.password)
+
+        assert result is not None
+        assert result["uid"] == "new-uid-123"
+        assert result["token"] == "new-token-abc123"
+        assert result["api"] == "https://eu-gateway.semsportal.com/web/sems"
+
+    def test_new_login_api_in_data_without_top_level_api(self, requests_mock):
+        """Test SEMS+ login prefers api nested under data when top-level api is absent."""
+        legacy_response = {"code": 1001, "msg": "Invalid credentials", "data": None}
+        new_login_response = {
+            "code": "00000",
+            "description": "成功",
+            "traceId": "ffbdeb4084a2929c15e63e2b37aac1d3",
+            "data": {
+                "uid": "new-uid-123",
+                "timestamp": "1777042079872",
+                "token": "new-token-abc123",
+                "client": "",
+                "version": "",
+                "language": "en",
+                "api": "https://eu-gateway.semsportal.com/web/sems",
+                "region": "eu",
+            },
+        }
+
+        requests_mock.post(OLD_LOGIN_URL, json=legacy_response)
+        requests_mock.post(NEW_LOGIN_URL, json=new_login_response)
+
+        result = self.api.getLoginToken(self.username, self.password)
+
+        assert result is not None
+        assert result["uid"] == "new-uid-123"
+        assert result["token"] == "new-token-abc123"
+        assert result["api"] == "https://eu-gateway.semsportal.com/web/sems"
+
     def test_failed_login_invalid_credentials(self, requests_mock):
         """Test failed login with invalid credentials."""
-        login_response = {
+        legacy_response = {
             "hasError": True,
             "code": 1001,
             "msg": "Invalid credentials",
             "data": None,
         }
+        new_response = {
+            "code": "C0602",
+            "description": "account_login_abnormal",
+            "data": None,
+        }
 
-        requests_mock.post(
-            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
-        )
+        requests_mock.post(OLD_LOGIN_URL, json=legacy_response)
+        requests_mock.post(NEW_LOGIN_URL, json=new_response)
 
         result = self.api.getLoginToken(self.username, self.password)
 
@@ -254,7 +443,7 @@ class TestSemsApi:
     def test_login_network_error(self, requests_mock):
         """Test login with network error."""
         requests_mock.post(
-            "https://www.semsportal.com/api/v2/Common/CrossLogin",
+            NEW_LOGIN_URL,
             exc=requests.ConnectionError("Network error"),
         )
 
@@ -278,6 +467,31 @@ class TestSemsApi:
 
         assert result == {"result": "success"}
         mock_http_request.assert_called_once()
+
+    @patch.object(SemsApi, "_make_http_request")
+    def test_make_api_call_rewrites_gateway_base_for_powerstation_paths(
+        self, mock_http_request
+    ):
+        """Test SEMS+ gateway base is rewritten for legacy PowerStation routes."""
+        self.api._token = {
+            "token": "test-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+            "region": "eu",
+        }
+        mock_http_request.return_value = {"code": 0, "data": {"result": "success"}}
+
+        result = self.api._make_api_call(
+            "/v3/PowerStation/GetMonitorDetailByPowerstationId",
+            data='{"powerStationId":"station123"}',
+            operation_name="getData API call",
+        )
+
+        assert result == {"result": "success"}
+        called_url = mock_http_request.call_args[0][0]
+        assert (
+            called_url
+            == "https://eu.semsportal.com/api/v3/PowerStation/GetMonitorDetailByPowerstationId"
+        )
 
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_make_http_request")
@@ -333,6 +547,15 @@ class TestSemsApi:
         assert mock_http_request.call_count == 2
         mock_login.assert_called_once()
 
+    @patch.object(SemsApi, "_make_http_request")
+    def test_make_api_call_rate_limit_propagates(self, mock_http_request):
+        """Test API call propagates rate limit errors to coordinator layer."""
+        self.api._token = {"token": "test-token", "api": "https://api.test.com"}
+        mock_http_request.side_effect = SemsRateLimitedError(retry_after=300)
+
+        with pytest.raises(SemsRateLimitedError):
+            self.api._make_api_call("/test/endpoint", operation_name="test API call")
+
     @patch.object(SemsApi, "getLoginToken")
     def test_make_api_call_max_retries_exceeded(self, mock_login):
         """Test API call with max retries exceeded."""
@@ -361,14 +584,13 @@ class TestSemsApi:
 
     def test_get_power_station_ids_success_real_structure(self, requests_mock):
         """Test successful power station IDs retrieval with realistic response structure."""
+        self.api._preferred_login_mode = "legacy"
         login_response = {
             "code": 0,
             "data": {"uid": "test-uid", "token": "test-token"},
             "api": "https://eu.semsportal.com/api/",
         }
-        requests_mock.post(
-            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
-        )
+        requests_mock.post(OLD_LOGIN_URL, json=login_response)
 
         station_response = {
             "code": 0,
@@ -402,14 +624,13 @@ class TestSemsApi:
 
     def test_get_data_success_real_structure(self, requests_mock):
         """Test successful data retrieval with real SEMS API response structure."""
+        self.api._preferred_login_mode = "legacy"
         login_response = {
             "code": 0,
             "data": {"uid": "test-uid", "token": "test-token"},
             "api": "https://eu.semsportal.com/api/",
         }
-        requests_mock.post(
-            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
-        )
+        requests_mock.post(OLD_LOGIN_URL, json=login_response)
 
         data_response = {
             "language": "en",
@@ -485,10 +706,14 @@ class TestSemsApi:
 
     def test_get_data_returns_empty_on_failure(self, requests_mock):
         """Test getData returns empty dict on login failure."""
-        login_response = {"code": 1001, "msg": "Invalid credentials", "data": None}
-        requests_mock.post(
-            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
-        )
+        legacy_response = {"code": 1001, "msg": "Invalid credentials", "data": None}
+        new_response = {
+            "code": "C0602",
+            "description": "account_login_abnormal",
+            "data": None,
+        }
+        requests_mock.post(OLD_LOGIN_URL, json=legacy_response)
+        requests_mock.post(NEW_LOGIN_URL, json=new_response)
 
         result = self.api.getData("station123")
 
@@ -556,14 +781,13 @@ class TestSemsApi:
 
     def test_change_status_success_real_structure(self, requests_mock):
         """Test successful inverter status change."""
+        self.api._preferred_login_mode = "legacy"
         login_response = {
             "code": 0,
             "data": {"uid": "test-uid", "token": "test-token"},
             "api": "https://eu.semsportal.com/api/",
         }
-        requests_mock.post(
-            "https://www.semsportal.com/api/v2/Common/CrossLogin", json=login_response
-        )
+        requests_mock.post(OLD_LOGIN_URL, json=login_response)
 
         endpoint = (
             "https://eu.semsportal.com/api//PowerStation/SaveRemoteControlInverter"
