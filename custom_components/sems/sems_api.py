@@ -396,6 +396,9 @@ class SemsApi:
         login_data = {
             "account": userName,
             "pwd": self._hash_password_for_new_login(password),
+            "agreement": 1,
+            "isChinese": False,
+            "isLocal": False,
         }
         json_response = self._make_http_request(
             NEW_LOGIN_URL,
