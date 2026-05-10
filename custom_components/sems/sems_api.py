@@ -363,6 +363,13 @@ class SemsApi:
         token_dict = dict(token_data)
         token_dict["api"] = api_url
 
+        if not token_dict.get("token"):
+            _LOGGER.warning(
+                "SEMS %s login response missing valid token field - incomplete token received",
+                login_mode,
+            )
+            return None
+
         _LOGGER.debug(
             "SEMS - API Token received via %s login: %s",
             login_mode,
@@ -396,6 +403,9 @@ class SemsApi:
         login_data = {
             "account": userName,
             "pwd": self._hash_password_for_new_login(password),
+            "agreement": 1,
+            "isChinese": False,
+            "isLocal": False,
         }
         json_response = self._make_http_request(
             NEW_LOGIN_URL,
