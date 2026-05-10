@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from typing import Any
 
@@ -109,11 +110,26 @@ def _matches_sensitive_pattern(value: str) -> bool:
     )
 
 
-def _is_sensitive_key(key: Any) -> bool:
-    """Return whether a dictionary key should be redacted."""
-    return isinstance(key, str) and (
-        key.lower() in _SENSITIVE_LOG_KEYS or _matches_sensitive_pattern(key)
-    )
+def _is_sensitive_label(key: Any) -> bool:
+    """Return whether a dictionary key implies its value is sensitive."""
+    return isinstance(key, str) and key.lower() in _SENSITIVE_LOG_KEYS
+
+
+def _redact_sensitive_value(value: Any) -> Any:
+    """Redact a value associated with a sensitive key."""
+    if isinstance(value, str):
+        return redact_value(value)
+
+    if isinstance(value, dict):
+        return {
+            key: _redact_sensitive_value(sub_value) for key, sub_value in value.items()
+        }
+
+    if isinstance(value, list):
+        return [_redact_sensitive_value(item) for item in value]
+
+    # For non-string, non-container types (numbers, booleans, None, etc.), keep as-is
+    return value
 
 
 def redact_for_log(value: Any) -> Any:
@@ -124,11 +140,19 @@ def redact_for_log(value: Any) -> Any:
     if isinstance(value, dict):
         sanitized: dict[Any, Any] = {}
         for key, sub_value in value.items():
-            sanitized_key = redact_value(key) if _is_sensitive_key(key) else key
-            sanitized[sanitized_key] = redact_for_log(sub_value)
+            if isinstance(key, str) and _matches_sensitive_pattern(key):
+                sanitized[redact_value(key)] = _redact_sensitive_value(sub_value)
+            elif _is_sensitive_label(key):
+                sanitized[key] = _redact_sensitive_value(sub_value)
+            else:
+                sanitized[key] = redact_for_log(sub_value)
         return sanitized
 
     if isinstance(value, list):
         return [redact_for_log(item) for item in value]
+
+    # Handle dataclass instances by converting to dict and recursing
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return redact_for_log(dataclasses.asdict(value))
 
     return value

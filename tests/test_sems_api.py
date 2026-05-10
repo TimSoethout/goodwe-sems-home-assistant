@@ -421,7 +421,7 @@ class TestSemsApi:
         assert result["api"] == "https://eu-gateway.semsportal.com/web/sems"
 
     def test_redact_for_log_redacts_known_patterns_and_keys(self):
-        """Test that shared redaction handles serial-like values and sensitive keys."""
+        """Test that shared redaction keeps labels visible, redacts string values, preserves numeric values."""
         value = {
             "sn": "GW0000SN000TEST1",
             "powerstation_id": "12345678-1234-5678-9abc-123456789abc",
@@ -430,6 +430,7 @@ class TestSemsApi:
                 "GW0000SN000TEST1": {
                     "owner_email": "test@example.com",
                     "relation_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    "capacity": 3.0,
                 }
             },
             "message": "Device connected",
@@ -437,20 +438,59 @@ class TestSemsApi:
 
         redacted = redact_for_log(value)
 
-        assert "sn" not in redacted
-        assert "powerstation_id" not in redacted
+        assert redacted["sn"] == "<GW0...ST1>"
+        assert redacted["powerstation_id"] == "<1234...9abc>"
         assert redacted["exact_serial"] == "<GW0...ST1>"
-        assert "GW0000SN000TEST1" not in redacted["inverters"]
+        assert "<GW0...ST1>" in redacted["inverters"]
         assert (
-            "owner_email"
-            not in redacted["inverters"][next(iter(redacted["inverters"]))]
+            redacted["inverters"][next(iter(redacted["inverters"]))]["owner_email"]
+            == "<***@example.com>"
         )
         assert (
-            "relation_id"
-            not in redacted["inverters"][next(iter(redacted["inverters"]))]
+            redacted["inverters"][next(iter(redacted["inverters"]))]["relation_id"]
+            == "<aaaa...eeee>"
         )
+        assert (
+            redacted["inverters"][next(iter(redacted["inverters"]))]["capacity"] == 3.0
+        )  # Numeric values preserved
         assert redacted["message"] == "Device connected"
         assert redacted["inverters"]
+
+    def test_redact_for_log_redacts_dataclass_objects(self):
+        """Test that shared redaction handles dataclass objects."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class SampleEntity:
+            """Sample entity with sensitive data."""
+
+            name: str
+            serial_number: str
+            numeric_value: int
+            nested_data: dict
+
+        obj = SampleEntity(
+            name="Test Entity",
+            serial_number="GW0000SN000TEST1",
+            numeric_value=42,
+            nested_data={
+                "sn": "GW0000SN000TEST1",
+                "value_path": ["GW0000SN000TEST1", "pac"],
+                "owner_email": "user@example.com",
+                "capacity": 3.0,
+            },
+        )
+
+        redacted = redact_for_log(obj)
+
+        assert isinstance(redacted, dict)
+        assert redacted["name"] == "Test Entity"
+        assert redacted["serial_number"] == "<GW0...ST1>"
+        assert redacted["numeric_value"] == 42  # Numeric values preserved
+        assert redacted["nested_data"]["sn"] == "<GW0...ST1>"
+        assert redacted["nested_data"]["value_path"][0] == "<GW0...ST1>"
+        assert redacted["nested_data"]["owner_email"] == "<***@example.com>"
+        assert redacted["nested_data"]["capacity"] == 3.0  # Numeric values preserved
 
     def test_failed_login_invalid_credentials(self, requests_mock):
         """Test failed login with invalid credentials."""
