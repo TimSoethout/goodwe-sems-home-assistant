@@ -4,6 +4,8 @@ For more details about this platform, please refer to the documentation at
 https://github.com/TimSoethout/goodwe-sems-home-assistant
 """
 
+from __future__ import annotations
+
 import logging
 import re
 from collections.abc import Callable
@@ -48,7 +50,7 @@ from .device import device_info_for_inverter
 
 _LOGGER = logging.getLogger(__name__)
 
-type SemsValuePath = list[str | int]
+SemsValuePath = list[str | int]
 
 
 def convert_status_to_label(status: Any) -> str:
@@ -559,6 +561,30 @@ def sensor_options_for_data(
                         f"{homekit_sn}-export-energy-total",
                         ["Totals_sell"],
                         "SEMS Total Export",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                ]
+            if data.homekit.get("Charts_sum") is not None:
+                sensors += [
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-generation",
+                        ["Charts_sum"],
+                        "SEMS Generation",
+                        SensorDeviceClass.ENERGY,
+                        UnitOfEnergy.KILO_WATT_HOUR,
+                        SensorStateClass.TOTAL_INCREASING,
+                    ),
+                ]
+            if data.homekit.get("Totals_sum") is not None:
+                sensors += [
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-generation-total",
+                        ["Totals_sum"],
+                        "SEMS Total Generation",
                         SensorDeviceClass.ENERGY,
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
