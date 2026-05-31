@@ -11,7 +11,7 @@ Use this skill when preparing a HACS release for the SEMS integration.
 
 1. Update the semantic version in [custom_components/sems/manifest.json](../../../custom_components/sems/manifest.json).
 2. For beta releases from branches, use the `x.x.x-beta` version format and mark the GitHub Release as a Pre-release.
-3. Create a git tag for the new version.
+3. Create a git tag for the new version: `x.x.x(-beta)`.
 4. Publish a GitHub Release for that tag. Tags alone are not enough for HACS; the latest release tag is what remote version checks use.
 5. Write release notes that summarize the changes since the previous release, ideally based on commits since the prior tag.
 
