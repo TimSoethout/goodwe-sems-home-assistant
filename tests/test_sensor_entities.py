@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -392,6 +393,9 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         f"{homekit_sn}-export-energy",
         f"{homekit_sn}-import-energy-total",
         f"{homekit_sn}-export-energy-total",
+        # Generation sensors
+        f"{homekit_sn}-generation",
+        f"{homekit_sn}-generation-total",
     }
 
     ent_reg = er.async_get(hass)
@@ -547,6 +551,358 @@ async def test_homekit_powerflow_values_from_api_fixture(
     total_export_state = hass.states.get(total_export_entity_id)
     assert total_export_state is not None
     assert float(total_export_state.state) == 12901.2
+
+    generation_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation"
+    )
+    assert generation_entity_id is not None
+    generation_state = hass.states.get(generation_entity_id)
+    assert generation_state is not None
+    assert float(generation_state.state) == 30.3
+
+    generation_total_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total"
+    )
+    assert generation_total_entity_id is not None
+    generation_total_state = hass.states.get(generation_total_entity_id)
+    assert generation_total_state is not None
+    assert float(generation_total_state.state) == 16851.0
+
+
+async def test_homekit_only_api_response_without_inverter_data(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test that HomeKit-only API responses work without inverter data."""
+    del enable_custom_integrations
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    payload = {
+        "kpi": {"currency": "EUR", "total_power": 123.4},
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": True,
+        "homKit": {"sn": "HOMEKIT123", "homeKitLimit": False},
+        "powerflow": {
+            "pv": "0(W)",
+            "pvStatus": 0,
+            "load": "100(W)",
+            "loadStatus": 1,
+            "grid": "100(W)",
+            "gridStatus": -1,
+            "bettery": "0(W)",
+            "betteryStatus": 0,
+            "genset": "0(W)",
+            "soc": 50,
+        },
+        "energeStatisticsCharts": {
+            "sum": 0.43,
+            "buy": 0.37,
+            "sell": 0.99,
+        },
+        "energeStatisticsTotals": {
+            "sum": 2315.36,
+            "buy": 18605.64,
+            "sell": 5734.17,
+        },
+    }
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=payload,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    homekit_sn = "HOMEKIT123"
+
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-homekit")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-load")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-grid")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-pv")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-soc")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-battery")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-load-status")
+        is not None
+    )
+
+    # Check new generation sensors
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total")
+        is not None
+    )
+    generation_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation"
+    )
+    assert generation_entity_id is not None
+    generation_state = hass.states.get(generation_entity_id)
+    assert generation_state is not None
+    assert float(generation_state.state) == 0.43
+
+    generation_total_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total"
+    )
+    assert generation_total_entity_id is not None
+    generation_total_state = hass.states.get(generation_total_entity_id)
+    assert generation_total_state is not None
+    assert float(generation_total_state.state) == 2315.36
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_homekit_only_api_response_with_none_inverter_data(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test that HomeKit-only responses work when inverter data is explicitly None."""
+    del enable_custom_integrations
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    payload = {
+        "inverter": None,
+        "kpi": {"currency": "EUR", "total_power": 123.4},
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": True,
+        "homKit": {"sn": "HOMEKIT123", "homeKitLimit": False},
+        "powerflow": {
+            "pv": "0(W)",
+            "pvStatus": 0,
+            "load": "100(W)",
+            "loadStatus": 1,
+            "grid": "100(W)",
+            "gridStatus": -1,
+            "bettery": "0(W)",
+            "betteryStatus": 0,
+            "genset": "0(W)",
+            "soc": 50,
+        },
+        "energeStatisticsCharts": {
+            "sum": 0.43,
+            "buy": 0.37,
+            "sell": 0.99,
+        },
+        "energeStatisticsTotals": {
+            "sum": 2315.36,
+            "buy": 18605.64,
+            "sell": 5734.17,
+        },
+    }
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=payload,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    homekit_sn = "HOMEKIT123"
+
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-homekit")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-load")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-grid")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-pv")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-soc")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-battery")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-load-status")
+        is not None
+    )
+
+    # Check new generation sensors
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation")
+        is not None
+    )
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total")
+        is not None
+    )
+    generation_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation"
+    )
+    assert generation_entity_id is not None
+    generation_state = hass.states.get(generation_entity_id)
+    assert generation_state is not None
+    assert float(generation_state.state) == 0.43
+
+    generation_total_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-generation-total"
+    )
+    assert generation_total_entity_id is not None
+    generation_total_state = hass.states.get(generation_total_entity_id)
+    assert generation_total_state is not None
+    assert float(generation_total_state.state) == 2315.36
+
+
+async def test_invalid_inverter_data_fails_setup_retry(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test setup retry when inverter data is not a list."""
+    del enable_custom_integrations
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    payload = {
+        "inverter": "invalid",
+        "kpi": {"currency": "EUR", "total_power": 0.0},
+        "hasPowerflow": False,
+        "hasEnergeStatisticsCharts": False,
+    }
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=payload,
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_powerflow_invalid_payload_defaults_homekit_sn(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test that invalid powerflow/homeKit payloads still create HomeKit sensors."""
+    del enable_custom_integrations
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    payload = {
+        "inverter": [],
+        "kpi": {"currency": "EUR", "total_power": 0.0},
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": False,
+        "homKit": None,
+        "powerflow": None,
+    }
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=payload,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    assert (
+        ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, "GW-HOMEKIT-NO-SERIAL-homekit")
+        is not None
+    )
+
+
+async def test_no_data_available_response_fails_setup(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test the coordinator retries setup when neither inverter nor HomeKit data is present."""
+    del enable_custom_integrations
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    payload = {
+        "kpi": {"currency": "EUR", "total_power": 0.0},
+        "hasPowerflow": False,
+        "hasEnergeStatisticsCharts": False,
+    }
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.getData",
+        return_value=payload,
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
 def _build_homekit_test_data(
