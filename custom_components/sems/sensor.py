@@ -429,7 +429,7 @@ def sensor_options_for_data(
             get_value_from_path(data.inverters, [*path_to_inverter, "eChargeDay"])
             is not None
         ):
-            sensors += [
+            sensors.append(
                 SemsInverterSensorType(
                     device_info,
                     f"{serial_number}-eChargeDay",
@@ -439,6 +439,12 @@ def sensor_options_for_data(
                     UnitOfEnergy.KILO_WATT_HOUR,
                     SensorStateClass.TOTAL_INCREASING,
                 ),
+            )
+        if (
+            get_value_from_path(data.inverters, [*path_to_inverter, "eDischargeDay"])
+            is not None
+        ):
+            sensors.append(
                 SemsInverterSensorType(
                     device_info,
                     f"{serial_number}-eDischargeDay",
@@ -448,7 +454,7 @@ def sensor_options_for_data(
                     UnitOfEnergy.KILO_WATT_HOUR,
                     SensorStateClass.TOTAL_INCREASING,
                 ),
-            ]
+            )
         _LOGGER.debug(
             "Sensors for inverter %s: %s",
             redact_for_log(serial_number),
@@ -574,7 +580,7 @@ def sensor_options_for_data(
             ),
         ]
         if data.homekit.get(GOODWE_SPELLING.hasEnergyStatisticsCharts):
-            if data.homekit.get("Charts_buy") is not None:
+            if any(key.startswith("Charts_") for key in data.homekit):
                 sensors += [
                     SemsHomekitSensorType(
                         device_info,
@@ -651,7 +657,7 @@ def sensor_options_for_data(
                         custom_value_handler=_percentage_handler,
                     ),
                 ]
-            if data.homekit.get("Totals_buy") is not None:
+            if any(key.startswith("Totals_") for key in data.homekit):
                 sensors += [
                     SemsHomekitSensorType(
                         device_info,
