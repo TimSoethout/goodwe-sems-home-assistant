@@ -58,11 +58,13 @@ def convert_status_to_label(status: Any) -> str:
 
 def _percentage_handler(value: Any, _data: dict[str, Any]) -> Any:
     """Convert a 0-1 ratio to a percentage."""
+    from decimal import InvalidOperation
+
     if value is None:
         return None
     try:
         return Decimal(str(value)) * 100
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, InvalidOperation):
         return value
 
 
