@@ -10,18 +10,10 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import CONF_STATION_ID, DOMAIN, SEMS_CONFIG_SCHEMA
+from .const import CONF_STATION_ID, DOMAIN, SEMS_CONFIG_SCHEMA, redact_for_log
 from .sems_api import SemsApi
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def mask_password(user_input: dict[str, Any]) -> dict[str, Any]:
-    """Mask password in user input for logging."""
-    masked_input = user_input.copy()
-    if CONF_PASSWORD in masked_input:
-        masked_input[CONF_PASSWORD] = "<masked>"
-    return masked_input
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -32,7 +24,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     _LOGGER.debug(
         "SEMS - Start validation config flow user input, with input data: %s",
-        mask_password(data),
+        redact_for_log(data),
     )
     api = SemsApi(hass, data[CONF_USERNAME], data[CONF_PASSWORD])
 
@@ -55,7 +47,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         data[CONF_STATION_ID] = powerStationId
 
     # Return info that you want to store in the config entry.
-    _LOGGER.debug("SEMS - validate_input Returning data: %s", mask_password(data))
+    _LOGGER.debug(
+        "SEMS - validate_input Returning data: %s",
+        redact_for_log(data),
+    )
     return data
 
 
@@ -89,7 +84,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.debug(
                 "Creating config entry for %s with data: %s",
                 info[CONF_STATION_ID],
-                mask_password(info),
+                redact_for_log(info),
             )
             return self.async_create_entry(
                 title=f"Inverter {info[CONF_STATION_ID]}", data=info
