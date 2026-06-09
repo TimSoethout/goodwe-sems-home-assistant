@@ -20,8 +20,9 @@ from .const import (
     DOMAIN,
     GOODWE_SPELLING,
     PLATFORMS,
+    redact_for_log,
 )
-from .sems_api import SemsApi
+from .sems_api import SemsApi, SemsRateLimitedError
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -104,10 +105,14 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             result = await self.hass.async_add_executor_job(
                 self.sems_api.getData, self.station_id
             )
+        except SemsRateLimitedError as err:
+            raise UpdateFailed(
+                f"SEMS API rate limited (retry after {err.retry_after}s)"
+            ) from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
-            _LOGGER.debug("semsApi.getData result: %s", result)
+            _LOGGER.debug("semsApi.getData result: %s", redact_for_log(result))
 
             inverters = result.get("inverter")
             inverters_by_sn: dict[str, dict[str, Any]] = {}
@@ -127,7 +132,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 if not isinstance(sn, str):
                     continue
 
-                _LOGGER.debug("Found inverter attribute %s %s", name, sn)
+                _LOGGER.debug(
+                    "Found inverter attribute %s %s",
+                    name,
+                    redact_for_log(sn),
+                )
                 inverters_by_sn[sn] = inverter_full
 
             # Add currency
@@ -187,7 +196,16 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             data = SemsData(
                 inverters=inverters_by_sn, homekit=homekit, currency=currency
             )
-            _LOGGER.debug("Resulting data: %s", data)
+            _LOGGER.debug(
+                "Resulting data: %s",
+                redact_for_log(
+                    {
+                        "inverters": inverters_by_sn,
+                        "homekit": homekit,
+                        "currency": currency,
+                    }
+                ),
+            )
             return data
 
 
