@@ -500,7 +500,7 @@ def sensor_options_for_data(
                 device_info,
                 f"{homekit_sn}-homekit",  # backwards compatibility otherwise would be f"{serial_number}-load"
                 ["load"],
-                "HomeKit Load",
+                "HomeKit Load (Legacy)",
                 SensorDeviceClass.POWER,
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
