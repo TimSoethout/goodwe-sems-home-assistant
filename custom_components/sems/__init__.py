@@ -44,6 +44,8 @@ class SemsData:
     """Runtime SEMS data returned by the coordinator."""
 
     inverters: dict[str, dict[str, Any]]
+    batteries: dict[str, dict[str, dict[str, Any]]] | None = None
+    immediate_charging: dict[str, dict[str, Any]] | None = None
     homekit: dict[str, Any] | None = None
     currency: str | None = None
 
@@ -119,9 +121,77 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         # handled by the data update coordinator.
         # async with async_timeout.timeout(10):
         try:
-            result = await self.hass.async_add_executor_job(
+            data_result = await self.hass.async_add_executor_job(
                 self.sems_api.getData, self.station_id
             )
+
+            _LOGGER.debug("Getting energy storage integrated cabinets")
+            energy_storage_cabinets = {
+                inverter.get("invert_full", {}).get(
+                    "sn"
+                ): await self.hass.async_add_executor_job(
+                    self.sems_api.getEnergyStorageIntegratedCabinets,
+                    self.station_id,
+                    inverter.get("invert_full", {}).get("sn"),
+                )
+                for inverter in data_result.get("inverter", {})
+            }
+
+            _LOGGER.debug("Getting battery general functions for each cabinet")
+            battery_general_functions = {
+                sn: {
+                    bat.get("translateCode"): await self.hass.async_add_executor_job(
+                        self.sems_api.getBatteryGeneralFunctions, sn, bat.get("no", 0)
+                    )
+                    for bat in bats
+                    if isinstance(bat, dict) and bat.get("translateCode") is not None
+                }
+                for sn, bats in energy_storage_cabinets.items()
+            }
+
+            batteries: dict[str, Any] = {}
+            for sn, bats in battery_general_functions.items():
+                for bat_id, bat in bats.items():
+                    for child in bat.get("functionMenus", {}).get("children", []):
+                        for func in child.get("functions", []):
+                            if sn not in batteries:
+                                batteries[sn] = {}
+                            if bat_id not in batteries[sn]:
+                                bat_name = ""
+                                for bat in energy_storage_cabinets.get(sn, []):
+                                    if bat.get("translateCode") == bat_id:
+                                        bat_name = bat.get("name", "")
+                                        break
+                                batteries[sn][bat_id] = {
+                                    "name": bat_name,
+                                    "functions": {},
+                                }
+
+                            batteries[sn][bat_id]["functions"][
+                                func.get("translateKey")
+                            ] = {
+                                "address": func.get("address"),
+                                "id": func.get("id"),
+                            }
+
+                            for related_func in func.get("relationFuncs", []):
+                                batteries[sn][bat_id]["functions"][
+                                    related_func.get("translateKey")
+                                ] = {
+                                    "address": related_func.get("address"),
+                                    "id": related_func.get("id"),
+                                }
+
+            immediate_charging_by_inverter: dict[str, dict[str, Any]] = {}
+
+            for inverter_sn in batteries:
+                immediate_charging_result = await self.hass.async_add_executor_job(
+                    self.sems_api.getBatteryImmediateChargingStates, inverter_sn
+                )
+                immediate_charging_by_inverter[inverter_sn] = (
+                    immediate_charging_result or {}
+                )
+
         except SemsRateLimitedError as err:
             raise UpdateFailed(
                 f"SEMS API rate limited (retry after {err.retry_after}s)"
@@ -129,9 +199,9 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
-            _LOGGER.debug("semsApi.getData result: %s", redact_for_log(result))
+            _LOGGER.debug("semsApi.getData result: %s", redact_for_log(data_result))
 
-            inverters = result.get("inverter")
+            inverters = data_result.get("inverter")
             inverters_by_sn: dict[str, dict[str, Any]] = {}
             if not inverters or not isinstance(inverters, list):
                 raise UpdateFailed(
@@ -157,29 +227,29 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 inverters_by_sn[sn] = inverter_full
 
             # Add currency
-            kpi = result.get("kpi")
+            kpi = data_result.get("kpi")
             if not isinstance(kpi, dict):
                 kpi = {}
             currency = kpi.get("currency")
 
-            has_powerflow = bool(result.get("hasPowerflow"))
+            has_powerflow = bool(data_result.get("hasPowerflow"))
             has_energy_statistics_charts = bool(
-                result.get(GOODWE_SPELLING.hasEnergyStatisticsCharts)
+                data_result.get(GOODWE_SPELLING.hasEnergyStatisticsCharts)
             )
 
             homekit: dict[str, Any] | None = None
 
             if has_powerflow:
                 _LOGGER.debug("Found powerflow data")
-                powerflow = result.get("powerflow")
+                powerflow = data_result.get("powerflow")
                 if not isinstance(powerflow, dict):
                     powerflow = {}
 
                 if has_energy_statistics_charts:
-                    charts = result.get(GOODWE_SPELLING.energyStatisticsCharts)
+                    charts = data_result.get(GOODWE_SPELLING.energyStatisticsCharts)
                     if not isinstance(charts, dict):
                         charts = {}
-                    totals = result.get(GOODWE_SPELLING.energyStatisticsTotals)
+                    totals = data_result.get(GOODWE_SPELLING.energyStatisticsTotals)
                     if not isinstance(totals, dict):
                         totals = {}
 
@@ -194,7 +264,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                     has_energy_statistics_charts
                 )
 
-                homekit_data = result.get(GOODWE_SPELLING.homeKit)
+                homekit_data = data_result.get(GOODWE_SPELLING.homeKit)
                 if not isinstance(homekit_data, dict):
                     homekit_data = {}
                 powerflow["sn"] = homekit_data.get("sn")
@@ -210,8 +280,27 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
                 homekit = powerflow
 
+            # Process immediate charging data
+            immediate_charging = {}
+            for sn, immediate_charging_result in immediate_charging_by_inverter.items():
+                immediate_charging[sn] = {
+                    "enabled": bool(
+                        immediate_charging_result.get("data", {}).get("47545", 0)
+                    ),
+                    "end_charge_soc": immediate_charging_result.get("data", {}).get(
+                        "47546", 0
+                    ),
+                    "charging_power": immediate_charging_result.get("data", {}).get(
+                        "47603", 0
+                    ),
+                }
+
             data = SemsData(
-                inverters=inverters_by_sn, homekit=homekit, currency=currency
+                inverters=inverters_by_sn,
+                batteries=batteries,
+                homekit=homekit,
+                currency=currency,
+                immediate_charging=immediate_charging,
             )
             _LOGGER.debug(
                 "Resulting data: %s",
@@ -220,6 +309,8 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                         "inverters": inverters_by_sn,
                         "homekit": homekit,
                         "currency": currency,
+                        "batteries": batteries,
+                        "immediate_charging": immediate_charging,
                     }
                 ),
             )

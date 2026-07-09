@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import logging
+import time
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -40,10 +41,17 @@ _NewLoginHeaders = {
     "Accept": "application/json, */*;q=0.5",
 }
 
+_NewSEMSPlusWebLoginHeaders = {
+    "Content-Type": "application/json",
+    "Accept": "application/json, */*;q=0.5",
+    "Token": '{"uid":"","timestamp":0,"token":"","client":"semsPlusWeb","version":"","language":"en"}',
+}
+
+
 _NewLoginFallbackApi = "https://eu-gateway.semsportal.com/web/sems"
 _LegacyApiFallback = "https://eu.semsportal.com/api"
 
-type LoginMode = Literal["new", "legacy"]
+type LoginMode = Literal["new", "legacy", "web"]
 type LoginHandler = Callable[[str, str], dict[str, Any] | None]
 
 
@@ -56,6 +64,7 @@ class SemsApi:
         self._username = username
         self._password = password
         self._token: dict[str, Any] | None = None
+        self._web_token: dict[str, Any] | None = None  # Used for SEMS+ web APIs
         self._preferred_login_mode: LoginMode | None = None
 
     def test_authentication(self) -> bool:
@@ -76,11 +85,13 @@ class SemsApi:
         json_data: dict[str, Any] | None = None,
         operation_name: str = "HTTP request",
         validate_code: bool = True,
+        method: str = "POST",
     ) -> dict[str, Any] | None:
         """Make a generic HTTP request with error handling and optional code validation."""
         try:
             _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
-            response = requests.post(
+            response = requests.request(
+                method.upper(),
                 url,
                 headers=headers,
                 data=data,
@@ -129,11 +140,6 @@ class SemsApi:
                         response_code,
                         json_response.get("msg", "Unknown error"),
                     )
-                    return None
-
-                data = json_response.get("data")
-                if data is None or data == "" or data == [] or data == {}:
-                    _LOGGER.error("%s response missing data field", operation_name)
                     return None
 
             return json_response
@@ -233,43 +239,70 @@ class SemsApi:
         url_part: str,
         renewToken: bool,
         operation_name: str,
+        is_web: bool = False,
     ) -> tuple[str, dict[str, str]] | None:
         """Return the request URL and headers for an authenticated call."""
-        if self._token is None or renewToken:
+        if is_web:
+            token = self._web_token
+        else:
+            token = self._token
+
+        if token is None or renewToken:
             _LOGGER.debug(
                 "API token not set (%s) or new token requested (%s), fetching",
-                redact_for_log(self._token),
+                redact_for_log(token),
                 renewToken,
             )
-            self._token = self.getLoginToken(self._username, self._password)
+            if is_web:
+                self._web_token = self._get_new_sems_plus_web_login_token(
+                    self._username, self._password
+                )
+                token = self._web_token
+            else:
+                self._token = self.getLoginToken(self._username, self._password)
+                token = self._token
 
-        if self._token is None:
+        if token is None:
             _LOGGER.error("Failed to obtain API token")
             return None
 
-        api_base = self._resolve_api_base_for_url_part(self._token["api"], url_part)
+        api_base = self._resolve_api_base_for_url_part(token["api"], url_part)
         api_url = api_base + url_part
-        headers = self._build_authenticated_headers(self._token)
+        headers = self._build_authenticated_headers(token)
 
         _LOGGER.debug(
             "SEMS - %s request context: api_base=%s effective_api_base=%s url_part=%s token=%s",
             operation_name,
-            self._token.get("api"),
+            token.get("api"),
             api_base,
             url_part,
-            redact_for_log(self._token),
+            redact_for_log(token),
         )
         return api_url, headers
 
     def _build_authenticated_headers(
-        self, token_data: dict[str, Any]
+        self,
+        token_data: dict[str, Any],
     ) -> dict[str, str]:
         """Build request headers for authenticated API calls."""
-        return {
+        headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
             "token": json.dumps(token_data),
         }
+
+        if token_data.get("client") == "semsPlusWeb":
+            headers["X-Signature"] = self._generate_signature(token_data)
+
+        return headers
+
+    def _generate_signature(self, token_data: dict[str, Any]) -> str:
+        epoch_ms = round(time.time() * 1000)
+        digest = hashlib.sha256(
+            f"{epoch_ms}@{token_data.get('uid', '')}@{token_data.get('token', '')}".encode()
+        ).hexdigest()
+        sig = f"{digest}@{epoch_ms}"
+        return base64.b64encode(sig.encode()).decode()
 
     def _get_login_mode_order(self) -> list[LoginMode]:
         """Return login modes in preferred order."""
@@ -375,7 +408,10 @@ class SemsApi:
             login_mode,
             redact_for_log(token_dict),
         )
-        self._preferred_login_mode = login_mode
+
+        if login_mode != "web":
+            self._preferred_login_mode = login_mode
+
         return token_dict
 
     def _get_legacy_login_token(
@@ -421,6 +457,37 @@ class SemsApi:
             _NewLoginFallbackApi,
         )
 
+    def _get_new_sems_plus_web_login_token(
+        self, userName: str, password: str
+    ) -> dict[str, Any] | None:
+        """Get a token from the SEMS+ login endpoint."""
+        _LOGGER.debug("SEMS - Trying new SEMS+ Web login")
+        login_data = {
+            "account": userName,
+            "pwd": self._hash_password_for_new_login(password),
+            "agreement": 1,
+            "isChinese": False,
+            "isLocal": False,
+        }
+        headers = {
+            **_NewSEMSPlusWebLoginHeaders,
+            "X-Signature": self._generate_signature({}),
+        }
+
+        json_response = self._make_http_request(
+            NEW_LOGIN_URL,
+            headers,
+            json_data=login_data,
+            operation_name="SEMS+ Web login API call",
+            validate_code=False,
+        )
+        return self._extract_login_token(
+            json_response,
+            "web",
+            "SEMS+ Web login API call",
+            _NewLoginFallbackApi,
+        )
+
     def getLoginToken(self, userName: str, password: str) -> dict[str, Any] | None:
         """Get the login token for the SEMS API."""
         try:
@@ -453,7 +520,9 @@ class SemsApi:
             raise OutOfRetries
 
         context = self._get_authenticated_request_context(
-            url_part, renewToken, operation_name
+            url_part,
+            renewToken,
+            operation_name,
         )
         if context is None:
             return None
@@ -478,11 +547,82 @@ class SemsApi:
                     maxTokenRetries,
                 )
                 return self._make_api_call(
-                    url_part, data, True, maxTokenRetries - 1, operation_name
+                    url_part,
+                    data,
+                    True,
+                    maxTokenRetries - 1,
+                    operation_name,
                 )
 
             # Response is valid, return the data
             return json_response["data"]
+
+        except SemsRateLimitedError as exception:
+            _LOGGER.debug(
+                "SEMS - Propagating rate limit from %s to coordinator: retry_after=%s",
+                operation_name,
+                exception.retry_after,
+            )
+            raise
+        except (requests.RequestException, ValueError, KeyError) as exception:
+            _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
+            return None
+
+    def _make_sems_plus_web_api_call(
+        self,
+        url_part: str,
+        method: str,
+        data: str | None = None,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+        operation_name: str = "SEMS+ Web API call",
+    ) -> Any | None:
+        """Make a generic API call with token management and retry logic."""
+        _LOGGER.debug("SEMS - Making %s", operation_name)
+        if maxTokenRetries <= 0:
+            _LOGGER.info("SEMS - Maximum token fetch tries reached, aborting for now")
+            raise OutOfRetries
+
+        context = self._get_authenticated_request_context(
+            url_part,
+            renewToken,
+            operation_name,
+            is_web=True,
+        )
+        if context is None:
+            return None
+
+        api_url, headers = context
+
+        try:
+            json_response: dict[str, Any] | None = self._make_http_request(
+                api_url,
+                headers,
+                method=method,
+                data=data,
+                operation_name=operation_name,
+                validate_code=True,
+            )
+
+            # _make_http_request already validated the response, so if we get here, it's successful
+            if json_response is None:
+                # Response validation failed in _make_http_request
+                _LOGGER.debug(
+                    "%s not successful, retrying with new token, %s retries remaining",
+                    operation_name,
+                    maxTokenRetries,
+                )
+                return self._make_sems_plus_web_api_call(
+                    url_part,
+                    method,
+                    data,
+                    True,
+                    maxTokenRetries - 1,
+                    operation_name,
+                )
+
+            # Response is valid, return the data
+            return json_response.get("data", {})
 
         except SemsRateLimitedError as exception:
             _LOGGER.debug(
@@ -521,6 +661,192 @@ class SemsApi:
         )
         return result if isinstance(result, dict) else {}
 
+    def getEnergyStorageIntegratedCabinets(
+        self,
+        powerStationId: str,
+        serialNumber: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> list[dict[str, Any]]:
+        """Get the energy storage integrated cabinets from the SEMS API."""
+        result = self._make_sems_plus_web_api_call(
+            f"/sems-plant/api/equipments/{serialNumber}/relatedDevices?sn={serialNumber}&deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getEnergyStorageIntegratedCabinets API call",
+        )
+
+        return result if isinstance(result, list) else []
+
+    def getBatteryGeneralFunctions(
+        self,
+        serialNumber: str,
+        batIndex: int,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get the battery general functions from the SEMS API."""
+        data = json.dumps(
+            {
+                "batIndex": str(batIndex),
+                "menuCode": 1,
+                "module": "GENERAL_FUNCTIONS",
+                "sn": serialNumber,
+            }
+        )
+        result = self._make_sems_plus_web_api_call(
+            "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+            method="POST",
+            data=data,
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getBatteryGeneralFunctions API call",
+        )
+        return result if isinstance(result, dict) else {}
+
+    def getBatteryImmediateChargingStates(
+        self, serialNumber: str, renewToken: bool = False, maxTokenRetries: int = 2
+    ) -> dict[str, Any]:
+        """Get the battery immediate charging states from the SEMS API."""
+        data = json.dumps(
+            {
+                "sn": serialNumber,
+                "addresses": ["47545", "47545", "47546", "47603"],
+                "addrFuncMap": {
+                    "47545": "2013217017330515970",
+                    "47546": "1991791639537946635",
+                    "47603": "1991791639537946636",
+                },
+            }
+        )
+
+        result = self._make_sems_plus_web_api_call(
+            "/sems-remote/api/v1/address/remote/get-cache-device-function-parameters",
+            method="POST",
+            data=data,
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getBatteryImmediateChargingStates API call",
+        )
+        return result if isinstance(result, dict) else {}
+
+    def stopImmediateCharging(
+        self,
+        plant_id: str,
+        serial_number: str,
+        device_name: str,
+        function_address: str,
+        function_id: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ):
+        self.setDeviceFunctionParameters(
+            plant_id,
+            serial_number,
+            device_name,
+            {function_address: 0},
+            {"stop_charging": "remote_Switch_off"},
+            {function_address: function_id},
+            renewToken,
+            maxTokenRetries,
+        )
+
+    def startImmediateCharging(
+        self,
+        plant_id: str,
+        serial_number: str,
+        device_name: str,
+        function_address: str,
+        function_id: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ):
+        self.setDeviceFunctionParameters(
+            plant_id,
+            serial_number,
+            device_name,
+            {function_address: 1},
+            {"immediate_charge": "on"},
+            {function_address: function_id},
+            renewToken,
+            maxTokenRetries,
+        )
+
+    def setImmediateChargingEndSoC(
+        self,
+        plant_id: str,
+        serial_number: str,
+        device_name: str,
+        end_soc: int,
+        function_address: str,
+        function_id: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ):
+        self.setDeviceFunctionParameters(
+            plant_id,
+            serial_number,
+            device_name,
+            {function_address: end_soc},
+            {"end_charge_soc": end_soc},
+            {function_address: function_id},
+            renewToken,
+            maxTokenRetries,
+        )
+
+    def setImmediateChargingChargingPower(
+        self,
+        plant_id: str,
+        serial_number: str,
+        device_name: str,
+        charging_power: int,
+        function_address: str,
+        function_id: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ):
+        self.setDeviceFunctionParameters(
+            plant_id,
+            serial_number,
+            device_name,
+            {function_address: charging_power},
+            {"bat_immediate_charge_power": charging_power},
+            {function_address: function_id},
+            renewToken,
+            maxTokenRetries,
+        )
+
+    def setDeviceFunctionParameters(
+        self,
+        plant_id: str,
+        serial_number: str,
+        device_name: str,
+        address_map: dict[str, Any],
+        control_item_logs: dict[str, Any],
+        addr_func_map: dict[str, str],
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ):
+        data = {
+            "sn": serial_number,
+            "addressMap": address_map,
+            "addrFuncMap": addr_func_map,
+            "controlItemLogs": control_item_logs,
+            "waitingForDevice": True,
+            "plantId": plant_id,
+            "deviceName": device_name,
+        }
+
+        self._make_sems_plus_web_api_call(
+            "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
+            method="POST",
+            data=json.dumps(data),
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="setDeviceFunctionParameters API call",
+        )
+
     def _make_control_api_call(
         self,
         data: dict[str, Any],
@@ -535,7 +861,9 @@ class SemsApi:
             raise OutOfRetries
 
         context = self._get_authenticated_request_context(
-            _PowerControlURLPart, renewToken, operation_name
+            _PowerControlURLPart,
+            renewToken,
+            operation_name,
         )
         if context is None:
             return False
