@@ -6,18 +6,15 @@
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
-            "unknown": "Unexpected error"
+            "unknown": "Unexpected error",
+            "no_stations_found": "No power stations found for this account"
         },
         "step": {
             "user": {
                 "data": {
-                    "powerstation_id": "Power Station ID",
                     "password": "Password",
                     "username": "Username",
                     "scan_interval": "Update Interval (seconds)"
-                },
-                "data_description": {
-                    "powerstation_id": "If empty, will query SEMS API and take first"
                 }
             }
         }

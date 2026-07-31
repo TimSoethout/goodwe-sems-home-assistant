@@ -8,13 +8,12 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    CONF_SCAN_INTERVAL,
     CONF_STATION_ID,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -62,6 +61,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool
 
     await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries."""
+    if entry.version > 2:
+        _LOGGER.error("Cannot migrate entry version %s", entry.version)
+        return False
+
+    if entry.version < 2:
+        station_id = entry.data.get(CONF_STATION_ID)
+        if entry.unique_id is None and isinstance(station_id, str) and station_id:
+            hass.config_entries.async_update_entry(
+                entry, version=2, unique_id=station_id
+            )
+        else:
+            hass.config_entries.async_update_entry(entry, version=2)
 
     return True
 
