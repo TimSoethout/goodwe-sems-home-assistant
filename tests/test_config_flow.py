@@ -115,12 +115,12 @@ async def test_single_station_creates_entry_directly(
     assert result["data"][CONF_USERNAME] == MOCK_USERNAME
 
 
-async def test_multiple_stations_shows_selection_step(
+async def test_multiple_stations_auto_creates_all_entries(
     hass: HomeAssistant,
     enable_custom_integrations: None,
     mock_setup_entry,
 ) -> None:
-    """When multiple stations are found, the selection step is shown."""
+    """When multiple stations are found, all entries are created automatically."""
     del enable_custom_integrations
 
     result = await _init_flow(hass)
@@ -140,51 +140,16 @@ async def test_multiple_stations_shows_selection_step(
             {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
         )
 
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "select_station"
-
-    options = result["data_schema"].schema[CONF_STATION_ID].config["options"]
-    option_values = [o["value"] for o in options]
-    assert MOCK_STATION_ID_1 in option_values
-    assert MOCK_STATION_ID_2 in option_values
-
-
-async def test_select_station_creates_entry(
-    hass: HomeAssistant,
-    enable_custom_integrations: None,
-    mock_setup_entry,
-) -> None:
-    """Selecting a station in step 2 creates a config entry for it."""
-    del enable_custom_integrations
-
-    result = await _init_flow(hass)
-
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.test_authentication",
-            return_value=True,
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getPowerStationIds",
-            return_value=[MOCK_STATION_ID_1, MOCK_STATION_ID_2],
-        ),
-    ):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
-        )
-
-    assert result["step_id"] == "select_station"
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_STATION_ID: MOCK_STATION_ID_2},
-    )
-
+    # First station is created immediately, no selection step shown
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Inverter {MOCK_STATION_ID_2}"
-    assert result["data"][CONF_STATION_ID] == MOCK_STATION_ID_2
-    assert result["data"][CONF_USERNAME] == MOCK_USERNAME
+    assert result["data"][CONF_STATION_ID] == MOCK_STATION_ID_1
+
+    await hass.async_block_till_done()
+    entries = hass.config_entries.async_entries(DOMAIN)
+    station_ids = {entry.data[CONF_STATION_ID] for entry in entries}
+    assert station_ids == {MOCK_STATION_ID_1, MOCK_STATION_ID_2}
+    unique_ids = {entry.unique_id for entry in entries}
+    assert unique_ids == {MOCK_STATION_ID_1, MOCK_STATION_ID_2}
 
 
 async def test_single_station_already_configured_aborts(
