@@ -16,6 +16,12 @@
                     "username": "Nombre de usuario",
                     "scan_interval": "Intervalo de actualización (segundos)"
                 }
+            },
+            "select_station": {
+                "description": "Se encontraron varias plantas de energía. Seleccione la planta a monitorizar. Vuelva a ejecutar la configuración para agregar más plantas.",
+                "data": {
+                    "powerstation_id": "Identificador de la planta"
+                }
             }
         }
     },

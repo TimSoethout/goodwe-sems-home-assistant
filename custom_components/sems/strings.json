@@ -9,6 +9,12 @@
           "scan_interval": "Update Interval (seconds)"
         }
       },
+      "select_station": {
+        "description": "Multiple power stations found. Select the power station to monitor. Run setup again to add more stations.",
+        "data": {
+          "powerstation_id": "Power Station ID"
+        }
+      }
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",

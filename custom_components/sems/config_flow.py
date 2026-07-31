@@ -9,7 +9,13 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .const import CONF_STATION_ID, DOMAIN, redact_for_log
 from .sems_api import SemsApi
@@ -50,12 +56,17 @@ async def validate_credentials(hass: HomeAssistant, data: dict[str, Any]) -> Sem
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for sems."""
 
-    VERSION = 1
+    VERSION = 2
+
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._credentials: dict[str, Any] = {}
+        self._station_ids: list[str] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Handle the initial step."""
+        """Handle the credentials step."""
         if user_input is None:
             return self.async_show_form(
                 step_id="user", data_schema=STEP_USER_DATA_SCHEMA
@@ -68,37 +79,37 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             _LOGGER.debug("SEMS - Credentials valid, fetching station IDs")
             raw_ids = await self.hass.async_add_executor_job(api.getPowerStationIds)
-            _LOGGER.debug("SEMS - Found power station IDs: %s", raw_ids)
+            _LOGGER.debug("SEMS - Found power station IDs: %s", redact_for_log(raw_ids))
 
             station_ids = _normalize_station_ids(raw_ids)
 
             if not station_ids:
                 errors["base"] = "no_stations_found"
             else:
-                # Schedule flows for any additional stations so all are auto-added.
-                # Users can disable individual entities or devices via the HA UI after setup.
-                for station_id in station_ids[1:]:
-                    self.hass.async_create_task(
-                        self.hass.config_entries.flow.async_init(
-                            DOMAIN,
-                            context={"source": config_entries.SOURCE_IMPORT},
-                            data={**user_input, CONF_STATION_ID: station_id},
-                        )
+                self._credentials = dict(user_input)
+                self._station_ids = station_ids
+
+                if len(station_ids) == 1:
+                    station_id = station_ids[0]
+                    await self.async_set_unique_id(station_id)
+                    self._abort_if_unique_id_configured()
+                    _LOGGER.debug(
+                        "SEMS - Single station found, creating entry for %s",
+                        redact_for_log(station_id),
                     )
-                station_id = station_ids[0]
-                _LOGGER.debug(
-                    "SEMS - Creating entry for station %s",
-                    redact_for_log(station_id),
-                )
-                return self.async_create_entry(
-                    title=f"Inverter {station_id}",
-                    data={**user_input, CONF_STATION_ID: station_id},
-                )
+                    return self.async_create_entry(
+                        title=f"Inverter {station_id}",
+                        data={**user_input, CONF_STATION_ID: station_id},
+                    )
+
+                return await self.async_step_select_station()
 
         except CannotConnect:
             errors["base"] = "cannot_connect"
         except InvalidAuth:
             errors["base"] = "invalid_auth"
+        except AbortFlow:
+            raise
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
@@ -107,18 +118,40 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
-    async def async_step_import(
-        self, import_data: dict[str, Any]
+    async def async_step_select_station(
+        self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Auto-create an entry for an additional discovered station."""
-        station_id = import_data.get(CONF_STATION_ID, "")
+        """Handle the station selection step (shown when multiple stations are found)."""
+        if user_input is None:
+            options = [
+                {"value": station_id, "label": station_id}
+                for station_id in self._station_ids
+            ]
+            schema = vol.Schema(
+                {
+                    vol.Required(CONF_STATION_ID): SelectSelector(
+                        SelectSelectorConfig(
+                            options=options,
+                            mode=SelectSelectorMode.LIST,
+                        )
+                    )
+                }
+            )
+            return self.async_show_form(
+                step_id="select_station",
+                data_schema=schema,
+            )
+
+        station_id = user_input[CONF_STATION_ID]
+        await self.async_set_unique_id(station_id)
+        self._abort_if_unique_id_configured()
         _LOGGER.debug(
-            "SEMS - Auto-adding station %s from multi-station discovery",
+            "SEMS - Creating entry for selected station %s",
             redact_for_log(station_id),
         )
         return self.async_create_entry(
             title=f"Inverter {station_id}",
-            data=import_data,
+            data={**self._credentials, CONF_STATION_ID: station_id},
         )
 
 
