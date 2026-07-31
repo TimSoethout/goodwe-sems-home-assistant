@@ -28,19 +28,9 @@ Crude sensor for Home Assistant that scrapes from GoodWe SEMS portal. Copy all t
 
 ## Configure integration
 
-The required ID of your Power Station is automatically retrieved when left empty. It will pick the first found ID.
-
-To manually find you Power Station ID, log in to the SEMS Portal with your credentials:
-https://www.semsportal.com
-
-After login you'll see the ID in your URL, e.g.:
-https://semsportal.com/PowerStation/PowerStatusSnMin/12345678-1234-1234-1234-123456789012
-
-In this example the ID of the Power Station is: 12345678-1234-1234-1234-123456789012
-
 In the home assistant GUI, go to `Configuration` > `Integrations` and click the `Add Integration` button. Search for `GoodWe SEMS API`.
 
-Fill in the required configuration and it should find your inverters.
+Log in with your Goodwe SEMS (Plus) credentials and it should find your inverters.
 
 ### Optional: control the invertor power output via the "switch" entity
 
