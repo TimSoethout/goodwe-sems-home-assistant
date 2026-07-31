@@ -16,12 +16,6 @@
                     "username": "Nome de Utilizador",
                     "scan_interval": "Intervalo de Atualização (segundos)"
                 }
-            },
-            "select_station": {
-                "description": "Foram encontradas várias centrais de energia. Selecione a central a monitorizar. Execute a configuração novamente para adicionar mais centrais.",
-                "data": {
-                    "powerstation_id": "ID da Planta"
-                }
             }
         }
     },
