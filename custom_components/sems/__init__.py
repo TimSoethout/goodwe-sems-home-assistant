@@ -73,10 +73,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if entry.version < 2:
         station_id = entry.data.get(CONF_STATION_ID)
-        kwargs: dict[str, Any] = {"version": 2}
         if entry.unique_id is None and isinstance(station_id, str) and station_id:
-            kwargs["unique_id"] = station_id
-        hass.config_entries.async_update_entry(entry, **kwargs)
+            hass.config_entries.async_update_entry(
+                entry, version=2, unique_id=station_id
+            )
+        else:
+            hass.config_entries.async_update_entry(entry, version=2)
 
     return True
 
