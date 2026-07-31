@@ -5,74 +5,102 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
-from .const import CONF_STATION_ID, DOMAIN, SEMS_CONFIG_SCHEMA, redact_for_log
+from .const import CONF_STATION_ID, DOMAIN, redact_for_log
 from .sems_api import SemsApi
 
 _LOGGER = logging.getLogger(__name__)
 
+STEP_USER_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): str,
+        vol.Optional(CONF_SCAN_INTERVAL, description={"suggested_value": 60}): int,
+    }
+)
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect.
 
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
-    """
+def _normalize_station_ids(raw: Any) -> list[str]:
+    """Normalize a getPowerStationIds result to a list of station ID strings."""
+    if isinstance(raw, str) and raw:
+        return [raw]
+    if isinstance(raw, list):
+        return [str(item) for item in raw if item]
+    return []
 
+
+async def validate_credentials(hass: HomeAssistant, data: dict[str, Any]) -> SemsApi:
+    """Validate credentials and return an authenticated API client."""
     _LOGGER.debug(
-        "SEMS - Start validation config flow user input, with input data: %s",
-        redact_for_log(data),
+        "SEMS - Validating credentials for user: %s",
+        redact_for_log(data.get(CONF_USERNAME, "")),
     )
     api = SemsApi(hass, data[CONF_USERNAME], data[CONF_PASSWORD])
-
     authenticated = await hass.async_add_executor_job(api.test_authentication)
-    # If you cannot connect:
-    # throw CannotConnect
-    # If the authentication is wrong:
-    # InvalidAuth
     if not authenticated:
         raise InvalidAuth
-
-    # If optional station ID is not provided, query the SEMS API for the first found
-    if CONF_STATION_ID not in data:
-        _LOGGER.debug(
-            "SEMS - No station ID provided, query SEMS API, using first found"
-        )
-        powerStationId = await hass.async_add_executor_job(api.getPowerStationIds)
-        _LOGGER.debug("SEMS - Found power station IDs: %s", powerStationId)
-
-        data[CONF_STATION_ID] = powerStationId
-
-    # Return info that you want to store in the config entry.
-    _LOGGER.debug(
-        "SEMS - validate_input Returning data: %s",
-        redact_for_log(data),
-    )
-    return data
+    return api
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for sems."""
 
-    _LOGGER.debug("SEMS - new config flow")
-
     VERSION = 1
-    # CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
+
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._credentials: dict[str, Any] = {}
+        self._station_ids: list[str] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Handle the initial step."""
+        """Handle the credentials step."""
         if user_input is None:
-            return self.async_show_form(step_id="user", data_schema=SEMS_CONFIG_SCHEMA)
+            return self.async_show_form(
+                step_id="user", data_schema=STEP_USER_DATA_SCHEMA
+            )
 
-        errors = {}
+        errors: dict[str, str] = {}
 
         try:
-            info = await validate_input(self.hass, user_input)
+            api = await validate_credentials(self.hass, user_input)
+
+            _LOGGER.debug("SEMS - Credentials valid, fetching station IDs")
+            raw_ids = await self.hass.async_add_executor_job(api.getPowerStationIds)
+            _LOGGER.debug("SEMS - Found power station IDs: %s", raw_ids)
+
+            station_ids = _normalize_station_ids(raw_ids)
+
+            if not station_ids:
+                errors["base"] = "no_stations_found"
+            else:
+                self._credentials = dict(user_input)
+                self._station_ids = station_ids
+
+                if len(station_ids) == 1:
+                    station_id = station_ids[0]
+                    _LOGGER.debug(
+                        "SEMS - Single station found, creating entry for %s",
+                        redact_for_log(station_id),
+                    )
+                    return self.async_create_entry(
+                        title=f"Inverter {station_id}",
+                        data={**user_input, CONF_STATION_ID: station_id},
+                    )
+
+                return await self.async_step_select_station()
+
         except CannotConnect:
             errors["base"] = "cannot_connect"
         except InvalidAuth:
@@ -80,18 +108,43 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
-        else:
-            _LOGGER.debug(
-                "Creating config entry for %s with data: %s",
-                info[CONF_STATION_ID],
-                redact_for_log(info),
-            )
-            return self.async_create_entry(
-                title=f"Inverter {info[CONF_STATION_ID]}", data=info
-            )
 
         return self.async_show_form(
-            step_id="user", data_schema=SEMS_CONFIG_SCHEMA, errors=errors
+            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+        )
+
+    async def async_step_select_station(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle the station selection step (shown when multiple stations are found)."""
+        if user_input is None:
+            options = [
+                {"value": station_id, "label": station_id}
+                for station_id in self._station_ids
+            ]
+            schema = vol.Schema(
+                {
+                    vol.Required(CONF_STATION_ID): SelectSelector(
+                        SelectSelectorConfig(
+                            options=options,
+                            mode=SelectSelectorMode.LIST,
+                        )
+                    )
+                }
+            )
+            return self.async_show_form(
+                step_id="select_station",
+                data_schema=schema,
+            )
+
+        station_id = user_input[CONF_STATION_ID]
+        _LOGGER.debug(
+            "SEMS - Creating entry for selected station %s",
+            redact_for_log(station_id),
+        )
+        return self.async_create_entry(
+            title=f"Inverter {station_id}",
+            data={**self._credentials, CONF_STATION_ID: station_id},
         )
 
 

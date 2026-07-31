@@ -4,20 +4,23 @@
     "step": {
       "user": {
         "data": {
-          "powerstation_id": "[%key:common::config_flow::data::powerstation_id%]",
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]",
-          "scan_interval": "[%key:common::config_flow::data::scan_interval%]"
-        },
-        "data_description": {
-          "powerstation_id": "[%key:common::config_flow::data_description::powerstation_id%]"
+          "scan_interval": "Update Interval (seconds)"
+        }
+      },
+      "select_station": {
+        "description": "Multiple power stations found. Select the power station to monitor. Run setup again to add more stations.",
+        "data": {
+          "powerstation_id": "Power Station ID"
         }
       }
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-      "unknown": "[%key:common::config_flow::error::unknown%]"
+      "unknown": "[%key:common::config_flow::error::unknown%]",
+      "no_stations_found": "No power stations found for this account"
     },
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"

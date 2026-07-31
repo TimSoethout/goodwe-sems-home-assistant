@@ -6,18 +6,21 @@
         "error": {
             "cannot_connect": "Falha na ligação",
             "invalid_auth": "Autenticação Inválida",
-            "unknown": "Erro inesperado"
+            "unknown": "Erro inesperado",
+            "no_stations_found": "Nenhuma central de energia encontrada para esta conta"
         },
         "step": {
             "user": {
                 "data": {
-                    "powerstation_id": "ID da Planta",
                     "password": "Password",
                     "username": "Nome de Utilizador",
                     "scan_interval": "Intervalo de Atualização (segundos)"
-                },
-                "data_description": {
-                    "powerstation_id": "Se vazio, irá consultar a API SEMS e usar o primeiro"
+                }
+            },
+            "select_station": {
+                "description": "Foram encontradas várias centrais de energia. Selecione a central a monitorizar. Execute a configuração novamente para adicionar mais centrais.",
+                "data": {
+                    "powerstation_id": "ID da Planta"
                 }
             }
         }
