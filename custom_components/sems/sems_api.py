@@ -254,8 +254,8 @@ class SemsApi:
                 renewToken,
             )
             if is_web:
-                self._web_token = self._get_new_sems_plus_web_login_token(
-                    self._username, self._password
+                self._web_token = self._get_new_login_token(
+                    self._username, self._password, is_web=True
                 )
                 token = self._web_token
             else:
@@ -432,10 +432,12 @@ class SemsApi:
         )
 
     def _get_new_login_token(
-        self, userName: str, password: str
+        self, userName: str, password: str, is_web: bool = False
     ) -> dict[str, Any] | None:
         """Get a token from the SEMS+ login endpoint."""
-        _LOGGER.debug("SEMS - Trying new SEMS+ login")
+        login_mode: LoginMode = "web" if is_web else "new"
+        operation_name = "SEMS+ Web login API call" if is_web else "SEMS+ login API call"
+        _LOGGER.debug("SEMS - Trying %s", operation_name)
         login_data = {
             "account": userName,
             "pwd": self._hash_password_for_new_login(password),
@@ -443,48 +445,24 @@ class SemsApi:
             "isChinese": False,
             "isLocal": False,
         }
-        json_response = self._make_http_request(
-            NEW_LOGIN_URL,
-            _NewLoginHeaders,
-            json_data=login_data,
-            operation_name="SEMS+ login API call",
-            validate_code=False,
-        )
-        return self._extract_login_token(
-            json_response,
-            "new",
-            "SEMS+ login API call",
-            _NewLoginFallbackApi,
-        )
-
-    def _get_new_sems_plus_web_login_token(
-        self, userName: str, password: str
-    ) -> dict[str, Any] | None:
-        """Get a token from the SEMS+ login endpoint."""
-        _LOGGER.debug("SEMS - Trying new SEMS+ Web login")
-        login_data = {
-            "account": userName,
-            "pwd": self._hash_password_for_new_login(password),
-            "agreement": 1,
-            "isChinese": False,
-            "isLocal": False,
-        }
-        headers = {
-            **_NewSEMSPlusWebLoginHeaders,
-            "X-Signature": self._generate_signature({}),
-        }
+        headers = _NewLoginHeaders
+        if is_web:
+            headers = {
+                **_NewSEMSPlusWebLoginHeaders,
+                "X-Signature": self._generate_signature({}),
+            }
 
         json_response = self._make_http_request(
             NEW_LOGIN_URL,
             headers,
             json_data=login_data,
-            operation_name="SEMS+ Web login API call",
+            operation_name=operation_name,
             validate_code=False,
         )
         return self._extract_login_token(
             json_response,
-            "web",
-            "SEMS+ Web login API call",
+            login_mode,
+            operation_name,
             _NewLoginFallbackApi,
         )
 

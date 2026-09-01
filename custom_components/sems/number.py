@@ -1,5 +1,7 @@
 """Number platform for the GoodWe SEMS integration."""
 
+from collections.abc import Callable
+
 from homeassistant.components.number import NumberEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -10,11 +12,15 @@ from . import SemsConfigEntry, SemsCoordinator
 from .const import CONF_STATION_ID
 from .device import device_info_for_inverter
 
+type SetBatteryValueMethod = Callable[[str, str, str, int, str, str], None]
+
 
 class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
     """Base class for battery immediate-charging controls."""
 
     _attr_has_entity_name = True
+    function_name: str
+    name: str
 
     def __init__(
         self,
@@ -24,20 +30,18 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
         battery_id: str,
         battery_name: str,
         function: dict[str, str],
-        function_name: str,
-        name: str,
     ) -> None:
         super().__init__(coordinator)
         inverter_data = coordinator.data.inverters.get(serial_number, {})
         self._attr_device_info = device_info_for_inverter(serial_number, inverter_data)
-        self._attr_unique_id = f"{serial_number}-{battery_id}-{function_name}"
-        self._attr_name = f"Battery {battery_name} {name}"
+        self._attr_unique_id = f"{serial_number}-{battery_id}-{self.function_name}"
+        self._attr_name = f"Battery {battery_name} {self.name}"
         self.plant_id = plant_id
         self.serial_number = serial_number
         self.battery_id = battery_id
         self.function = function
 
-    async def _async_set_value(self, method: object, value: float) -> None:
+    async def _async_set_value(self, method: SetBatteryValueMethod, value: float) -> None:
         if self.coordinator.data is None:
             raise HomeAssistantError(
                 f"Unable to set value for {self.entity_id}: no coordinator data"
@@ -61,9 +65,8 @@ class SemsBatteryEndChargeSocNumber(SemsBatteryNumber):
     _attr_native_max_value = 100
     _attr_native_min_value = 0
     _attr_native_step = 1
-
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args, "end_charge_soc", "End Charge SoC")
+    function_name = "end_charge_soc"
+    name = "End Charge SoC"
 
     @property
     def native_value(self) -> float:
@@ -85,9 +88,8 @@ class SemsBatteryChargingPowerNumber(SemsBatteryNumber):
     _attr_native_max_value = 100
     _attr_native_min_value = 0
     _attr_native_step = 1
-
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args, "bat_immediate_charge_power", "Charging Power")
+    function_name = "bat_immediate_charge_power"
+    name = "Charging Power"
 
     @property
     def native_value(self) -> float:
