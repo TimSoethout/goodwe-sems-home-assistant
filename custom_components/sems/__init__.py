@@ -27,6 +27,13 @@ _LOGGER: logging.Logger = logging.getLogger(__package__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+_IMMEDIATE_CHARGING_FUNCTION_KEYS = {
+    "immediate_charge",
+    "stop_charging",
+    "end_charge_soc",
+    "bat_immediate_charge_power",
+}
+
 
 @dataclass(slots=True)
 class SemsRuntimeData:
@@ -154,43 +161,43 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 for bat_id, bat in bats.items():
                     for child in bat.get("functionMenus", {}).get("children", []):
                         for func in child.get("functions", []):
+                            function_key = func.get("translateKey")
+                            if function_key not in _IMMEDIATE_CHARGING_FUNCTION_KEYS:
+                                continue
+
                             if sn not in batteries:
                                 batteries[sn] = {}
                             if bat_id not in batteries[sn]:
-                                bat_name = ""
-                                for bat in energy_storage_cabinets.get(sn, []):
-                                    if bat.get("translateCode") == bat_id:
-                                        bat_name = bat.get("name", "")
-                                        break
                                 batteries[sn][bat_id] = {
-                                    "name": bat_name,
+                                    "name": next(
+                                        (
+                                            cabinet.get("name", "")
+                                            for cabinet in energy_storage_cabinets.get(
+                                                sn, []
+                                            )
+                                            if cabinet.get("translateCode") == bat_id
+                                        ),
+                                        "",
+                                    ),
                                     "functions": {},
                                 }
 
-                            batteries[sn][bat_id]["functions"][
-                                func.get("translateKey")
-                            ] = {
+                            batteries[sn][bat_id]["functions"][function_key] = {
                                 "address": func.get("address"),
                                 "id": func.get("id"),
                             }
 
-                            for related_func in func.get("relationFuncs", []):
-                                batteries[sn][bat_id]["functions"][
-                                    related_func.get("translateKey")
-                                ] = {
-                                    "address": related_func.get("address"),
-                                    "id": related_func.get("id"),
-                                }
-
-            immediate_charging_by_inverter: dict[str, dict[str, Any]] = {}
-
+            immediate_charging: dict[str, dict[str, Any]] = {}
             for inverter_sn in batteries:
                 immediate_charging_result = await self.hass.async_add_executor_job(
                     self.sems_api.getBatteryImmediateChargingStates, inverter_sn
                 )
-                immediate_charging_by_inverter[inverter_sn] = (
-                    immediate_charging_result or {}
-                )
+                state_data = (immediate_charging_result or {}).get("data", {})
+                immediate_charging[inverter_sn] = {
+                    "enabled": bool(state_data.get("47545", 0)),
+                    "end_charge_soc": state_data.get("47546", 0),
+                    "charging_power": state_data.get("47603", 0),
+                }
 
         except SemsRateLimitedError as err:
             raise UpdateFailed(
@@ -279,21 +286,6 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 powerflow["all_time_generation"] = kpi.get("total_power")
 
                 homekit = powerflow
-
-            # Process immediate charging data
-            immediate_charging = {}
-            for sn, immediate_charging_result in immediate_charging_by_inverter.items():
-                immediate_charging[sn] = {
-                    "enabled": bool(
-                        immediate_charging_result.get("data", {}).get("47545", 0)
-                    ),
-                    "end_charge_soc": immediate_charging_result.get("data", {}).get(
-                        "47546", 0
-                    ),
-                    "charging_power": immediate_charging_result.get("data", {}).get(
-                        "47603", 0
-                    ),
-                }
 
             data = SemsData(
                 inverters=inverters_by_sn,
