@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
@@ -19,6 +20,24 @@ from .fixtures import (
 )
 
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
+
+
+@contextmanager
+def _mock_no_battery_api(data: dict):
+    """Mock coordinator API calls for payloads without battery controls."""
+    with (
+        patch("custom_components.sems.sems_api.SemsApi.getData", return_value=data),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
+            return_value=[],
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
+            return_value={},
+        ),
+    ):
+        yield
+
 
 # Coordinator-compatible getData() result (this corresponds to SemsApi.getData() return value)
 MOCK_GET_DATA_RESULT_MINIMAL = {
@@ -68,20 +87,7 @@ async def test_sensor_state_from_coordinator(
     )
     entry.add_to_hass(hass)
 
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=MOCK_GET_DATA_RESULT_MINIMAL,
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            return_value={},
-        ),
-    ):
+    with _mock_no_battery_api(MOCK_GET_DATA_RESULT_MINIMAL):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -139,20 +145,7 @@ async def test_unique_id_migration_sn_to_sn_power(
         config_entry=entry,
     ).entity_id
 
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=MOCK_GET_DATA_RESULT_MINIMAL,
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            return_value={},
-        ),
-    ):
+    with _mock_no_battery_api(MOCK_GET_DATA_RESULT_MINIMAL):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -195,20 +188,7 @@ async def test_unique_id_migration_powerflow_to_homekit_sn(
         for legacy_unique_id in legacy_unique_ids
     }
 
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            return_value={},
-        ),
-    ):
+    with _mock_no_battery_api(MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -247,20 +227,7 @@ async def test_all_entities_exist(
     )
     entry.add_to_hass(hass)
 
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=MOCK_GET_DATA_ACTUAL_JSON["data"],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            return_value={},
-        ),
-    ):
+    with _mock_no_battery_api(MOCK_GET_DATA_ACTUAL_JSON["data"]):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -304,20 +271,7 @@ async def test_exact_unique_ids_single_inverter_fixture(
     )
     entry.add_to_hass(hass)
 
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=MOCK_GET_DATA_ACTUAL_JSON["data"],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            return_value={},
-        ),
-    ):
+    with _mock_no_battery_api(MOCK_GET_DATA_ACTUAL_JSON["data"]):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -387,20 +341,7 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
     )
     entry.add_to_hass(hass)
 
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            return_value={},
-        ),
-    ):
+    with _mock_no_battery_api(MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -503,20 +444,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
     )
     entry.add_to_hass(hass)
 
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            return_value={},
-        ),
-    ):
+    with _mock_no_battery_api(MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -769,20 +697,7 @@ async def test_homekit_sensors_handle_empty_strings_at_night(
     )
     entry.add_to_hass(hass)
 
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=initial_data,
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            return_value={},
-        ),
-    ):
+    with _mock_no_battery_api(initial_data):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -833,20 +748,7 @@ async def test_homekit_sensors_handle_empty_strings_at_night(
 
     # Update coordinator data with nighttime empty strings
     coordinator = entry.runtime_data.coordinator
-    with (
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=nighttime_data,
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
-        ),
-        patch(
-            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            return_value={},
-        ),
-    ):
+    with _mock_no_battery_api(nighttime_data):
         await coordinator.async_refresh()
         await hass.async_block_till_done()
 

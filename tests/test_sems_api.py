@@ -1,8 +1,8 @@
 """Tests for the SEMS API module."""
 
+import json
 from unittest.mock import Mock, patch
 
-import json
 import pytest
 import requests
 
@@ -885,175 +885,15 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "_make_api_call")
     def test_get_battery_general_functions(self, mock_api_call):
-        """Test getEnergyStorageIntegratedCabinets method."""
-        expected_data = {
-            "functionMenus": {
-                "children": [
-                    {
-                        "children": [],
-                        "functions": [
-                            {
-                                "address": "47545",
-                                "chineseName": "电池即充使能",
-                                "control": 16,
-                                "controlAttr": '[{"code":"开启","transKey":"on","value":"1"}]',
-                                "cpuType": "ARM",
-                                "distributeType": 0,
-                                "functionName": "电池即充",
-                                "gain": 1,
-                                "id": "1991791639537946634",
-                                "kafkaName": "Fast Charge Enable",
-                                "note": "charge_now",
-                                "preCommand": "F7",
-                                "range": "[0,3]",
-                                "rwType": "RW",
-                                "size": 1,
-                                "translateKey": "immediate_charge",
-                                "type": "U16",
-                                "unit": "N/A",
-                            },
-                            {
-                                "address": "47545",
-                                "chineseName": "电池即充使能",
-                                "control": 16,
-                                "controlAttr": '[{"code":"禁能","value":"0","transKey":"remote_Switch_off"}]',
-                                "cpuType": "ARM",
-                                "functionName": "停止即充",
-                                "gain": 1,
-                                "id": "2013217017330515970",
-                                "kafkaName": "Fast Charge Enable",
-                                "note": "",
-                                "preCommand": "F7",
-                                "range": "[0,3]",
-                                "rwType": "RW",
-                                "size": 1,
-                                "translateKey": "stop_charging",
-                                "type": "U16",
-                                "unit": "1",
-                            },
-                            {
-                                "address": "47546",
-                                "chineseName": "停止的SOC",
-                                "control": 3,
-                                "controlAttr": "",
-                                "cpuType": "ARM",
-                                "extendAttr": {"3": {}},
-                                "functionName": "充电截止SOC",
-                                "gain": 1,
-                                "id": "1991791639537946635",
-                                "kafkaName": "Fast Charge Stop SOC",
-                                "note": "",
-                                "preCommand": "F7",
-                                "range": "[1,100]",
-                                "rwType": "RW",
-                                "size": 1,
-                                "translateKey": "end_charge_soc",
-                                "type": "U16",
-                                "unit": "%",
-                            },
-                            {
-                                "address": "47603",
-                                "chineseName": "快速充电功率（%）",
-                                "control": 3,
-                                "controlAttr": "",
-                                "cpuType": "ARM",
-                                "distributeType": 0,
-                                "functionName": "电池即充功率",
-                                "gain": 1,
-                                "id": "1991791639537946636",
-                                "kafkaName": "Fast Charge Power Percent",
-                                "note": "",
-                                "preCommand": "F7",
-                                "range": "[0,100]",
-                                "rwType": "RW",
-                                "size": 1,
-                                "translateKey": "bat_immediate_charge_power",
-                                "type": "U16",
-                                "unit": "%",
-                            },
-                        ],
-                        "menuId": "1991767445274136578",
-                        "name": "电池即充",
-                        "note": "",
-                        "translateKey": "immediate_charge",
-                        "visible": 0,
-                        "funcKey": "immediate_charge",
-                        "quickTag": "3",
-                        "sortOrder": 1,
-                    },
-                    {
-                        "children": [],
-                        "functions": [
-                            {
-                                "address": "47942",
-                                "chineseName": "时间段2开始时间",
-                                "control": 24,
-                                "controlAttr": "",
-                                "cpuType": "ARM",
-                                "dataFormat": "HHmm",
-                                "distributeType": 0,
-                                "extendAttr": {"24": {"highAddressFlag": False}},
-                                "functionName": "BMS1加热起始时间",
-                                "gain": 1,
-                                "id": "1996092191767912449",
-                                "preCommand": "F7",
-                                "range": "[0,23],[0,59]",
-                                "relationFuncs": [
-                                    {
-                                        "address": "47943",
-                                        "chineseName": "时间段2结束时间",
-                                        "control": 24,
-                                        "controlAttr": "",
-                                        "cpuType": "ARM",
-                                        "dataFormat": "HHmm",
-                                        "distributeType": 0,
-                                        "functionName": "结束时间",
-                                        "gain": 1,
-                                        "id": "1996092191767912450",
-                                        "preCommand": "F7",
-                                        "range": "[0,23],[0,59]",
-                                        "rwType": "RW",
-                                        "size": 1,
-                                        "translateKey": "end_t",
-                                        "type": "U16",
-                                        "unit": "N/A",
-                                    }
-                                ],
-                                "rwType": "RW",
-                                "size": 1,
-                                "translateKey": "bms1_heating_start_time",
-                                "type": "U16",
-                                "unit": "N/A",
-                            }
-                        ],
-                        "menuId": "1991767498348859393",
-                        "name": "电池加热",
-                        "note": "",
-                        "translateKey": "bat_heat",
-                        "visible": 0,
-                        "funcKey": "bat_heat",
-                        "quickTag": "3",
-                        "sortOrder": 2,
-                    },
-                ],
-                "menuId": "1988896846228516866",
-                "name": "电池",
-                "note": "",
-                "translateKey": "bat",
-                "visible": 0,
-                "funcKey": "bat",
-            },
-            "sn": "test_sn",
-        }
-
-        mock_api_call.return_value = expected_data
+        """Test battery function request."""
+        mock_api_call.return_value = {}
 
         serial_number = "test_sn"
         bat_index = 1
 
         result = self.api.getBatteryGeneralFunctions(serial_number, bat_index)
 
-        assert result == expected_data
+        assert result == {}
 
         mock_api_call.assert_called_once_with(
             "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
@@ -1175,102 +1015,65 @@ class TestSemsApi:
 
         mock_control_call.assert_called_once()
 
+    @pytest.mark.parametrize(
+        ("method_name", "value", "address", "function_id", "control_log"),
+        [
+            (
+                "stopImmediateCharging",
+                0,
+                "47545",
+                "2013217017330515970",
+                {"stop_charging": "remote_Switch_off"},
+            ),
+            (
+                "startImmediateCharging",
+                1,
+                "47545",
+                "1991791639537946634",
+                {"immediate_charge": "on"},
+            ),
+            (
+                "setImmediateChargingEndSoC",
+                50,
+                "47546",
+                "1991791639537946635",
+                {"end_charge_soc": 50},
+            ),
+            (
+                "setImmediateChargingChargingPower",
+                60,
+                "47603",
+                "1991791639537946636",
+                {"bat_immediate_charge_power": 60},
+            ),
+        ],
+    )
     @patch.object(SemsApi, "_make_api_call")
-    def test_stop_immediate_charging(self, mock_api_call):
-        """Test stopImmediateCharging method."""
-        mock_api_call.return_value = None
-
-        self.api.stopImmediateCharging(
-            "teststation",
-            "inverter123",
-            "mppt1_battery",
-            "47545",
-            "2013217017330515970",
-        )
-
-        expected_data = '{"sn": "inverter123", "addressMap": {"47545": 0}, "addrFuncMap": {"47545": "2013217017330515970"}, "controlItemLogs": {"stop_charging": "remote_Switch_off"}, "waitingForDevice": true, "plantId": "teststation", "deviceName": "mppt1_battery"}'
+    def test_set_immediate_charging_parameter(
+        self, mock_api_call, method_name, value, address, function_id, control_log
+    ):
+        """Test immediate-charging parameter updates."""
+        method = getattr(self.api, method_name)
+        arguments = ("teststation", "inverter123", "mppt1_battery")
+        if method_name in {"stopImmediateCharging", "startImmediateCharging"}:
+            method(*arguments, address, function_id)
+        else:
+            method(*arguments, value, address, function_id)
 
         mock_api_call.assert_called_once_with(
             "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
             method="POST",
-            data=expected_data,
-            renewToken=False,
-            maxTokenRetries=2,
-            operation_name="setDeviceFunctionParameters API call",
-            is_web=True,
-        )
-
-    @patch.object(SemsApi, "_make_api_call")
-    def test_start_immediate_charging(self, mock_api_call):
-        """Test startImmediateCharging method."""
-        mock_api_call.return_value = None
-
-        self.api.startImmediateCharging(
-            "teststation",
-            "inverter123",
-            "mppt1_battery",
-            "47545",
-            "1991791639537946634",
-        )
-
-        expected_data = '{"sn": "inverter123", "addressMap": {"47545": 1}, "addrFuncMap": {"47545": "1991791639537946634"}, "controlItemLogs": {"immediate_charge": "on"}, "waitingForDevice": true, "plantId": "teststation", "deviceName": "mppt1_battery"}'
-
-        mock_api_call.assert_called_once_with(
-            "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
-            method="POST",
-            data=expected_data,
-            renewToken=False,
-            maxTokenRetries=2,
-            operation_name="setDeviceFunctionParameters API call",
-            is_web=True,
-        )
-
-    @patch.object(SemsApi, "_make_api_call")
-    def test_set_immediate_charging_end_soc(self, mock_api_call):
-        """Test setImmediateChargingEndSoc method."""
-        mock_api_call.return_value = None
-
-        self.api.setImmediateChargingEndSoC(
-            "teststation",
-            "inverter123",
-            "mppt1_battery",
-            50,
-            "47546",
-            "1991791639537946635",
-        )
-
-        expected_data = '{"sn": "inverter123", "addressMap": {"47546": 50}, "addrFuncMap": {"47546": "1991791639537946635"}, "controlItemLogs": {"end_charge_soc": 50}, "waitingForDevice": true, "plantId": "teststation", "deviceName": "mppt1_battery"}'
-
-        mock_api_call.assert_called_once_with(
-            "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
-            method="POST",
-            data=expected_data,
-            renewToken=False,
-            maxTokenRetries=2,
-            operation_name="setDeviceFunctionParameters API call",
-            is_web=True,
-        )
-
-    @patch.object(SemsApi, "_make_api_call")
-    def test_set_immediate_charging_power(self, mock_api_call):
-        """Test setImmediateChargingPower method."""
-        mock_api_call.return_value = None
-
-        self.api.setImmediateChargingChargingPower(
-            "teststation",
-            "inverter123",
-            "mppt1_battery",
-            60,
-            "47603",
-            "1991791639537946636",
-        )
-
-        expected_data = '{"sn": "inverter123", "addressMap": {"47603": 60}, "addrFuncMap": {"47603": "1991791639537946636"}, "controlItemLogs": {"bat_immediate_charge_power": 60}, "waitingForDevice": true, "plantId": "teststation", "deviceName": "mppt1_battery"}'
-
-        mock_api_call.assert_called_once_with(
-            "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
-            method="POST",
-            data=expected_data,
+            data=json.dumps(
+                {
+                    "sn": "inverter123",
+                    "addressMap": {address: value},
+                    "addrFuncMap": {address: function_id},
+                    "controlItemLogs": control_log,
+                    "waitingForDevice": True,
+                    "plantId": "teststation",
+                    "deviceName": "mppt1_battery",
+                }
+            ),
             renewToken=False,
             maxTokenRetries=2,
             operation_name="setDeviceFunctionParameters API call",
