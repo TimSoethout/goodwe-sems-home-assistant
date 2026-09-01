@@ -551,7 +551,7 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "_get_new_sems_plus_web_login_token")
     @patch.object(SemsApi, "_make_http_request")
-    def test_make_sems_plus_web_api_call_success(self, mock_http_request, mock_login):
+    def test_make_web_api_call_success(self, mock_http_request, mock_login):
         """Test successful API call."""
         # Set up token
         mock_token = {
@@ -566,11 +566,11 @@ class TestSemsApi:
         mock_response = {"code": 0, "data": {"result": "success"}}
         mock_http_request.return_value = mock_response
 
-        result = self.api._make_sems_plus_web_api_call(
+        result = self.api._make_api_call(
             "/test/endpoint",
-            "POST",
             data='{"test": "data"}',
             operation_name="test web API call",
+            is_web=True,
         )
 
         assert result == {"result": "success"}
@@ -845,7 +845,7 @@ class TestSemsApi:
 
         assert result == {}
 
-    @patch.object(SemsApi, "_make_sems_plus_web_api_call")
+    @patch.object(SemsApi, "_make_api_call")
     def test_get_energy_storage_integrated_cabinets(self, mock_api_call):
         """Test getEnergyStorageIntegratedCabinets method."""
         expected_data = [
@@ -879,9 +879,10 @@ class TestSemsApi:
             renewToken=False,
             maxTokenRetries=2,
             operation_name="getEnergyStorageIntegratedCabinets API call",
+            is_web=True,
         )
 
-    @patch.object(SemsApi, "_make_sems_plus_web_api_call")
+    @patch.object(SemsApi, "_make_api_call")
     def test_get_battery_general_functions(self, mock_api_call):
         """Test getEnergyStorageIntegratedCabinets method."""
         expected_data = {
@@ -1060,9 +1061,10 @@ class TestSemsApi:
             renewToken=False,
             maxTokenRetries=2,
             operation_name="getBatteryGeneralFunctions API call",
+            is_web=True,
         )
 
-    @patch.object(SemsApi, "_make_sems_plus_web_api_call")
+    @patch.object(SemsApi, "_make_api_call")
     def test_get_battery_immediate_charging_states(self, mock_api_call):
         """Test getBatteryImmediateChargingStates method."""
         expected_data = {"47545": 0, "47546": 100, "47603": 100}
@@ -1082,6 +1084,7 @@ class TestSemsApi:
             renewToken=False,
             maxTokenRetries=2,
             operation_name="getBatteryImmediateChargingStates API call",
+            is_web=True,
         )
 
     @patch.object(SemsApi, "getLoginToken")
@@ -1171,10 +1174,10 @@ class TestSemsApi:
 
         mock_control_call.assert_called_once()
 
-    @patch.object(SemsApi, "_make_sems_plus_web_api_call")
-    def test_stop_immediate_charging(self, mock_sems_plus_web_api_call):
+    @patch.object(SemsApi, "_make_api_call")
+    def test_stop_immediate_charging(self, mock_api_call):
         """Test stopImmediateCharging method."""
-        mock_sems_plus_web_api_call.return_value = None
+        mock_api_call.return_value = None
 
         self.api.stopImmediateCharging(
             "teststation",
@@ -1186,19 +1189,20 @@ class TestSemsApi:
 
         expected_data = '{"sn": "inverter123", "addressMap": {"47545": 0}, "addrFuncMap": {"47545": "2013217017330515970"}, "controlItemLogs": {"stop_charging": "remote_Switch_off"}, "waitingForDevice": true, "plantId": "teststation", "deviceName": "mppt1_battery"}'
 
-        mock_sems_plus_web_api_call.assert_called_once_with(
+        mock_api_call.assert_called_once_with(
             "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
             method="POST",
             data=expected_data,
             renewToken=False,
             maxTokenRetries=2,
             operation_name="setDeviceFunctionParameters API call",
+            is_web=True,
         )
 
-    @patch.object(SemsApi, "_make_sems_plus_web_api_call")
-    def test_start_immediate_charging(self, mock_sems_plus_web_api_call):
+    @patch.object(SemsApi, "_make_api_call")
+    def test_start_immediate_charging(self, mock_api_call):
         """Test startImmediateCharging method."""
-        mock_sems_plus_web_api_call.return_value = None
+        mock_api_call.return_value = None
 
         self.api.startImmediateCharging(
             "teststation",
@@ -1210,19 +1214,20 @@ class TestSemsApi:
 
         expected_data = '{"sn": "inverter123", "addressMap": {"47545": 1}, "addrFuncMap": {"47545": "1991791639537946634"}, "controlItemLogs": {"immediate_charge": "on"}, "waitingForDevice": true, "plantId": "teststation", "deviceName": "mppt1_battery"}'
 
-        mock_sems_plus_web_api_call.assert_called_once_with(
+        mock_api_call.assert_called_once_with(
             "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
             method="POST",
             data=expected_data,
             renewToken=False,
             maxTokenRetries=2,
             operation_name="setDeviceFunctionParameters API call",
+            is_web=True,
         )
 
-    @patch.object(SemsApi, "_make_sems_plus_web_api_call")
-    def test_set_immediate_charging_end_soc(self, mock_sems_plus_web_api_call):
+    @patch.object(SemsApi, "_make_api_call")
+    def test_set_immediate_charging_end_soc(self, mock_api_call):
         """Test setImmediateChargingEndSoc method."""
-        mock_sems_plus_web_api_call.return_value = None
+        mock_api_call.return_value = None
 
         self.api.setImmediateChargingEndSoC(
             "teststation",
@@ -1235,19 +1240,20 @@ class TestSemsApi:
 
         expected_data = '{"sn": "inverter123", "addressMap": {"47546": 50}, "addrFuncMap": {"47546": "1991791639537946635"}, "controlItemLogs": {"end_charge_soc": 50}, "waitingForDevice": true, "plantId": "teststation", "deviceName": "mppt1_battery"}'
 
-        mock_sems_plus_web_api_call.assert_called_once_with(
+        mock_api_call.assert_called_once_with(
             "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
             method="POST",
             data=expected_data,
             renewToken=False,
             maxTokenRetries=2,
             operation_name="setDeviceFunctionParameters API call",
+            is_web=True,
         )
 
-    @patch.object(SemsApi, "_make_sems_plus_web_api_call")
-    def test_set_immediate_charging_power(self, mock_sems_plus_web_api_call):
+    @patch.object(SemsApi, "_make_api_call")
+    def test_set_immediate_charging_power(self, mock_api_call):
         """Test setImmediateChargingPower method."""
-        mock_sems_plus_web_api_call.return_value = None
+        mock_api_call.return_value = None
 
         self.api.setImmediateChargingChargingPower(
             "teststation",
@@ -1260,13 +1266,14 @@ class TestSemsApi:
 
         expected_data = '{"sn": "inverter123", "addressMap": {"47603": 60}, "addrFuncMap": {"47603": "1991791639537946636"}, "controlItemLogs": {"bat_immediate_charge_power": 60}, "waitingForDevice": true, "plantId": "teststation", "deviceName": "mppt1_battery"}'
 
-        mock_sems_plus_web_api_call.assert_called_once_with(
+        mock_api_call.assert_called_once_with(
             "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
             method="POST",
             data=expected_data,
             renewToken=False,
             maxTokenRetries=2,
             operation_name="setDeviceFunctionParameters API call",
+            is_web=True,
         )
 
 

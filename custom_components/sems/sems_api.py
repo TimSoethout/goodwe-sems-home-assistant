@@ -512,6 +512,8 @@ class SemsApi:
         renewToken: bool = False,
         maxTokenRetries: int = 2,
         operation_name: str = "API call",
+        method: str = "POST",
+        is_web: bool = False,
     ) -> Any | None:
         """Make a generic API call with token management and retry logic."""
         _LOGGER.debug("SEMS - Making %s", operation_name)
@@ -523,6 +525,7 @@ class SemsApi:
             url_part,
             renewToken,
             operation_name,
+            is_web=is_web,
         )
         if context is None:
             return None
@@ -534,6 +537,7 @@ class SemsApi:
                 api_url,
                 headers,
                 data=data,
+                method=method,
                 operation_name=operation_name,
                 validate_code=True,
             )
@@ -552,77 +556,12 @@ class SemsApi:
                     True,
                     maxTokenRetries - 1,
                     operation_name,
-                )
-
-            # Response is valid, return the data
-            return json_response["data"]
-
-        except SemsRateLimitedError as exception:
-            _LOGGER.debug(
-                "SEMS - Propagating rate limit from %s to coordinator: retry_after=%s",
-                operation_name,
-                exception.retry_after,
-            )
-            raise
-        except (requests.RequestException, ValueError, KeyError) as exception:
-            _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
-            return None
-
-    def _make_sems_plus_web_api_call(
-        self,
-        url_part: str,
-        method: str,
-        data: str | None = None,
-        renewToken: bool = False,
-        maxTokenRetries: int = 2,
-        operation_name: str = "SEMS+ Web API call",
-    ) -> Any | None:
-        """Make a generic API call with token management and retry logic."""
-        _LOGGER.debug("SEMS - Making %s", operation_name)
-        if maxTokenRetries <= 0:
-            _LOGGER.info("SEMS - Maximum token fetch tries reached, aborting for now")
-            raise OutOfRetries
-
-        context = self._get_authenticated_request_context(
-            url_part,
-            renewToken,
-            operation_name,
-            is_web=True,
-        )
-        if context is None:
-            return None
-
-        api_url, headers = context
-
-        try:
-            json_response: dict[str, Any] | None = self._make_http_request(
-                api_url,
-                headers,
-                method=method,
-                data=data,
-                operation_name=operation_name,
-                validate_code=True,
-            )
-
-            # _make_http_request already validated the response, so if we get here, it's successful
-            if json_response is None:
-                # Response validation failed in _make_http_request
-                _LOGGER.debug(
-                    "%s not successful, retrying with new token, %s retries remaining",
-                    operation_name,
-                    maxTokenRetries,
-                )
-                return self._make_sems_plus_web_api_call(
-                    url_part,
                     method,
-                    data,
-                    True,
-                    maxTokenRetries - 1,
-                    operation_name,
+                    is_web,
                 )
 
             # Response is valid, return the data
-            return json_response.get("data", {})
+            return json_response.get("data", {}) if is_web else json_response["data"]
 
         except SemsRateLimitedError as exception:
             _LOGGER.debug(
@@ -669,12 +608,13 @@ class SemsApi:
         maxTokenRetries: int = 2,
     ) -> list[dict[str, Any]]:
         """Get the energy storage integrated cabinets from the SEMS API."""
-        result = self._make_sems_plus_web_api_call(
+        result = self._make_api_call(
             f"/sems-plant/api/equipments/{serialNumber}/relatedDevices?sn={serialNumber}&deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId={powerStationId}",
             method="GET",
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getEnergyStorageIntegratedCabinets API call",
+            is_web=True,
         )
 
         return result if isinstance(result, list) else []
@@ -695,13 +635,14 @@ class SemsApi:
                 "sn": serialNumber,
             }
         )
-        result = self._make_sems_plus_web_api_call(
+        result = self._make_api_call(
             "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
             method="POST",
             data=data,
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getBatteryGeneralFunctions API call",
+            is_web=True,
         )
         return result if isinstance(result, dict) else {}
 
@@ -721,13 +662,14 @@ class SemsApi:
             }
         )
 
-        result = self._make_sems_plus_web_api_call(
+        result = self._make_api_call(
             "/sems-remote/api/v1/address/remote/get-cache-device-function-parameters",
             method="POST",
             data=data,
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getBatteryImmediateChargingStates API call",
+            is_web=True,
         )
         return result if isinstance(result, dict) else {}
 
@@ -838,13 +780,14 @@ class SemsApi:
             "deviceName": device_name,
         }
 
-        self._make_sems_plus_web_api_call(
+        self._make_api_call(
             "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
             method="POST",
             data=json.dumps(data),
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="setDeviceFunctionParameters API call",
+            is_web=True,
         )
 
     def _make_control_api_call(
