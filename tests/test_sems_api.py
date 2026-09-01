@@ -507,7 +507,7 @@ class TestSemsApi:
         assert result is None
 
     @patch.object(SemsApi, "_make_http_request")
-    def test_get_sems_plus_weblogin_token_success(self, mock_http_request):
+    def test_get_new_web_login_token_success(self, mock_http_request):
         """Test successful web login token retrieval."""
         mock_response = {
             "code": 0,
@@ -521,7 +521,7 @@ class TestSemsApi:
         }
         mock_http_request.return_value = mock_response
 
-        result = self.api._get_new_sems_plus_web_login_token("test_user", "test_pass")
+        result = self.api._get_new_login_token("test_user", "test_pass", is_web=True)
 
         expected_token = {
             "uid": "test-uid",
@@ -549,7 +549,7 @@ class TestSemsApi:
             "MjJiNzc3MmY3Y2QzMDlhYTZkNDFkMmMzOWY3ODFiMWMyZjQ4OTQ5YWU2YjZiMTIzMjI1YzJhNGI4MDU3MDk5ZkAxMjM0NTY3ODkwMDAw"
         )
 
-    @patch.object(SemsApi, "_get_new_sems_plus_web_login_token")
+    @patch.object(SemsApi, "_get_new_login_token")
     @patch.object(SemsApi, "_make_http_request")
     def test_make_web_api_call_success(self, mock_http_request, mock_login):
         """Test successful API call."""
@@ -575,6 +575,7 @@ class TestSemsApi:
 
         assert result == {"result": "success"}
         assert self.api._web_token == mock_token
+        mock_login.assert_called_once_with("test_user", "test_password", is_web=True)
         mock_http_request.assert_called_once()
 
     @patch.object(SemsApi, "getLoginToken")
