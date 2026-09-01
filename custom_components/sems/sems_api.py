@@ -436,7 +436,9 @@ class SemsApi:
     ) -> dict[str, Any] | None:
         """Get a token from the SEMS+ login endpoint."""
         login_mode: LoginMode = "web" if is_web else "new"
-        operation_name = "SEMS+ Web login API call" if is_web else "SEMS+ login API call"
+        operation_name = (
+            "SEMS+ Web login API call" if is_web else "SEMS+ login API call"
+        )
         _LOGGER.debug("SEMS - Trying %s", operation_name)
         login_data = {
             "account": userName,

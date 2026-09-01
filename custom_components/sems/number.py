@@ -41,7 +41,9 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
         self.battery_id = battery_id
         self.function = function
 
-    async def _async_set_value(self, method: SetBatteryValueMethod, value: float) -> None:
+    async def _async_set_value(
+        self, method: SetBatteryValueMethod, value: float
+    ) -> None:
         if self.coordinator.data is None:
             raise HomeAssistantError(
                 f"Unable to set value for {self.entity_id}: no coordinator data"
