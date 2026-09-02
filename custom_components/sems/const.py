@@ -11,7 +11,7 @@ from typing import Any
 
 DOMAIN = "sems"
 
-PLATFORMS = ["sensor", "switch"]
+PLATFORMS = ["number", "sensor", "switch"]
 
 CONF_STATION_ID = "powerstation_id"
 

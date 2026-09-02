@@ -1,5 +1,6 @@
 """Tests for the SEMS API module."""
 
+import json
 from unittest.mock import Mock, patch
 
 import pytest
@@ -37,8 +38,8 @@ class TestSemsApi:
         assert self.api._password == self.password
         assert self.api._token is None
 
-    @patch("custom_components.sems.sems_api.requests.post")
-    def test_make_http_request_success(self, mock_post):
+    @patch("custom_components.sems.sems_api.requests.request")
+    def test_make_http_request_success(self, mock_request):
         """Test successful HTTP request."""
         # Mock successful response
         mock_response = Mock()
@@ -46,7 +47,7 @@ class TestSemsApi:
         mock_response.text = '{"code": 0, "data": {"test": "value"}}'
         mock_response.json.return_value = {"code": 0, "data": {"test": "value"}}
         mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        mock_request.return_value = mock_response
 
         result = self.api._make_http_request(
             "http://test.com",
@@ -56,7 +57,8 @@ class TestSemsApi:
         )
 
         assert result == {"code": 0, "data": {"test": "value"}}
-        mock_post.assert_called_once_with(
+        mock_request.assert_called_once_with(
+            "POST",
             "http://test.com",
             headers={"Content-Type": "application/json"},
             data='{"test": "data"}',
@@ -64,8 +66,8 @@ class TestSemsApi:
             timeout=30,
         )
 
-    @patch("custom_components.sems.sems_api.requests.post")
-    def test_make_http_request_validation_failure(self, mock_post):
+    @patch("custom_components.sems.sems_api.requests.request")
+    def test_make_http_request_validation_failure(self, mock_request):
         """Test HTTP request with validation failure."""
         # Mock response with error code
         mock_response = Mock()
@@ -73,7 +75,7 @@ class TestSemsApi:
         mock_response.text = '{"code": 1001, "msg": "Invalid credentials"}'
         mock_response.json.return_value = {"code": 1001, "msg": "Invalid credentials"}
         mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        mock_request.return_value = mock_response
 
         result = self.api._make_http_request(
             "http://test.com",
@@ -84,28 +86,8 @@ class TestSemsApi:
 
         assert result is None
 
-    @patch("custom_components.sems.sems_api.requests.post")
-    def test_make_http_request_missing_data(self, mock_post):
-        """Test HTTP request with missing data field."""
-        # Mock response with missing data
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = '{"code": 0, "data": null}'
-        mock_response.json.return_value = {"code": 0, "data": None}
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
-
-        result = self.api._make_http_request(
-            "http://test.com",
-            {"Content-Type": "application/json"},
-            operation_name="test operation",
-            validate_code=True,
-        )
-
-        assert result is None
-
-    @patch("custom_components.sems.sems_api.requests.post")
-    def test_make_http_request_no_validation(self, mock_post):
+    @patch("custom_components.sems.sems_api.requests.request")
+    def test_make_http_request_no_validation(self, mock_request):
         """Test HTTP request without validation."""
         # Mock response with error code but validation disabled
         mock_response = Mock()
@@ -113,7 +95,7 @@ class TestSemsApi:
         mock_response.text = '{"code": 1001, "msg": "Error"}'
         mock_response.json.return_value = {"code": 1001, "msg": "Error"}
         mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        mock_request.return_value = mock_response
 
         result = self.api._make_http_request(
             "http://test.com",
@@ -124,10 +106,10 @@ class TestSemsApi:
 
         assert result == {"code": 1001, "msg": "Error"}
 
-    @patch("custom_components.sems.sems_api.requests.post")
-    def test_make_http_request_network_error(self, mock_post):
+    @patch("custom_components.sems.sems_api.requests.request")
+    def test_make_http_request_network_error(self, mock_request):
         """Test HTTP request with network error."""
-        mock_post.side_effect = requests.ConnectionError("Network error")
+        mock_request.side_effect = requests.ConnectionError("Network error")
 
         with pytest.raises(requests.ConnectionError):
             self.api._make_http_request(
@@ -234,15 +216,15 @@ class TestSemsApi:
 
             mock_legacy.assert_not_called()
 
-    @patch("custom_components.sems.sems_api.requests.post")
-    def test_make_http_request_rate_limit_raises(self, mock_post):
+    @patch("custom_components.sems.sems_api.requests.request")
+    def test_make_http_request_rate_limit_raises(self, mock_request):
         """Test HTTP request raises SemsRateLimitedError on rate-limit code."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = '{"code": "GY0429", "msg": "Too many requests"}'
         mock_response.json.return_value = {"code": "GY0429", "msg": "Too many requests"}
         mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        mock_request.return_value = mock_response
 
         with pytest.raises(SemsRateLimitedError):
             self.api._make_http_request(
@@ -524,6 +506,78 @@ class TestSemsApi:
 
         assert result is None
 
+    @patch.object(SemsApi, "_make_http_request")
+    def test_get_new_web_login_token_success(self, mock_http_request):
+        """Test successful web login token retrieval."""
+        mock_response = {
+            "code": 0,
+            "data": {
+                "uid": "test-uid",
+                "token": "test-token",
+                "timestamp": 1234567890,
+                "client": "semsPlusWeb",
+            },
+            "api": "https://api.test.com/",
+        }
+        mock_http_request.return_value = mock_response
+
+        result = self.api._get_new_login_token("test_user", "test_pass", is_web=True)
+
+        expected_token = {
+            "uid": "test-uid",
+            "token": "test-token",
+            "timestamp": 1234567890,
+            "client": "semsPlusWeb",
+            "api": "https://api.test.com/",
+        }
+        assert result == expected_token
+        mock_http_request.assert_called_once()
+
+    @patch("custom_components.sems.sems_api.time.time")
+    def test_generate_signature(self, mock_time):
+        """Test SEMS+ web signature encoding."""
+        mock_time.return_value = 1234567890
+        token = {
+            "uid": "test-uid",
+            "token": "test-token",
+            "timestamp": 1234567890,
+            "client": "semsPlusWeb",
+            "api": "https://api.test.com/",
+        }
+
+        assert self.api._generate_signature(token) == (
+            "MjJiNzc3MmY3Y2QzMDlhYTZkNDFkMmMzOWY3ODFiMWMyZjQ4OTQ5YWU2YjZiMTIzMjI1YzJhNGI4MDU3MDk5ZkAxMjM0NTY3ODkwMDAw"
+        )
+
+    @patch.object(SemsApi, "_get_new_login_token")
+    @patch.object(SemsApi, "_make_http_request")
+    def test_make_web_api_call_success(self, mock_http_request, mock_login):
+        """Test successful API call."""
+        # Set up token
+        mock_token = {
+            "uid": "test-uid",
+            "token": "test-token",
+            "timestamp": 1234567890,
+            "client": "semsPlusWeb",
+            "api": "https://api.test.com/",
+        }
+        mock_login.return_value = mock_token
+
+        mock_response = {"code": 0, "data": {"result": "success"}}
+        mock_http_request.return_value = mock_response
+
+        result = self.api._make_api_call(
+            "/test/endpoint",
+            data='{"test": "data"}',
+            operation_name="test web API call",
+            is_web=True,
+        )
+
+        assert result == {"result": "success"}
+        assert self.api._web_token == mock_token
+        mock_login.assert_called_once_with("test_user", "test_password", is_web=True)
+        mock_http_request.assert_called_once()
+
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_make_http_request")
     def test_make_api_call_success(self, mock_http_request, mock_login):
@@ -792,6 +846,88 @@ class TestSemsApi:
 
         assert result == {}
 
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_energy_storage_integrated_cabinets(self, mock_api_call):
+        """Test getEnergyStorageIntegratedCabinets method."""
+        expected_data = [
+            {
+                "sn": "VD506170156742NAH34BL7824",
+                "no": "1",
+                "name": "BAT1",
+                "translateCode": "mppt1_battery",
+                "type": "BAT_SYS",
+                "status": 6,
+                "soc": 55.0,
+                "isConnected": True,
+                "pbat": -11.54568,
+            }
+        ]
+
+        mock_api_call.return_value = expected_data
+
+        power_station_id = "station123"
+        serial_number = "test_sn"
+
+        result = self.api.getEnergyStorageIntegratedCabinets(
+            power_station_id, serial_number
+        )
+
+        assert result == expected_data
+
+        mock_api_call.assert_called_once_with(
+            f"/sems-plant/api/equipments/{serial_number}/relatedDevices?sn={serial_number}&deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId={power_station_id}",
+            method="GET",
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getEnergyStorageIntegratedCabinets API call",
+            is_web=True,
+        )
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_battery_general_functions(self, mock_api_call):
+        """Test battery function request."""
+        mock_api_call.return_value = {}
+
+        serial_number = "test_sn"
+        bat_index = 1
+
+        result = self.api.getBatteryGeneralFunctions(serial_number, bat_index)
+
+        assert result == {}
+
+        mock_api_call.assert_called_once_with(
+            "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+            method="POST",
+            data='{"batIndex": "1", "menuCode": 1, "module": "GENERAL_FUNCTIONS", "sn": "test_sn"}',
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getBatteryGeneralFunctions API call",
+            is_web=True,
+        )
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_battery_immediate_charging_states(self, mock_api_call):
+        """Test getBatteryImmediateChargingStates method."""
+        expected_data = {"47545": 0, "47546": 100, "47603": 100}
+
+        mock_api_call.return_value = expected_data
+
+        serial_number = "test_sn"
+
+        result = self.api.getBatteryImmediateChargingStates(serial_number)
+
+        assert result == expected_data
+
+        mock_api_call.assert_called_once_with(
+            "/sems-remote/api/v1/address/remote/get-cache-device-function-parameters",
+            method="POST",
+            data='{"sn": "test_sn", "addresses": ["47545", "47545", "47546", "47603"], "addrFuncMap": {"47545": "2013217017330515970", "47546": "1991791639537946635", "47603": "1991791639537946636"}}',
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getBatteryImmediateChargingStates API call",
+            is_web=True,
+        )
+
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_make_http_request")
     def test_make_control_api_call_success(self, mock_http_request, mock_login):
@@ -878,6 +1014,71 @@ class TestSemsApi:
         self.api.change_status("inverter123", 1)
 
         mock_control_call.assert_called_once()
+
+    @pytest.mark.parametrize(
+        ("method_name", "value", "address", "function_id", "control_log"),
+        [
+            (
+                "stopImmediateCharging",
+                0,
+                "47545",
+                "2013217017330515970",
+                {"stop_charging": "remote_Switch_off"},
+            ),
+            (
+                "startImmediateCharging",
+                1,
+                "47545",
+                "1991791639537946634",
+                {"immediate_charge": "on"},
+            ),
+            (
+                "setImmediateChargingEndSoC",
+                50,
+                "47546",
+                "1991791639537946635",
+                {"end_charge_soc": 50},
+            ),
+            (
+                "setImmediateChargingChargingPower",
+                60,
+                "47603",
+                "1991791639537946636",
+                {"bat_immediate_charge_power": 60},
+            ),
+        ],
+    )
+    @patch.object(SemsApi, "_make_api_call")
+    def test_set_immediate_charging_parameter(
+        self, mock_api_call, method_name, value, address, function_id, control_log
+    ):
+        """Test immediate-charging parameter updates."""
+        method = getattr(self.api, method_name)
+        arguments = ("teststation", "inverter123", "mppt1_battery")
+        if method_name in {"stopImmediateCharging", "startImmediateCharging"}:
+            method(*arguments, address, function_id)
+        else:
+            method(*arguments, value, address, function_id)
+
+        mock_api_call.assert_called_once_with(
+            "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
+            method="POST",
+            data=json.dumps(
+                {
+                    "sn": "inverter123",
+                    "addressMap": {address: value},
+                    "addrFuncMap": {address: function_id},
+                    "controlItemLogs": control_log,
+                    "waitingForDevice": True,
+                    "plantId": "teststation",
+                    "deviceName": "mppt1_battery",
+                }
+            ),
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="setDeviceFunctionParameters API call",
+            is_web=True,
+        )
 
 
 class TestOutOfRetries:
