@@ -423,8 +423,10 @@ class SemsApi:
 
     def getLoginToken(self, userName: str, password: str) -> dict[str, Any] | None:
         """Get the login token for the SEMS API."""
+        tried_login_modes: list[LoginMode] = []
         try:
             for login_mode in self._get_login_mode_order():
+                tried_login_modes.append(login_mode)
                 token = self._login_handler_for_mode(login_mode)(userName, password)
 
                 if token is not None:
@@ -432,10 +434,18 @@ class SemsApi:
                     self._preferred_login_mode = login_mode
                     return token
 
+            _LOGGER.error(
+                "Unable to authenticate with SEMS API; tried authentication methods: %s",
+                ", ".join(tried_login_modes),
+            )
             return None
 
         except (requests.RequestException, ValueError, KeyError) as exception:
-            _LOGGER.error("Unable to fetch login token from SEMS API: %s", exception)
+            _LOGGER.error(
+                "Unable to fetch login token from SEMS API using %s authentication methods: %s",
+                ", ".join(tried_login_modes),
+                exception,
+            )
             return None
 
     def _make_api_call(
