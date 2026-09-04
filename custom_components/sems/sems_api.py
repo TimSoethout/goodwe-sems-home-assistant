@@ -20,9 +20,6 @@ OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
 NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
 _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
-# _PowerControlURL = (
-#     "https://www.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
-# )
 _PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
 _RequestTimeout = 30  # seconds
 _RateLimitRetryAfterSeconds = 300
@@ -230,10 +227,6 @@ class SemsApi:
         )
         return _LegacyApiFallback
 
-    def _resolve_api_base_for_url_part(self, api_base: str, url_part: str) -> str:
-        """Return the effective API base for a given endpoint path."""
-        return self._normalize_powerstation_api_base(api_base, url_part)
-
     def _get_authenticated_request_context(
         self,
         url_part: str,
@@ -266,7 +259,7 @@ class SemsApi:
             _LOGGER.error("Failed to obtain API token")
             return None
 
-        api_base = self._resolve_api_base_for_url_part(token["api"], url_part)
+        api_base = self._normalize_powerstation_api_base(token["api"], url_part)
         api_url = api_base + url_part
         headers = self._build_authenticated_headers(token)
 

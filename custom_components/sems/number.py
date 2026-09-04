@@ -16,11 +16,9 @@ type SetBatteryValueMethod = Callable[[str, str, str, int, str, str], None]
 
 
 class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
-    """Base class for battery immediate-charging controls."""
+    """Number controlling a battery immediate-charging setting."""
 
     _attr_has_entity_name = True
-    function_name: str
-    name: str
 
     def __init__(
         self,
@@ -30,16 +28,33 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
         battery_id: str,
         battery_name: str,
         function: dict[str, str],
+        function_name: str,
+        name: str,
+        value_key: str,
+        method: SetBatteryValueMethod,
     ) -> None:
         super().__init__(coordinator)
         inverter_data = coordinator.data.inverters.get(serial_number, {})
         self._attr_device_info = device_info_for_inverter(serial_number, inverter_data)
-        self._attr_unique_id = f"{serial_number}-{battery_id}-{self.function_name}"
-        self._attr_name = f"Battery {battery_name} {self.name}"
+        self._attr_unique_id = f"{serial_number}-{battery_id}-{function_name}"
+        self._attr_name = f"Battery {battery_name} {name}"
         self.plant_id = plant_id
         self.serial_number = serial_number
         self.battery_id = battery_id
         self.function = function
+        self.value_key = value_key
+        self.method = method
+
+    @property
+    def native_value(self) -> float:
+        return float(
+            (self.coordinator.data.immediate_charging or {})
+            .get(self.serial_number, {})
+            .get(self.value_key, 0.0)
+        )
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self._async_set_value(self.method, value)
 
     async def _async_set_value(
         self, method: SetBatteryValueMethod, value: float
@@ -61,52 +76,6 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
         await self.coordinator.async_request_refresh()
 
 
-class SemsBatteryEndChargeSocNumber(SemsBatteryNumber):
-    """Number controlling the immediate-charging end state of charge."""
-
-    _attr_native_max_value = 100
-    _attr_native_min_value = 0
-    _attr_native_step = 1
-    function_name = "end_charge_soc"
-    name = "End Charge SoC"
-
-    @property
-    def native_value(self) -> float:
-        return float(
-            (self.coordinator.data.immediate_charging or {})
-            .get(self.serial_number, {})
-            .get("end_charge_soc", 0.0)
-        )
-
-    async def async_set_native_value(self, value: float) -> None:
-        await self._async_set_value(
-            self.coordinator.sems_api.setImmediateChargingEndSoC, value
-        )
-
-
-class SemsBatteryChargingPowerNumber(SemsBatteryNumber):
-    """Number controlling immediate-charging power."""
-
-    _attr_native_max_value = 100
-    _attr_native_min_value = 0
-    _attr_native_step = 1
-    function_name = "bat_immediate_charge_power"
-    name = "Charging Power"
-
-    @property
-    def native_value(self) -> float:
-        return float(
-            (self.coordinator.data.immediate_charging or {})
-            .get(self.serial_number, {})
-            .get("charging_power", 0.0)
-        )
-
-    async def async_set_native_value(self, value: float) -> None:
-        await self._async_set_value(
-            self.coordinator.sems_api.setImmediateChargingChargingPower, value
-        )
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: SemsConfigEntry,
@@ -120,19 +89,33 @@ async def async_setup_entry(
     for sn, bats in (coordinator.data.batteries or {}).items():
         for bat_id, bat_data in bats.items():
             functions = bat_data["functions"]
-            for function_name, number_class in (
-                ("end_charge_soc", SemsBatteryEndChargeSocNumber),
-                ("bat_immediate_charge_power", SemsBatteryChargingPowerNumber),
+            for function_name, name, value_key, method in (
+                (
+                    "end_charge_soc",
+                    "End Charge SoC",
+                    "end_charge_soc",
+                    coordinator.sems_api.setImmediateChargingEndSoC,
+                ),
+                (
+                    "bat_immediate_charge_power",
+                    "Charging Power",
+                    "charging_power",
+                    coordinator.sems_api.setImmediateChargingChargingPower,
+                ),
             ):
                 if function := functions.get(function_name):
                     number_entities.append(
-                        number_class(
+                        SemsBatteryNumber(
                             coordinator,
                             config_entry.data[CONF_STATION_ID],
                             sn,
                             bat_id,
                             bat_data["name"],
                             function,
+                            function_name,
+                            name,
+                            value_key,
+                            method,
                         )
                     )
 

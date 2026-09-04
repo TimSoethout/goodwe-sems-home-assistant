@@ -133,9 +133,7 @@ def sensor_options_for_data(
     _LOGGER.debug("Detected currency: %s", currency)
 
     for serial_number, inverter_data in data.inverters.items():
-        # serial_number = inverter["sn"]
         path_to_inverter: SemsValuePath = [serial_number]
-        # device_data = get_value_from_path(data, path_to_inverter)
 
         device_info = device_info_for_inverter(serial_number, inverter_data)
         sensors += [
@@ -799,16 +797,6 @@ async def async_setup_entry(
         )
     async_add_entities(sensors)
 
-    # async_add_entities(
-    #     SemsSensor(coordinator, ent)
-    #     for idx, ent in enumerate(coordinator.data)
-    #     # Don't make SemsSensor for homeKit, since it is not an inverter; unsure how this could work before...
-    #     if ent != "homeKit"
-    # )
-    # async_add_entities(
-    #     SemsStatisticsSensor(coordinator, ent)
-    #     for idx, ent in enumerate(coordinator.data)
-
 
 def _migrate_unique_ids(hass: HomeAssistant, migrations: dict[str, str]) -> None:
     """Migrate unique IDs based on the provided mapping."""
@@ -949,11 +937,6 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
             return self._data_type_converter(value)
         except (TypeError, ValueError):
             return value
-
-    # @property
-    # def suggested_display_precision(self):
-    #     """Return the suggested number of decimal digits for display."""
-    #     return 2
 
 
 class SemsInverterSensor(SemsSensor):
