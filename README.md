@@ -56,7 +56,8 @@ Login to the visitor account once to accept the EULA. Now you should be able to 
 
 ## Debug info
 
-Enable debugging in the GUI, by going to the integration, and selecting "Enable Debug Logging" in the top right corner. [https://www.home-assistant.io/docs/configuration/troubleshooting/#enabling-debug-logging](See HA documentation for more info.)
+Enable debugging in the GUI, by going to the integration, and selecting "Enable Debug Logging" in the top right corner. (I'm actually unsure if this really enabled debug level logging for this integration. See below on how to enable it.)
+[https://www.home-assistant.io/docs/configuration/troubleshooting/#enabling-debug-logging](See HA documentation for more info.) 
 
 Or add the last line in `configuration.yaml` in the relevant part of `logger`:
 
@@ -66,6 +67,10 @@ logger:
   logs:
     custom_components.sems: debug
 ```
+
+Then share the relevant log lines.
+See https://www.home-assistant.io/integrations/system_log/ and https://my.home-assistant.io/redirect/logs .
+Click `...` > `Show full logs`.
 
 ## Notes
 
