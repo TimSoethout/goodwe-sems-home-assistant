@@ -156,9 +156,13 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         batteries: dict[str, dict[str, dict[str, Any]]] = {}
         for sn, bats in battery_general_functions.items():
             for bat_id, bat in bats.items():
+                if not isinstance(bat_id, str):
+                    continue
                 for child in bat.get("functionMenus", {}).get("children", []):
                     for func in child.get("functions", []):
                         function_key = func.get("translateKey")
+                        if not isinstance(function_key, str):
+                            continue
                         if function_key not in _IMMEDIATE_CHARGING_FUNCTION_KEYS:
                             continue
 
