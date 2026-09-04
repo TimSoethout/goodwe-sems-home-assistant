@@ -674,6 +674,55 @@ class TestSemsApi:
         assert mock_http_request.call_count == 2
         mock_login.assert_called_once()
 
+    @patch("custom_components.sems.sems_api.requests.request")
+    def test_immediate_charging_states_read_fail_retries_with_new_web_token(
+        self, mock_request
+    ):
+        """Reproduce read_fail responses from the immediate charging endpoint."""
+        self.api._web_token = {
+            "uid": "test-uid",
+            "token": "test-token",
+            "client": "semsPlusWeb",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
+
+        read_fail_response = Mock()
+        read_fail_response.status_code = 200
+        read_fail_response.json.return_value = {
+            "code": "read_fail",
+            "description": "读取失败",
+            "data": None,
+        }
+        read_fail_response.raise_for_status.return_value = None
+
+        login_response = Mock()
+        login_response.status_code = 200
+        login_response.json.return_value = {
+            "code": "00000",
+            "data": {
+                "uid": "test-uid",
+                "token": "new-token",
+                "client": "semsPlusWeb",
+                "api": "https://eu-gateway.semsportal.com/web/sems",
+            },
+        }
+        login_response.raise_for_status.return_value = None
+        mock_request.side_effect = [read_fail_response, login_response, read_fail_response]
+
+        result = self.api.getBatteryImmediateChargingStates(MOCK_INVERTER_SN)
+
+        assert mock_request.call_count == 3
+        assert result == {}
+        assert mock_request.call_args_list[0].args[1].endswith(
+            "/sems-remote/api/v1/address/remote/get-cache-device-function-parameters"
+        )
+        assert mock_request.call_args_list[1].args[1].endswith(
+            "/sems-user/api/v1/auth/cross-login"
+        )
+        assert mock_request.call_args_list[2].args[1].endswith(
+            "/sems-remote/api/v1/address/remote/get-cache-device-function-parameters"
+        )
+
     @patch.object(SemsApi, "_make_http_request")
     def test_make_api_call_rate_limit_propagates(self, mock_http_request):
         """Test API call propagates rate limit errors to coordinator layer."""
