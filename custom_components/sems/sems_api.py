@@ -504,6 +504,7 @@ class SemsApi:
         operation_name: str = "API call",
         method: str = "POST",
         is_web: bool = False,
+        retry_on_api_error: bool = True,
     ) -> Any | None:
         """Make a generic API call with token management and retry logic."""
         _LOGGER.debug("SEMS - Making %s", operation_name)
@@ -529,7 +530,7 @@ class SemsApi:
                 data=data,
                 method=method,
                 operation_name=operation_name,
-                validate_code=True,
+                validate_code=retry_on_api_error,
             )
 
             # _make_http_request already validated the response, so if we get here, it's successful
@@ -548,6 +549,7 @@ class SemsApi:
                     operation_name,
                     method,
                     is_web,
+                    retry_on_api_error,
                 )
 
             # Response is valid, return the data
@@ -633,6 +635,7 @@ class SemsApi:
             maxTokenRetries=maxTokenRetries,
             operation_name="getBatteryGeneralFunctions API call",
             is_web=True,
+            retry_on_api_error=False,
         )
         return result if isinstance(result, dict) else {}
 
@@ -660,6 +663,7 @@ class SemsApi:
             maxTokenRetries=maxTokenRetries,
             operation_name="getBatteryImmediateChargingStates API call",
             is_web=True,
+            retry_on_api_error=False,
         )
         return result if isinstance(result, dict) else {}
 
