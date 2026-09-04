@@ -64,6 +64,7 @@ async def _setup_entry(
     *,
     cabinets: list[dict[str, str]] = CABINETS,
     functions: dict = FUNCTIONS,
+    get_data: dict = MOCK_GET_DATA_RESULT_MINIMAL,
 ) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -79,7 +80,7 @@ async def _setup_entry(
     with (
         patch(
             "custom_components.sems.sems_api.SemsApi.getData",
-            return_value=MOCK_GET_DATA_RESULT_MINIMAL,
+            return_value=get_data,
         ),
         patch(
             "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
@@ -201,7 +202,12 @@ async def test_entities_are_not_added_after_discovery(hass: HomeAssistant) -> No
 
 async def test_inverter_switch_without_battery(hass: HomeAssistant) -> None:
     """Keep the existing inverter switch independent from battery discovery."""
-    await _setup_entry(hass, cabinets=[], functions={})
+    await _setup_entry(
+        hass,
+        cabinets=[],
+        functions={},
+        get_data={**MOCK_GET_DATA_RESULT_MINIMAL, "info": {"is_stored": False}},
+    )
 
     entity_id = er.async_get(hass).async_get_entity_id(
         Platform.SWITCH, DOMAIN, f"{INVERTER_SERIAL}-switch"

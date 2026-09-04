@@ -132,17 +132,21 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 self.sems_api.getData, self.station_id
             )
 
-            _LOGGER.debug("Getting energy storage integrated cabinets")
-            energy_storage_cabinets = {
-                inverter.get("invert_full", {}).get(
-                    "sn"
-                ): await self.hass.async_add_executor_job(
-                    self.sems_api.getEnergyStorageIntegratedCabinets,
-                    self.station_id,
-                    inverter.get("invert_full", {}).get("sn"),
-                )
-                for inverter in data_result.get("inverter", {})
-            }
+            has_battery = data_result.get("info", {}).get("is_stored", False)
+            if has_battery:
+                _LOGGER.debug("Getting energy storage integrated cabinets")
+                energy_storage_cabinets = {
+                    inverter.get("invert_full", {}).get(
+                        "sn"
+                    ): await self.hass.async_add_executor_job(
+                        self.sems_api.getEnergyStorageIntegratedCabinets,
+                        self.station_id,
+                        inverter.get("invert_full", {}).get("sn"),
+                    )
+                    for inverter in data_result.get("inverter", {})
+                }
+            else:
+                energy_storage_cabinets = {}
 
             _LOGGER.debug("Getting battery general functions for each cabinet")
             battery_general_functions = {

@@ -368,6 +368,7 @@ MOCK_GET_DATA_RESPONSE = {
 # - `result["kpi"]`: dict with optional `currency`
 # - `result["hasPowerflow"]` and `result["hasEnergeStatisticsCharts"]`
 MOCK_GET_DATA_RESULT_MINIMAL = {
+    "info": {"is_stored": True},
     "inverter": [
         {
             "invert_full": {
