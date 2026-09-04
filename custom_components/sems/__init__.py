@@ -118,6 +118,95 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             update_interval=update_interval,
         )
 
+    async def _async_get_energy_storage_cabinets(
+        self, data_result: dict[str, Any]
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Fetch the energy storage cabinets when batteries are available."""
+        if not data_result.get("info", {}).get("is_stored", False):
+            return {}
+
+        _LOGGER.debug("Getting energy storage integrated cabinets")
+        return {
+            inverter.get("invert_full", {}).get(
+                "sn"
+            ): await self.hass.async_add_executor_job(
+                self.sems_api.getEnergyStorageIntegratedCabinets,
+                self.station_id,
+                inverter.get("invert_full", {}).get("sn"),
+            )
+            for inverter in data_result.get("inverter", {})
+        }
+
+    async def _async_get_battery_functions(
+        self, energy_storage_cabinets: dict[str, list[dict[str, Any]]]
+    ) -> dict[str, dict[str, dict[str, Any]]] | None:
+        """Fetch and retain supported battery functions."""
+        _LOGGER.debug("Getting battery general functions for each cabinet")
+        battery_general_functions = {
+            sn: {
+                bat.get("translateCode"): await self.hass.async_add_executor_job(
+                    self.sems_api.getBatteryGeneralFunctions, sn, bat.get("no", 0)
+                )
+                for bat in bats
+                if isinstance(bat, dict) and bat.get("translateCode") is not None
+            }
+            for sn, bats in energy_storage_cabinets.items()
+        }
+
+        batteries: dict[str, dict[str, dict[str, Any]]] = {}
+        for sn, bats in battery_general_functions.items():
+            for bat_id, bat in bats.items():
+                for child in bat.get("functionMenus", {}).get("children", []):
+                    for func in child.get("functions", []):
+                        function_key = func.get("translateKey")
+                        if function_key not in _IMMEDIATE_CHARGING_FUNCTION_KEYS:
+                            continue
+
+                        if sn not in batteries:
+                            batteries[sn] = {}
+                        if bat_id not in batteries[sn]:
+                            batteries[sn][bat_id] = {
+                                "name": next(
+                                    (
+                                        cabinet.get("name", "")
+                                        for cabinet in energy_storage_cabinets.get(
+                                            sn, []
+                                        )
+                                        if cabinet.get("translateCode") == bat_id
+                                    ),
+                                    "",
+                                ),
+                                "functions": {},
+                            }
+
+                        batteries[sn][bat_id]["functions"][function_key] = {
+                            "address": func.get("address"),
+                            "id": func.get("id"),
+                        }
+
+        return batteries or None
+
+    async def _async_get_immediate_charging(
+        self, batteries: dict[str, dict[str, dict[str, Any]]] | None
+    ) -> dict[str, dict[str, Any]] | None:
+        """Fetch immediate-charging state for battery-equipped inverters."""
+        if not batteries:
+            return None
+
+        immediate_charging: dict[str, dict[str, Any]] = {}
+        for inverter_sn in batteries:
+            immediate_charging_result = await self.hass.async_add_executor_job(
+                self.sems_api.getBatteryImmediateChargingStates, inverter_sn
+            )
+            state_data = (immediate_charging_result or {}).get("data", {})
+            immediate_charging[inverter_sn] = {
+                "enabled": bool(state_data.get("47545", 0)),
+                "end_charge_soc": state_data.get("47546", 0),
+                "charging_power": state_data.get("47603", 0),
+            }
+
+        return immediate_charging
+
     async def _async_update_data(self) -> SemsData:
         """Fetch data from API endpoint.
 
@@ -132,76 +221,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 self.sems_api.getData, self.station_id
             )
 
-            has_battery = data_result.get("info", {}).get("is_stored", False)
-            if has_battery:
-                _LOGGER.debug("Getting energy storage integrated cabinets")
-                energy_storage_cabinets = {
-                    inverter.get("invert_full", {}).get(
-                        "sn"
-                    ): await self.hass.async_add_executor_job(
-                        self.sems_api.getEnergyStorageIntegratedCabinets,
-                        self.station_id,
-                        inverter.get("invert_full", {}).get("sn"),
-                    )
-                    for inverter in data_result.get("inverter", {})
-                }
-            else:
-                energy_storage_cabinets = {}
-
-            _LOGGER.debug("Getting battery general functions for each cabinet")
-            battery_general_functions = {
-                sn: {
-                    bat.get("translateCode"): await self.hass.async_add_executor_job(
-                        self.sems_api.getBatteryGeneralFunctions, sn, bat.get("no", 0)
-                    )
-                    for bat in bats
-                    if isinstance(bat, dict) and bat.get("translateCode") is not None
-                }
-                for sn, bats in energy_storage_cabinets.items()
-            }
-
-            batteries: dict[str, Any] = {}
-            for sn, bats in battery_general_functions.items():
-                for bat_id, bat in bats.items():
-                    for child in bat.get("functionMenus", {}).get("children", []):
-                        for func in child.get("functions", []):
-                            function_key = func.get("translateKey")
-                            if function_key not in _IMMEDIATE_CHARGING_FUNCTION_KEYS:
-                                continue
-
-                            if sn not in batteries:
-                                batteries[sn] = {}
-                            if bat_id not in batteries[sn]:
-                                batteries[sn][bat_id] = {
-                                    "name": next(
-                                        (
-                                            cabinet.get("name", "")
-                                            for cabinet in energy_storage_cabinets.get(
-                                                sn, []
-                                            )
-                                            if cabinet.get("translateCode") == bat_id
-                                        ),
-                                        "",
-                                    ),
-                                    "functions": {},
-                                }
-
-                            batteries[sn][bat_id]["functions"][function_key] = {
-                                "address": func.get("address"),
-                                "id": func.get("id"),
-                            }
-
-            immediate_charging: dict[str, dict[str, Any]] = {}
-            for inverter_sn in batteries:
-                immediate_charging_result = await self.hass.async_add_executor_job(
-                    self.sems_api.getBatteryImmediateChargingStates, inverter_sn
-                )
-                state_data = (immediate_charging_result or {}).get("data", {})
-                immediate_charging[inverter_sn] = {
-                    "enabled": bool(state_data.get("47545", 0)),
-                    "end_charge_soc": state_data.get("47546", 0),
-                    "charging_power": state_data.get("47603", 0),
-                }
+            energy_storage_cabinets = await self._async_get_energy_storage_cabinets(
+                data_result
+            )
+            batteries = await self._async_get_battery_functions(energy_storage_cabinets)
+            immediate_charging = await self._async_get_immediate_charging(batteries)
 
         except SemsRateLimitedError as err:
             raise UpdateFailed(
@@ -300,15 +324,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             )
             _LOGGER.debug(
                 "Resulting data: %s",
-                redact_for_log(
-                    {
-                        "inverters": inverters_by_sn,
-                        "homekit": homekit,
-                        "currency": currency,
-                        "batteries": batteries,
-                        "immediate_charging": immediate_charging,
-                    }
-                ),
+                redact_for_log(data),
             )
             return data
 
