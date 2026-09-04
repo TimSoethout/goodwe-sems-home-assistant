@@ -22,7 +22,7 @@ If you are running these tests inside the Home Assistant core repository workspa
 
 ```bash
 pip install -r config/goodwe-sems-home-assistant/requirements.test.txt
-python -m pytest config/goodwe-sems-home-assistant/tests/ -v --confcutdir=config/goodwe-sems-home-assistant
+python -m pytest config/goodwe-sems-home-assistant/tests/ -v --confcutdir=config/goodwe-sems-home-assistant # run from /workspaces/home-assistant in HA dev-container
 ```
 
 To run a specific test file:
