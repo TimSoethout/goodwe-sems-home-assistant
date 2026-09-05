@@ -232,6 +232,25 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             batteries = await self._async_get_battery_functions(energy_storage_cabinets)
             immediate_charging = await self._async_get_immediate_charging(batteries)
 
+            powerflow = data_result.get("powerflow")
+            # SEMS+ flow data fills values missing from the legacy monitor response.
+            if data_result.get("hasPowerflow") and isinstance(powerflow, dict):
+                missing_load = powerflow.get("load") in (None, "")
+                missing_grid = powerflow.get("grid") in (None, "")
+                if missing_load or missing_grid:
+                    flow_data = await self.hass.async_add_executor_job(
+                        self.sems_api.getPowerFlow, self.station_id
+                    )
+                    if missing_load and isinstance(
+                        flow_data.get("pConsum"), (int, float)
+                    ):
+                        powerflow["load"] = flow_data["pConsum"] * 1000
+                        powerflow["loadStatus"] = 1
+                    if missing_grid and isinstance(
+                        flow_data.get("pGrid"), (int, float)
+                    ):
+                        powerflow["grid"] = flow_data["pGrid"] * 1000
+
         except SemsRateLimitedError as err:
             raise UpdateFailed(
                 f"SEMS API rate limited (retry after {err.retry_after}s)"

@@ -20,6 +20,7 @@ OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
 NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
 _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
+_PowerFlowURLPart = "/sems-plant/api/stations/flow"
 _PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
 _RequestTimeout = 30  # seconds
 _RateLimitRetryAfterSeconds = 300
@@ -582,6 +583,20 @@ class SemsApi:
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getData API call",
+        )
+        return result if isinstance(result, dict) else {}
+
+    def getPowerFlow(
+        self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
+    ) -> dict[str, Any]:
+        """Get the current SEMS+ power flow for a power station."""
+        result = self._make_api_call(
+            f"{_PowerFlowURLPart}?stationId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getPowerFlow API call",
+            is_web=True,
         )
         return result if isinstance(result, dict) else {}
 

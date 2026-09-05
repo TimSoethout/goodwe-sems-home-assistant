@@ -782,6 +782,23 @@ class TestSemsApi:
             operation_name="getData API call",
         )
 
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_power_flow(self, mock_api_call):
+        """Test power flow retrieval."""
+        mock_api_call.return_value = {"pConsum": 1.982, "pGrid": -1.994}
+
+        result = self.api.getPowerFlow("station123")
+
+        assert result == {"pConsum": 1.982, "pGrid": -1.994}
+        mock_api_call.assert_called_once_with(
+            "/sems-plant/api/stations/flow?stationId=station123",
+            method="GET",
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getPowerFlow API call",
+            is_web=True,
+        )
+
     def test_get_data_success_real_structure(self, requests_mock):
         """Test successful data retrieval with real SEMS API response structure."""
         self.api._preferred_login_mode = "legacy"

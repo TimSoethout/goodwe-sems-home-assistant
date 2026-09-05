@@ -24,7 +24,7 @@ MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
 
 
 @contextmanager
-def _mock_no_battery_api(data: dict):
+def _mock_no_battery_api(data: dict, powerflow: dict | None = None):
     """Mock coordinator API calls for payloads without battery controls."""
     with (
         patch("custom_components.sems.sems_api.SemsApi.getData", return_value=data),
@@ -35,6 +35,10 @@ def _mock_no_battery_api(data: dict):
         patch(
             "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
             return_value={},
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getPowerFlow",
+            return_value=powerflow or {},
         ),
     ):
         yield
@@ -588,6 +592,25 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert daily_self_use_state is not None
     assert float(daily_self_use_state.state) == 7.08
 
+    # Verify total load consumption sensor
+    total_load_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-total-load-consumption"
+    )
+    assert total_load_entity_id is not None
+    total_load_state = hass.states.get(total_load_entity_id)
+    assert total_load_state is not None
+    assert float(total_load_state.state) == 7927.13
+
+    # Verify daily self-sufficiency rate (0.5803 → 58.03%)
+    daily_sufficiency_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{homekit_sn}-daily-self-sufficiency-rate"
+    )
+    assert daily_sufficiency_entity_id is not None
+    daily_sufficiency_state = hass.states.get(daily_sufficiency_entity_id)
+    assert daily_sufficiency_state is not None
+    assert float(daily_sufficiency_state.state) == 58.03
+    assert daily_sufficiency_state.attributes.get("unit_of_measurement") == "%"
+
 
 async def test_hk1000_homekit_load_and_grid_values(
     hass: HomeAssistant,
@@ -607,7 +630,10 @@ async def test_hk1000_homekit_load_and_grid_values(
     )
     entry.add_to_hass(hass)
 
-    with _mock_no_battery_api(MOCK_GET_DATA_HK1000_JSON):
+    with _mock_no_battery_api(
+        MOCK_GET_DATA_HK1000_JSON,
+        powerflow={"pConsum": 1.982, "pGrid": -1.994},
+    ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -621,26 +647,7 @@ async def test_hk1000_homekit_load_and_grid_values(
         assert entity_id is not None
         state = hass.states.get(entity_id)
         assert state is not None
-        assert state.state not in ("unknown", "unavailable")
-
-    # Verify total load consumption sensor
-    total_load_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, f"{homekit_sn}-total-load-consumption"
-    )
-    assert total_load_entity_id is not None
-    total_load_state = hass.states.get(total_load_entity_id)
-    assert total_load_state is not None
-    assert float(total_load_state.state) == 7927.13
-
-    # Verify daily self-sufficiency rate (0.5803 → 58.03%)
-    daily_sufficiency_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, f"{homekit_sn}-daily-self-sufficiency-rate"
-    )
-    assert daily_sufficiency_entity_id is not None
-    daily_sufficiency_state = hass.states.get(daily_sufficiency_entity_id)
-    assert daily_sufficiency_state is not None
-    assert float(daily_sufficiency_state.state) == 58.03
-    assert daily_sufficiency_state.attributes.get("unit_of_measurement") == "%"
+        assert float(state.state) == {"load": 1982.0, "grid": -1994.0}[suffix]
 
 
 def _build_homekit_test_data(
