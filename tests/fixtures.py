@@ -444,6 +444,9 @@ MOCK_GET_DATA_ACTUAL_JSON: dict[str, Any] = _load_json_fixture(
 MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON: dict[str, Any] = _load_json_fixture(
     "tests/test-data/20250623_homekit_getData.json"
 )
+MOCK_GET_DATA_HK1000_JSON: dict[str, Any] = _load_json_fixture(
+    "tests/test-data/20260905_getData_hk1000.json"
+)
 
 # Anonymized inverter serial number for testing
 MOCK_INVERTER_SN = "GW0000SN000TEST1"

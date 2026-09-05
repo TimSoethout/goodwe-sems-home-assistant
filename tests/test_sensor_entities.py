@@ -16,6 +16,7 @@ from custom_components.sems.sensor import sensor_options_for_data
 
 from .fixtures import (
     MOCK_GET_DATA_ACTUAL_JSON,
+    MOCK_GET_DATA_HK1000_JSON,
     MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON,
 )
 
@@ -586,6 +587,41 @@ async def test_homekit_powerflow_values_from_api_fixture(
     daily_self_use_state = hass.states.get(daily_self_use_entity_id)
     assert daily_self_use_state is not None
     assert float(daily_self_use_state.state) == 7.08
+
+
+async def test_hk1000_homekit_load_and_grid_values(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Expose HomeKit load and grid values for an HK1000 installation."""
+    del enable_custom_integrations
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with _mock_no_battery_api(MOCK_GET_DATA_HK1000_JSON):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    homekit_sn = MOCK_GET_DATA_HK1000_JSON["homKit"]["sn"]
+    ent_reg = er.async_get(hass)
+
+    for suffix in ("load", "grid"):
+        entity_id = ent_reg.async_get_entity_id(
+            Platform.SENSOR, DOMAIN, f"{homekit_sn}-{suffix}"
+        )
+        assert entity_id is not None
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert state.state not in ("unknown", "unavailable")
 
     # Verify total load consumption sensor
     total_load_entity_id = ent_reg.async_get_entity_id(
