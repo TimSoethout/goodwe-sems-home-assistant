@@ -141,7 +141,8 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         self, energy_storage_cabinets: dict[str, list[dict[str, Any]]]
     ) -> dict[str, dict[str, dict[str, Any]]] | None:
         """Fetch and retain supported battery functions."""
-        _LOGGER.debug("Getting battery general functions for each cabinet")
+        if energy_storage_cabinets:
+            _LOGGER.debug("Getting battery general functions for each cabinet")
         battery_general_functions = {
             sn: {
                 bat.get("translateCode"): await self.hass.async_add_executor_job(
