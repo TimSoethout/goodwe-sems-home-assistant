@@ -228,6 +228,7 @@ class TestSemsApi:
                 side_effect=[None, web_token],
             ) as mock_new,
         ):
+            mock_legacy.return_value = None
             result = self.api.getLoginToken("test_user", "test_pass")
 
             assert result == web_token
