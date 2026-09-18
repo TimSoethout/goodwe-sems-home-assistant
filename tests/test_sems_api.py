@@ -1,7 +1,7 @@
 """Tests for the SEMS API module."""
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 import requests
@@ -192,7 +192,7 @@ class TestSemsApi:
             assert self.api._preferred_login_mode == "legacy"
 
     def test_get_login_token_both_fail(self):
-        """Test login failure when both login modes fail."""
+        """Test login failure when all login modes fail."""
         with (
             patch.object(self.api, "_get_legacy_login_token") as mock_legacy,
             patch.object(self.api, "_get_new_login_token") as mock_new,
@@ -204,7 +204,41 @@ class TestSemsApi:
 
             assert result is None
             mock_legacy.assert_called_once_with("test_user", "test_pass")
-            mock_new.assert_called_once_with("test_user", "test_pass")
+            assert mock_new.call_count == 2
+            mock_new.assert_has_calls(
+                [
+                    call("test_user", "test_pass"),
+                    call("test_user", "test_pass", is_web=True),
+                ]
+            )
+
+    def test_get_login_token_web_fallback(self):
+        """Test fallback to SEMS+ web login when other login modes fail."""
+        web_token = {
+            "uid": "web-uid",
+            "token": "web-token",
+            "api": "https://api.test.com/",
+        }
+
+        with (
+            patch.object(self.api, "_get_legacy_login_token") as mock_legacy,
+            patch.object(
+                self.api,
+                "_get_new_login_token",
+                side_effect=[None, web_token],
+            ) as mock_new,
+        ):
+            result = self.api.getLoginToken("test_user", "test_pass")
+
+            assert result == web_token
+            mock_legacy.assert_called_once_with("test_user", "test_pass")
+            assert mock_new.call_count == 2
+            mock_new.assert_has_calls(
+                [
+                    call("test_user", "test_pass"),
+                    call("test_user", "test_pass", is_web=True),
+                ]
+            )
 
     def test_get_login_token_exception_falls_back(self):
         """Test fallback when the preferred login raises an exception."""
