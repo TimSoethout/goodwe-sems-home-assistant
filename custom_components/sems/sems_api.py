@@ -474,6 +474,11 @@ class SemsApi:
                     self._preferred_login_mode = login_mode
                     return token
 
+            tried_login_modes.append("web")
+            token = self._get_new_login_token(userName, password, is_web=True)
+            if token is not None:
+                return token
+
             _LOGGER.error(
                 "Unable to authenticate with SEMS API; tried authentication methods: %s",
                 ", ".join(tried_login_modes),
