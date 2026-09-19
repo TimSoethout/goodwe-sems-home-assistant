@@ -262,6 +262,29 @@ class TestSemsApi:
         mock_new.assert_called_once_with("test_user", "test_pass")
         mock_legacy.assert_called_once_with("test_user", "test_pass")
 
+    def test_get_login_token_prefers_web_after_web_fallback(self):
+        """Test web login remains preferred after recovering authentication."""
+        web_token = {
+            "uid": "web-uid",
+            "token": "web-token",
+            "api": "https://api.test.com/",
+        }
+        self.api._preferred_login_mode = "web"
+
+        with (
+            patch.object(self.api, "_get_legacy_login_token") as mock_legacy,
+            patch.object(
+                self.api,
+                "_get_new_login_token",
+                return_value=web_token,
+            ) as mock_new,
+        ):
+            result = self.api.getLoginToken("test_user", "test_pass")
+
+            assert result == web_token
+            mock_new.assert_called_once_with("test_user", "test_pass", is_web=True)
+            mock_legacy.assert_not_called()
+
     def test_get_login_token_rate_limit_backoff(self):
         """Test rate-limit handling is propagated for coordinator retry scheduling."""
         with (
