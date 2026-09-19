@@ -299,7 +299,7 @@ class SemsApi:
 
     def _get_login_mode_order(self) -> list[LoginMode]:
         """Return login modes in preferred order."""
-        login_modes: list[LoginMode] = ["new", "legacy"]
+        login_modes: list[LoginMode] = ["new", "legacy", "web"]
         if self._preferred_login_mode in login_modes:
             login_modes.remove(self._preferred_login_mode)
             login_modes.insert(0, self._preferred_login_mode)
@@ -309,7 +309,15 @@ class SemsApi:
         """Return the login handler for a given mode."""
         if login_mode == "legacy":
             return self._get_legacy_login_token
+        if login_mode == "web":
+            return self._get_web_login_token
         return self._get_new_login_token
+
+    def _get_web_login_token(
+        self, userName: str, password: str
+    ) -> dict[str, Any] | None:
+        """Get a token from the SEMS+ web login endpoint."""
+        return self._get_new_login_token(userName, password, is_web=True)
 
     def _resolve_login_api_url(
         self,
@@ -473,11 +481,6 @@ class SemsApi:
                     # Keep preferred mode in sync even when login helpers are mocked in tests.
                     self._preferred_login_mode = login_mode
                     return token
-
-            tried_login_modes.append("web")
-            token = self._get_new_login_token(userName, password, is_web=True)
-            if token is not None:
-                return token
 
             _LOGGER.error(
                 "Unable to authenticate with SEMS API; tried authentication methods: %s",
