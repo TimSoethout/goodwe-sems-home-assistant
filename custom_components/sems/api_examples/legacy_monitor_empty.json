@@ -1,0 +1,14 @@
+{
+  "code": "0",
+  "components": {
+    "langVer": 179,
+    "msgSocketAdr": null,
+    "para": "{\"model\":{\"PowerStationId\":\"<station_id>\"}}",
+    "timeSpan": 0
+  },
+  "data": {},
+  "function": null,
+  "hasError": false,
+  "language": "en",
+  "msg": "\u64cd\u4f5c\u6210\u529f"
+}

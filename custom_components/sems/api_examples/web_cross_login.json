@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "account": "<account>",
+      "pwd": "<encoded_password>",
+      "version": "",
+      "client": "semsPlusWeb",
+      "language": "en"
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "code": "00000",
+    "description": "成功",
+    "traceId": "<trace_id>",
+    "data": {
+      "uid": "<user_id>",
+      "timestamp": "<timestamp>",
+      "token": "<redacted_web_token>",
+      "client": "semsPlusWeb",
+      "version": "",
+      "language": "en",
+      "api": "https://eu-gateway.semsportal.com/web/sems",
+      "region": "eu",
+      "uuid": "<session_uuid>"
+    }
+  },
+  "notes": [
+    "The token, user ID, UUID, timestamp, account, and password are redacted.",
+    "Subsequent Web API requests use the returned regional api base.",
+    "Subsequent Web API requests require the Web token and X-Signature header."
+  ]
+}
