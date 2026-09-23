@@ -36,6 +36,32 @@ The same comparison was made against the authenticated Web endpoints. Both
 requests. This confirms that the User-Agent is not required by those endpoints
 for the tested account either.
 
+## Additional implementation constraints
+
+The older migration notes contain several findings that remain relevant even
+though their original fallback design is superseded:
+
+- Treat a request as successful only when the HTTP response succeeds, the API
+  code is successful (`0` or `00000`), and the response contains usable data.
+  HTTP 200 alone is not sufficient.
+- Keep these response classes distinguishable:
+  - `100002`: authorization expired
+  - `100004`: login parameter error
+  - `100025`: access or operation rights failure
+  - `C0602`: abnormal login
+  - `GY0429`: rate limiting
+- SEMS behavior can vary by account role and sharing/owner permissions. A
+  successful login does not imply that every station, device, or telemetry
+  endpoint is authorized.
+- Re-authenticate at most once for an expired session, then surface the final
+  error. Do not recursively retry or re-login for rate limiting.
+- Retain the last successful login mode as an optimization, but preserve
+  fallback between legacy and Web authentication when the selected mode is
+  unavailable.
+- There is no documented third-party WebSocket or SignalR push interface.
+  Continue using bounded HTTPS polling rather than relying on the older
+  `msgSocketAdr` field seen in some responses.
+
 ## Browser capture
 
 The SEMS+ Web UI was opened at `https://semsplus.goodwe.com/` and logged into
