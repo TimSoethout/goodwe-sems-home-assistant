@@ -978,6 +978,22 @@ class TestSemsApi:
             is_web=True,
         )
 
+    @patch.object(SemsApi, "getBatterySystemTelemetry")
+    @patch.object(SemsApi, "getBatterySystemDevices")
+    def test_get_battery_system_data_skips_failed_devices(
+        self, mock_devices, mock_telemetry
+    ):
+        """Test optional battery enrichment isolates per-device failures."""
+        mock_devices.return_value = [{"sn": "BAT1"}, {"sn": "BAT2"}]
+        mock_telemetry.side_effect = [
+            {"soc": 85.0},
+            requests.ConnectionError("offline"),
+        ]
+
+        assert self.api.getBatterySystemData("station", "INV1") == {
+            "BAT1": {"soc": 85.0}
+        }
+
     def test_get_power_station_ids_success_real_structure(self, requests_mock):
         """Test successful power station IDs retrieval with realistic response structure."""
         self.api._preferred_login_mode = "legacy"
