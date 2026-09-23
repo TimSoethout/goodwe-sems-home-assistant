@@ -221,7 +221,106 @@ Build the same structure currently consumed by the integration:
 This allows the existing entity setup and device mapping to continue working
 while the source of the data changes.
 
-### 7. `invert_full` and entity coverage
+## Implementation and release order
+
+The migration should be delivered as small, independently reviewable PRs.
+Each PR below leaves the existing legacy path usable and has a clear
+rollback boundary.
+
+### PR 1: Harden response classification and authentication errors
+
+Keep the current data source and entity behavior unchanged. Add typed handling
+and tests for:
+
+- HTTP success with API failure codes
+- HTTP 200 with empty or unusable `data`
+- `100002`, `100004`, `100025`, `C0602`, and `GY0429`
+- one re-authentication attempt for an expired session
+- no re-login loop for rate limiting
+- preserving the last successful login mode as an optimization
+
+Acceptance criteria:
+
+- Existing legacy success fixtures produce identical coordinator data.
+- Empty legacy data is distinguishable from a valid empty station.
+- Rate-limit and permission errors reach the coordinator with their cause.
+- No Web fallback is enabled yet.
+
+### PR 2: Add the SEMS+ Web client and response parsers
+
+Add Web login, dynamic regional API-base handling, request signing, device
+discovery, telemetry, telecounting, and the related response parsers. Use the
+sanitized fixtures in this directory; do not change coordinator selection or
+entity creation yet.
+
+Acceptance criteria:
+
+- Web login stores the returned token and regional API base separately from
+  the legacy token.
+- Requests use the Web token and `X-Signature`.
+- `all-status`, telemetry, and telecounting fixtures map to a normalized
+  inverter structure.
+- Missing factors remain absent.
+- Parser tests cover multiple inverters, missing factors, and non-success API
+  codes.
+
+### PR 3: Enable conservative inverter fallback
+
+Use the Web client only when the legacy monitor response is unusable, such as
+empty/missing inverter data or known legacy authorization expiry. Keep a
+complete legacy result preferred and preserve existing entity IDs and
+coordinator keys.
+
+Acceptance criteria:
+
+- Legacy accounts with complete data do not make Web requests.
+- Affected accounts receive status, identity, capacity, power, runtime,
+  temperature, supported PV/AC values, and available energy counters.
+- Missing Web fields do not create zero-valued entities.
+- Web permission or transport failures produce an actionable update error.
+- Existing legacy behavior and controls remain unchanged.
+
+### PR 4: Add station-flow enrichment
+
+Add the Web station-flow request as an independent, optional enrichment path.
+Map only the fields confirmed by the station-flow response. Do not present it
+as a replacement for the legacy HomeKit/power-flow object or chart data.
+
+Acceptance criteria:
+
+- Station-flow failure does not remove valid inverter entities.
+- Station status and station-level power values are available where supported.
+- Existing HomeKit entity IDs and legacy power-flow behavior remain stable.
+- Tests cover stations with and without power-flow data.
+
+### PR 5: Add opt-in `BAT_SYS` telemetry
+
+Discover related devices, select attached `BAT_SYS` devices, and query their
+telemetry independently from inverter telemetry. Keep this feature disabled
+by default until response coverage exists for the affected inverter and
+battery models.
+
+Acceptance criteria:
+
+- Battery-less inverters continue to work without extra battery entities.
+- Battery telemetry failure for one device does not fail the coordinator.
+- Entities are created only for present factors.
+- Existing immediate-charging controls remain unchanged.
+- Tests cover battery-equipped, battery-less, and battery-request-failure cases.
+
+### PR 6: Expand field coverage only with evidence
+
+Add additional entities or mappings only when a captured response provides a
+stable field and unit for them. Candidate areas are additional MPPTs/phases,
+last-month energy, income, meter data, and legacy chart statistics.
+
+Acceptance criteria:
+
+- Each new field has a sanitized fixture and a unit conversion test.
+- The field is omitted when unavailable for a device model.
+- No speculative zero/default values are introduced.
+
+### 6. `invert_full` and entity coverage
 
 The current entity platforms do not use every field in the legacy
 `invert_full` object. The following matrix compares the fields used by the
