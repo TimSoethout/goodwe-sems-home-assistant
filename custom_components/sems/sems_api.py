@@ -29,9 +29,7 @@ _RateLimitRetryAfterSeconds = 300
 
 _SuccessCodes = {0, "0", "00000"}
 _RateLimitCode = "GY0429"
-_BrowserUserAgent = (
-    "Home Assistant GoodWe SEMS API Integration"
-)
+_BrowserUserAgent = "Home Assistant GoodWe SEMS API Integration"
 
 _DefaultHeaders = {
     "Content-Type": "application/json",
