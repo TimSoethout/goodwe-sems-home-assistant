@@ -60,7 +60,10 @@ class TestSemsApi:
         mock_request.assert_called_once_with(
             "POST",
             "http://test.com",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "User-Agent": "Home Assistant GoodWe SEMS API Integration",
+                "Content-Type": "application/json",
+            },
             data='{"test": "data"}',
             json=None,
             timeout=30,

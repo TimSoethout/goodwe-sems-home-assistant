@@ -26,6 +26,9 @@ _RateLimitRetryAfterSeconds = 300
 
 _SuccessCodes = {0, "0", "00000"}
 _RateLimitCode = "GY0429"
+_BrowserUserAgent = (
+    "Home Assistant GoodWe SEMS API Integration"
+)
 
 _DefaultHeaders = {
     "Content-Type": "application/json",
@@ -90,7 +93,7 @@ class SemsApi:
             response = requests.request(
                 method.upper(),
                 url,
-                headers=headers,
+                headers={"User-Agent": _BrowserUserAgent, **headers},
                 data=data,
                 json=json_data,
                 timeout=_RequestTimeout,
