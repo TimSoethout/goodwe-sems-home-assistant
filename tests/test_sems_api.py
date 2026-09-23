@@ -60,7 +60,13 @@ class TestSemsApi:
         mock_request.assert_called_once_with(
             "POST",
             "http://test.com",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:154.0) "
+                    "Gecko/20100101 Firefox/154.0"
+                ),
+                "Content-Type": "application/json",
+            },
             data='{"test": "data"}',
             json=None,
             timeout=30,
