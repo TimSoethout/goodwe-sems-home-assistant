@@ -26,7 +26,9 @@ API is used automatically.
 The repository folder structure is compatible with [HACS](https://hacs.xyz) and is included by default in HACS.
 
 Install HACS via: https://hacs.xyz/docs/installation/manual.
-Then search for "SEMS" in the Integrations tab (under Community). Click `HACS` > `Integrations` > `Explore and Download Repositories` > search for `SEMS` > click the result > `Download`.
+Then search for "SEMS" in the Integrations tab (under Community). Click
+`HACS` > `Integrations` > `Explore and Download Repositories`, search for
+`SEMS`, select the result, and click `Download`.
 
 ### Manual Setup
 
@@ -35,9 +37,11 @@ your Home Assistant configuration directory.
 
 ## Configure integration
 
-In the home assistant GUI, go to `Configuration` > `Integrations` and click the `Add Integration` button. Search for `GoodWe SEMS API`.
+In the Home Assistant UI, go to `Settings` > `Devices & services`, click `Add
+Integration`, and search for `GoodWe SEMS API`.
 
-Log in with your Goodwe SEMS (Plus) credentials and it should find your inverters.
+Log in with your GoodWe SEMS or SEMS+ credentials. The integration discovers
+the available power stations and creates an entry for each station.
 
 The integration creates inverter sensors for status, power, capacity,
 temperature, energy counters, PV strings, and grid measurements when those
@@ -49,11 +53,15 @@ waiting, offline, or not producing. SEMS+ may omit live telemetry in that
 state while still returning historical energy counters. The integration does
 not replace missing values with zero.
 
-### Optional: control the invertor power output via the "switch" entity
+### Optional: control the inverter power output via the "switch" entity
 
-It is possible to temporarily pause the energy production via "downtime" functionality available on the invertor. This is exposed as a switch and can be used in your own automations.
+It is possible to temporarily pause energy production using the inverter's
+`downtime` functionality. This is exposed as a switch and can be used in your
+own automations.
 
-Please note that it is using an undocumented API and can take a few minutes for the invertor to pick up the change. It takes approx 60 seconds to start again when the invertor is in a downtime mode.
+This uses an undocumented API and can take a few minutes for the inverter to
+pick up the change. It takes approximately 60 seconds to start again when the
+inverter is in downtime mode.
 
 ### Recommended: use visitor account if you do not need to control the inverter
 
@@ -73,8 +81,11 @@ Login to the visitor account once to accept the EULA. Now you should be able to 
 
 ## Debug info
 
-Enable debugging in the GUI, by going to the integration, and selecting "Enable Debug Logging" in the top right corner. (I'm actually unsure if this really enabled debug level logging for this integration. See below on how to enable it.)
-[https://www.home-assistant.io/docs/configuration/troubleshooting/#enabling-debug-logging](See HA documentation for more info.) 
+Enable debugging in the Home Assistant UI by opening the SEMS integration and
+selecting `Enable debug logging` from the menu. You can also enable it
+explicitly in `configuration.yaml` as shown below. See the [Home Assistant
+debug logging documentation](https://www.home-assistant.io/docs/configuration/troubleshooting/#enabling-debug-logging)
+for more information.
 
 Or add the last line in `configuration.yaml` in the relevant part of `logger`:
 
