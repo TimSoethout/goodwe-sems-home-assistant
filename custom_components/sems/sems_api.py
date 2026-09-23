@@ -638,7 +638,7 @@ class SemsApi:
                 ),
             }
             inverter.setdefault("powerstation_id", powerStationId)
-            inverter.setdefault("model_type", inverter.get("subtype"))
+            inverter.setdefault("model_type", inverter.get("name") or "unknown")
             inverters.append({"invert_full": inverter})
         return {"inverter": inverters}
 

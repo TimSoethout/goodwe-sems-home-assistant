@@ -856,6 +856,31 @@ class TestSemsApi:
             {"sn": "SN1", "name": "Inverter", "subtype": "grid", "status": 1}
         ]
 
+    @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
+    @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
+    @patch.object(SemsApi, "getWebInverterDevices")
+    def test_get_web_data_uses_name_as_model(
+        self, mock_devices, mock_telemetry, mock_telecounting
+    ):
+        """Test SEMS+ fallback uses the device name instead of its subtype as model."""
+        mock_devices.return_value = [{"sn": "SN1", "name": "Zolder", "subtype": "grid"}]
+
+        assert self.api.getWebData("station") == {
+            "inverter": [
+                {
+                    "invert_full": {
+                        "sn": "SN1",
+                        "name": "Zolder",
+                        "subtype": "grid",
+                        "powerstation_id": "station",
+                        "model_type": "Zolder",
+                    }
+                }
+            ]
+        }
+        mock_telemetry.assert_called_once_with("station", "SN1", False, 2)
+        mock_telecounting.assert_called_once_with("station", "SN1", False, 2)
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telemetry(self, mock_api_call):
         """Test SEMS+ telemetry normalization and unit conversion."""
