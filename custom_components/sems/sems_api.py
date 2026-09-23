@@ -879,6 +879,39 @@ class SemsApi:
             if (value := self._numeric_web_factor(factors, source)) is not None
         }
 
+    def getBatterySystemData(
+        self,
+        powerStationId: str,
+        serialNumber: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, dict[str, Any]]:
+        """Return optional BAT_SYS telemetry without affecting inverter updates."""
+        battery_data: dict[str, dict[str, Any]] = {}
+        for device in self.getBatterySystemDevices(
+            powerStationId, serialNumber, renewToken, maxTokenRetries
+        ):
+            battery_serial = device.get("sn")
+            if not isinstance(battery_serial, str):
+                continue
+            try:
+                telemetry = self.getBatterySystemTelemetry(
+                    powerStationId,
+                    battery_serial,
+                    renewToken,
+                    maxTokenRetries,
+                )
+            except (
+                OutOfRetries,
+                SemsRateLimitedError,
+                requests.RequestException,
+            ) as exception:
+                _LOGGER.warning("SEMS+ BAT_SYS telemetry failed: %s", exception)
+                continue
+            if telemetry:
+                battery_data[battery_serial] = telemetry
+        return battery_data
+
     def getBatteryGeneralFunctions(
         self,
         serialNumber: str,
