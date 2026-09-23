@@ -1093,9 +1093,7 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "getWebData")
     @patch.object(SemsApi, "_make_api_call")
-    def test_get_data_uses_web_fallback_on_none(
-        self, mock_api_call, mock_web_data
-    ):
+    def test_get_data_uses_web_fallback_on_none(self, mock_api_call, mock_web_data):
         """Test a failed legacy monitor call uses the SEMS+ Web fallback."""
         mock_api_call.return_value = None
         mock_web_data.return_value = {"inverter": [{"invert_full": {"sn": "SN1"}}]}
