@@ -21,6 +21,9 @@ NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cros
 _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
 _PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
+# SEMS+ Web data requests use GET with stationId/pwId query parameters and the
+# Web token plus X-Signature headers; the legacy monitor request uses POST with
+# {"powerStationId": "<station_id>"} and the legacy token header.
 _RequestTimeout = 30  # seconds
 _RateLimitRetryAfterSeconds = 300
 

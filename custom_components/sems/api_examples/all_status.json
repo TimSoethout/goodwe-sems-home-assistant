@@ -1,0 +1,37 @@
+{
+  "code": "00000",
+  "description": "\u6210\u529f",
+  "traceId": "<trace_id>",
+  "data": {
+    "total": 1,
+    "deviceDetailList": [
+      {
+        "deviceType": "INVERTER",
+        "total": 1,
+        "statusDetailList": [
+          {
+            "status": 1,
+            "total": 1,
+            "snList": [
+              "<inverter_serial>"
+            ],
+            "isHemsMap": {
+              "<inverter_serial>": false
+            },
+            "detailMap": {
+              "<inverter_serial>": {
+                "addTime": "2026-01-01T00:00:00",
+                "deviceType": "INVERTER",
+                "isHems": false,
+                "name": "<inverter_name>",
+                "sn": "<inverter_serial>",
+                "status": 1,
+                "subtype": "<inverter_subtype>"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

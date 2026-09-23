@@ -1,0 +1,122 @@
+{
+  "source": "SEMS+ Web browser resource history",
+  "base_urls": [
+    "https://semsplus.goodwe.com",
+    "https://eu-gateway.semsportal.com"
+  ],
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/web/sems/sems-user/api/v1/auth/cross-login",
+      "purpose": "Web authentication",
+      "integration_relevance": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-admin/api/translation/query",
+      "purpose": "UI translations",
+      "integration_relevance": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-user/api/v1/user/get-user",
+      "purpose": "Current user information",
+      "integration_relevance": "optional"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-alarm/api/alarm/count",
+      "purpose": "Alarm count",
+      "integration_relevance": "optional"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/web/device/has-device",
+      "purpose": "Whether the account has devices",
+      "integration_relevance": "optional"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-user/api/sites/message/count",
+      "purpose": "Site message count",
+      "integration_relevance": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/sems/sems-sitemsg/api/notice-config/audio-files/list",
+      "purpose": "Notification audio configuration",
+      "integration_relevance": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/sems/sems-sitemsg/api/notice-config/info",
+      "purpose": "Notification configuration",
+      "integration_relevance": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/stations/simple-query",
+      "purpose": "Station lookup",
+      "integration_relevance": "optional"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/stations/contains/personalStation",
+      "purpose": "Personal-station membership check",
+      "integration_relevance": "optional"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/portal/stations/count",
+      "purpose": "Station count",
+      "integration_relevance": "optional"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/user/settings/userTableHeaders",
+      "purpose": "Station-list column preferences",
+      "integration_relevance": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/portal/stations/page",
+      "purpose": "Station-list page",
+      "integration_relevance": "optional"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/stations/flow?stationId=<station_id>",
+      "purpose": "Station power flow",
+      "integration_relevance": "required_for_powerflow"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/stations/device/all-status?stationId=<station_id>",
+      "purpose": "Inverter discovery and status",
+      "integration_relevance": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/equipments/<sn>/telemetry?deviceType=INVERTER&pwId=<station_id>",
+      "purpose": "Inverter live telemetry",
+      "integration_relevance": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/equipments/<sn>/telecounting?deviceType=INVERTER&pwId=<station_id>",
+      "purpose": "Inverter energy counters",
+      "integration_relevance": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/web/sems/sems-plant/api/equipments/<sn>/relatedDevices?sn=<sn>&deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=<station_id>",
+      "purpose": "Storage cabinet discovery",
+      "integration_relevance": "required_for_battery_support"
+    }
+  ],
+  "notes": [
+    "Query values, tokens, cookies, signatures, station IDs, and serial numbers are redacted or replaced with placeholders.",
+    "Static JavaScript, CSS, image, analytics, and version resources are excluded.",
+    "The optional endpoints were observed in the UI but their response bodies were not needed for inverter telemetry migration."
+  ]
+}

@@ -1,0 +1,11 @@
+*
+!.gitignore
+!README.md
+!SEMSPlusMigrationProposal.md
+!all_status.json
+!browser_api_endpoints.json
+!legacy_monitor_empty.json
+!web_cross_login.json
+!station_flow.json
+!telecounting.json
+!telemetry.json
