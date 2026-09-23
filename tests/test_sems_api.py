@@ -915,6 +915,14 @@ class TestSemsApi:
                 "factors": [{"code": "proPvStatsMonth", "data": "123.45"}],
             },
             {
+                "code": "telecounting_week",
+                "factors": [{"code": "proPvStatsWeek", "data": "56.78"}],
+            },
+            {
+                "code": "telecounting_year",
+                "factors": [{"code": "proPvStatsYear", "data": "2345.67"}],
+            },
+            {
                 "code": "telecounting_lifetime",
                 "factors": [
                     {"code": "proPvStatsTotal", "data": "12345.67"},
@@ -926,7 +934,9 @@ class TestSemsApi:
         assert self.api.getWebInverterTelecounting("station", "SN1") == {
             "capacity": 5.0,
             "eday": 12.34,
+            "eweek": 56.78,
             "thismonthetotle": 123.45,
+            "eyear": 2345.67,
             "etotal": 12345.67,
         }
 
