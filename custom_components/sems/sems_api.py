@@ -21,6 +21,10 @@ NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cros
 _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
 _PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
+_WebDeviceStatusURLPart = "/sems-plant/api/stations/device/all-status"
+_WebStationFlowURLPart = "/sems-plant/api/stations/flow"
+_WebTelemetryURLPart = "/sems-plant/api/equipments/{serial_number}/telemetry"
+_WebTelecountingURLPart = "/sems-plant/api/equipments/{serial_number}/telecounting"
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
 # Web token plus X-Signature headers; the legacy monitor request uses POST with
 # {"powerStationId": "<station_id>"} and the legacy token header.
@@ -468,29 +472,30 @@ class SemsApi:
     def getLoginToken(self, userName: str, password: str) -> dict[str, Any] | None:
         """Get the login token for the SEMS API."""
         tried_login_modes: list[LoginMode] = []
-        try:
-            for login_mode in self._get_login_mode_order():
-                tried_login_modes.append(login_mode)
+        for login_mode in self._get_login_mode_order():
+            tried_login_modes.append(login_mode)
+            try:
                 token = self._login_handler_for_mode(login_mode)(userName, password)
+            except SemsRateLimitedError:
+                raise
+            except (requests.RequestException, ValueError, KeyError) as exception:
+                _LOGGER.warning(
+                    "SEMS %s login failed; trying the next authentication method: %s",
+                    login_mode,
+                    exception,
+                )
+                continue
 
-                if token is not None:
-                    # Keep preferred mode in sync even when login helpers are mocked in tests.
-                    self._preferred_login_mode = login_mode
-                    return token
+            if token is not None:
+                # Keep preferred mode in sync even when login helpers are mocked in tests.
+                self._preferred_login_mode = login_mode
+                return token
 
-            _LOGGER.error(
-                "Unable to authenticate with SEMS API; tried authentication methods: %s",
-                ", ".join(tried_login_modes),
-            )
-            return None
-
-        except (requests.RequestException, ValueError, KeyError) as exception:
-            _LOGGER.error(
-                "Unable to fetch login token from SEMS API using %s authentication methods: %s",
-                ", ".join(tried_login_modes),
-                exception,
-            )
-            return None
+        _LOGGER.error(
+            "Unable to authenticate with SEMS API; tried authentication methods: %s",
+            ", ".join(tried_login_modes),
+        )
+        return None
 
     def _make_api_call(
         self,
@@ -587,7 +592,193 @@ class SemsApi:
             maxTokenRetries=maxTokenRetries,
             operation_name="getData API call",
         )
+        if not isinstance(result, dict):
+            return {}
+        if isinstance(result.get("inverter"), list) and result["inverter"]:
+            return result
+        if result and "inverter" not in result:
+            return result
+
+        _LOGGER.debug(
+            "Legacy monitor response has no usable inverter data; using SEMS+ Web fallback"
+        )
+        return self.getWebData(powerStationId)
+
+    def getWebData(
+        self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
+    ) -> dict[str, Any]:
+        """Build the legacy coordinator shape from SEMS+ Web responses."""
+        inverters: list[dict[str, Any]] = []
+        for device in self.getWebInverterDevices(
+            powerStationId, renewToken, maxTokenRetries
+        ):
+            serial_number = device.get("sn")
+            if not isinstance(serial_number, str):
+                continue
+            inverter = {
+                **device,
+                **self.getWebInverterTelemetry(
+                    powerStationId, serial_number, renewToken, maxTokenRetries
+                ),
+                **self.getWebInverterTelecounting(
+                    powerStationId, serial_number, renewToken, maxTokenRetries
+                ),
+            }
+            inverter.setdefault("powerstation_id", powerStationId)
+            inverter.setdefault("model_type", inverter.get("subtype"))
+            inverters.append({"invert_full": inverter})
+        return {"inverter": inverters}
+
+    @staticmethod
+    def _flatten_web_factors(
+        response: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """Flatten SEMS+ factor groups by factor code."""
+        factors: dict[str, Any] = {}
+        for group in response or []:
+            if not isinstance(group, dict):
+                continue
+            for factor in group.get("factors", []):
+                if not isinstance(factor, dict) or factor.get("data") is None:
+                    continue
+                code = factor.get("code")
+                if isinstance(code, str):
+                    factors[code] = factor["data"]
+        return factors
+
+    @staticmethod
+    def _numeric_web_factor(factors: dict[str, Any], code: str) -> float | None:
+        """Return a numeric SEMS+ factor, if present and valid."""
+        value = factors.get(code)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def getWebInverterDevices(
+        self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
+    ) -> list[dict[str, Any]]:
+        """Discover inverter devices through the SEMS+ Web API."""
+        result = self._make_api_call(
+            f"{_WebDeviceStatusURLPart}?stationId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getWebInverterDevices API call",
+            is_web=True,
+        )
+        devices: list[dict[str, Any]] = []
+        for device_group in (
+            result.get("deviceDetailList", []) if isinstance(result, dict) else []
+        ):
+            if not isinstance(device_group, dict):
+                continue
+            if device_group.get("deviceType") != "INVERTER":
+                continue
+            for status_group in device_group.get("statusDetailList", []):
+                if not isinstance(status_group, dict):
+                    continue
+                detail_map = status_group.get("detailMap", {})
+                if not isinstance(detail_map, dict):
+                    continue
+                for serial_number in status_group.get("snList", []):
+                    if not isinstance(serial_number, str):
+                        continue
+                    detail = detail_map.get(serial_number, {})
+                    if isinstance(detail, dict):
+                        devices.append({**detail, "status": status_group.get("status")})
+        return devices
+
+    def getWebStationFlow(
+        self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
+    ) -> dict[str, Any]:
+        """Get station-level power flow from SEMS+ Web."""
+        result = self._make_api_call(
+            f"{_WebStationFlowURLPart}?stationId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getWebStationFlow API call",
+            is_web=True,
+        )
         return result if isinstance(result, dict) else {}
+
+    def getWebInverterTelemetry(
+        self,
+        powerStationId: str,
+        serialNumber: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get normalized live inverter telemetry from SEMS+ Web."""
+        result = self._make_api_call(
+            f"{_WebTelemetryURLPart.format(serial_number=serialNumber)}"
+            f"?deviceType=INVERTER&pwId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getWebInverterTelemetry API call",
+            is_web=True,
+        )
+        factors = self._flatten_web_factors(
+            result if isinstance(result, list) else None
+        )
+        telemetry: dict[str, Any] = {}
+        string_fields = {"sn": "sn"}
+        for source, target in string_fields.items():
+            if isinstance(factors.get(source), str):
+                telemetry[target] = factors[source]
+        numeric_fields = {
+            "hTotal": "hour_total",
+            "Temperature": "tempperature",
+            "Vac": "vac1",
+            "Iac": "iac1",
+            "Fac": "fac1",
+        }
+        for source, target in numeric_fields.items():
+            if (value := self._numeric_web_factor(factors, source)) is not None:
+                telemetry[target] = value
+        if (value := self._numeric_web_factor(factors, "pAc")) is not None:
+            telemetry["pac"] = value * 1000
+        for index in range(1, 5):
+            for suffix, target_prefix in (("Vpv", "vpv"), ("Ipv", "ipv")):
+                source = f"MPPT-{index}:{suffix}"
+                if (value := self._numeric_web_factor(factors, source)) is not None:
+                    telemetry[f"{target_prefix}{index}"] = value
+        return telemetry
+
+    def getWebInverterTelecounting(
+        self,
+        powerStationId: str,
+        serialNumber: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get normalized inverter energy counters from SEMS+ Web."""
+        result = self._make_api_call(
+            f"{_WebTelecountingURLPart.format(serial_number=serialNumber)}"
+            f"?deviceType=INVERTER&pwId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getWebInverterTelecounting API call",
+            is_web=True,
+        )
+        factors = self._flatten_web_factors(
+            result if isinstance(result, list) else None
+        )
+        counters: dict[str, Any] = {}
+        for source, target in (
+            ("ratedPower", "capacity"),
+            ("proPvStatsToday", "eday"),
+            ("proPvStatsMonth", "thismonthetotle"),
+            ("proPvStatsTotal", "etotal"),
+        ):
+            if (value := self._numeric_web_factor(factors, source)) is not None:
+                counters[target] = value
+        return counters
 
     def getEnergyStorageIntegratedCabinets(
         self,
@@ -607,6 +798,41 @@ class SemsApi:
         )
 
         return result if isinstance(result, list) else []
+
+    def getBatterySystemTelemetry(
+        self,
+        powerStationId: str,
+        serialNumber: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get telemetry for a related BAT_SYS device."""
+        result = self._make_api_call(
+            f"{_WebTelemetryURLPart.format(serial_number=serialNumber)}"
+            f"?deviceType=BAT_SYS&pwId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getBatterySystemTelemetry API call",
+            is_web=True,
+        )
+        factors = self._flatten_web_factors(
+            result if isinstance(result, list) else None
+        )
+        field_map = {
+            "SOC": "soc",
+            "pBat": "power",
+            "VBat": "voltage",
+            "IBat": "current",
+            "Temperature": "temperature",
+            "MaxChargeCurrent": "max_charge_current",
+            "MaxDischargeCurrent": "max_discharge_current",
+        }
+        return {
+            target: value
+            for source, target in field_map.items()
+            if (value := self._numeric_web_factor(factors, source)) is not None
+        }
 
     def getBatteryGeneralFunctions(
         self,
