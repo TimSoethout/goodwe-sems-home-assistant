@@ -2,6 +2,11 @@
 
 Source: [issue #217 comment](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/217#issuecomment-5797721158)
 
+Additional reference: the current
+[ioBroker.goodwe-sems API limitations](https://github.com/bueste/ioBroker.goodwe-sems#api-origin-and-limitations-please-read)
+documentation. It independently confirms the permanent legacy gateway gaps
+and describes battery retrieval through a separate `BAT_SYS` device.
+
 ## Problem
 
 The legacy
@@ -241,6 +246,13 @@ The Web API may expose additional factors for other inverter models; parsers
 should therefore map factors by code and only create an entity when its value
 is actually present.
 
+The community reference reports that battery-capable plants expose a separate
+`BAT_SYS` device through `relatedDevices`, with battery values retrieved from
+that device's own `telemetry` endpoint. This is a more specific follow-up path
+than treating battery fields as part of inverter telemetry. It should be
+implemented as optional enrichment and isolated from the inverter update:
+battery failures must not make PV and inverter entities unavailable.
+
 ## Fallback behavior
 
 1. Try the current legacy path.
@@ -267,6 +279,8 @@ discovery and daily/lifetime PV counters, but does not yet restore:
 - Full legacy chart statistics and HomeKit entities; station flow only provides
   a smaller station-level power summary
 - The missing inverter entity fields listed in the coverage matrix above
+- Battery telemetry until a `BAT_SYS`-specific response has been captured and
+  mapped for the affected inverter models
 
 Battery-related Web calls should remain independent enrichment calls so a
 failure to retrieve battery functions does not prevent inverter telemetry from
