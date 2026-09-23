@@ -27,7 +27,7 @@ _RateLimitRetryAfterSeconds = 300
 _SuccessCodes = {0, "0", "00000"}
 _RateLimitCode = "GY0429"
 _BrowserUserAgent = (
-    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:154.0) Gecko/20100101 Firefox/154.0"
+    "Home Assistant GoodWe SEMS API Integration"
 )
 
 _DefaultHeaders = {

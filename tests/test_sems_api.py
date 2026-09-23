@@ -61,10 +61,7 @@ class TestSemsApi:
             "POST",
             "http://test.com",
             headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:154.0) "
-                    "Gecko/20100101 Firefox/154.0"
-                ),
+                "User-Agent": "Home Assistant GoodWe SEMS API Integration",
                 "Content-Type": "application/json",
             },
             data='{"test": "data"}',
