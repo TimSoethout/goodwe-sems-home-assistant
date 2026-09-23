@@ -881,6 +881,54 @@ class TestSemsApi:
         mock_telemetry.assert_called_once_with("station", "SN1", False, 2)
         mock_telecounting.assert_called_once_with("station", "SN1", False, 2)
 
+    @patch.object(
+        SemsApi,
+        "getWebInverterTelecounting",
+        return_value={
+            "capacity": 3.0,
+            "eday": 8.8,
+            "eweek": 23.4,
+            "thismonthetotle": 185.6,
+            "eyear": 2613.6,
+            "etotal": 21841.1,
+        },
+    )
+    @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
+    @patch.object(SemsApi, "getWebInverterDevices")
+    def test_get_web_data_preserves_counters_without_live_telemetry(
+        self, mock_devices, mock_telemetry, mock_telecounting
+    ):
+        """Test a waiting inverter response with counters but no live telemetry."""
+        mock_devices.return_value = [
+            {
+                "sn": "SN1",
+                "name": "Zolder",
+                "subtype": "grid",
+                "status": 0,
+            }
+        ]
+
+        inverter = self.api.getWebData("station")["inverter"][0]["invert_full"]
+
+        assert inverter == {
+            "sn": "SN1",
+            "name": "Zolder",
+            "subtype": "grid",
+            "status": 0,
+            "powerstation_id": "station",
+            "model_type": "Zolder (grid)",
+            "capacity": 3.0,
+            "eday": 8.8,
+            "eweek": 23.4,
+            "thismonthetotle": 185.6,
+            "eyear": 2613.6,
+            "etotal": 21841.1,
+        }
+        assert "pac" not in inverter
+        assert "tempperature" not in inverter
+        mock_telemetry.assert_called_once_with("station", "SN1", False, 2)
+        mock_telecounting.assert_called_once_with("station", "SN1", False, 2)
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telemetry(self, mock_api_call):
         """Test SEMS+ telemetry normalization and unit conversion."""
