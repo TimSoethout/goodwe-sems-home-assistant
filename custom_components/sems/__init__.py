@@ -54,6 +54,7 @@ class SemsData:
     batteries: dict[str, dict[str, dict[str, Any]]] | None = None
     immediate_charging: dict[str, dict[str, Any]] | None = None
     homekit: dict[str, Any] | None = None
+    station_flow: dict[str, Any] | None = None
     currency: str | None = None
 
 
@@ -324,6 +325,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 inverters=inverters_by_sn,
                 batteries=batteries,
                 homekit=homekit,
+                station_flow=(
+                    data_result.get("station_flow")
+                    if isinstance(data_result.get("station_flow"), dict)
+                    else None
+                ),
                 currency=currency,
                 immediate_charging=immediate_charging,
             )

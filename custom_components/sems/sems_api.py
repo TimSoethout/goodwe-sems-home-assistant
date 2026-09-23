@@ -635,7 +635,18 @@ class SemsApi:
             inverter.setdefault("powerstation_id", powerStationId)
             inverter.setdefault("model_type", inverter.get("subtype"))
             inverters.append({"invert_full": inverter})
-        return {"inverter": inverters}
+        result: dict[str, Any] = {"inverter": inverters}
+        try:
+            result["station_flow"] = self.getWebStationFlow(
+                powerStationId, renewToken, maxTokenRetries
+            )
+        except (
+            OutOfRetries,
+            SemsRateLimitedError,
+            requests.RequestException,
+        ) as exception:
+            _LOGGER.warning("SEMS+ station-flow enrichment failed: %s", exception)
+        return result
 
     @staticmethod
     def _flatten_web_factors(
@@ -744,6 +755,7 @@ class SemsApi:
             "Vac": "vac1",
             "Iac": "iac1",
             "Fac": "fac1",
+            "gridPF": "power_factor",
         }
         for source, target in numeric_fields.items():
             if (value := self._numeric_web_factor(factors, source)) is not None:
@@ -755,6 +767,10 @@ class SemsApi:
                 source = f"MPPT-{index}:{suffix}"
                 if (value := self._numeric_web_factor(factors, source)) is not None:
                     telemetry[f"{target_prefix}{index}"] = value
+            if (
+                value := self._numeric_web_factor(factors, f"MPPT-{index}:Ppv")
+            ) is not None:
+                telemetry[f"ppv{index}"] = value * 1000
         return telemetry
 
     def getWebInverterTelecounting(
@@ -781,7 +797,9 @@ class SemsApi:
         for source, target in (
             ("ratedPower", "capacity"),
             ("proPvStatsToday", "eday"),
+            ("proPvStatsWeek", "eweek"),
             ("proPvStatsMonth", "thismonthetotle"),
+            ("proPvStatsYear", "eyear"),
             ("proPvStatsTotal", "etotal"),
         ):
             if (value := self._numeric_web_factor(factors, source)) is not None:
@@ -805,6 +823,25 @@ class SemsApi:
             is_web=True,
         )
 
+        return result if isinstance(result, list) else []
+
+    def getBatterySystemDevices(
+        self,
+        powerStationId: str,
+        serialNumber: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> list[dict[str, Any]]:
+        """Discover attached BAT_SYS devices without making them mandatory."""
+        result = self._make_api_call(
+            f"/sems-plant/api/equipments/{serialNumber}/relatedDevices"
+            f"?sn={serialNumber}&deviceType=BAT_SYS&pwId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getBatterySystemDevices API call",
+            is_web=True,
+        )
         return result if isinstance(result, list) else []
 
     def getBatterySystemTelemetry(

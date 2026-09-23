@@ -207,6 +207,24 @@ def sensor_options_for_data(
             ),
             SemsInverterSensorType(
                 device_info,
+                f"{serial_number}-eweek",
+                [*path_to_inverter, "eweek"],
+                "Energy This Week",
+                SensorDeviceClass.ENERGY,
+                UnitOfEnergy.KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SemsInverterSensorType(
+                device_info,
+                f"{serial_number}-eyear",
+                [*path_to_inverter, "eyear"],
+                "Energy This Year",
+                SensorDeviceClass.ENERGY,
+                UnitOfEnergy.KILO_WATT_HOUR,
+                SensorStateClass.TOTAL_INCREASING,
+            ),
+            SemsInverterSensorType(
+                device_info,
                 f"{serial_number}-{GOODWE_SPELLING.lastMonthTotalE}",
                 [*path_to_inverter, GOODWE_SPELLING.lastMonthTotalE],
                 "Energy Last Month",
@@ -262,6 +280,21 @@ def sensor_options_for_data(
             )
             for idx in range(1, 5)
             if get_value_from_path(data.inverters, [*path_to_inverter, f"ipv{idx}"])
+            is not None
+        ]
+        sensors += [
+            SemsInverterSensorType(
+                device_info,
+                f"{serial_number}-ppv{idx}",
+                [*path_to_inverter, f"ppv{idx}"],
+                f"PV String {idx} Power",
+                SensorDeviceClass.POWER,
+                UnitOfPower.WATT,
+                SensorStateClass.MEASUREMENT,
+                0,
+            )
+            for idx in range(1, 5)
+            if get_value_from_path(data.inverters, [*path_to_inverter, f"ppv{idx}"])
             is not None
         ]
         sensors += [

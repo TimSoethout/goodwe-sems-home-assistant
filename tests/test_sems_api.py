@@ -872,6 +872,7 @@ class TestSemsApi:
                 "code": "ac",
                 "factors": [
                     {"code": "pAc", "data": "1.064"},
+                    {"code": "gridPF", "data": "-0.001"},
                     {"code": "Vac", "data": "233.3"},
                     {"code": "Iac", "data": "4.3"},
                     {"code": "Fac", "data": "49.95"},
@@ -882,6 +883,7 @@ class TestSemsApi:
                 "factors": [
                     {"code": "MPPT-1:Vpv", "data": "319.8"},
                     {"code": "MPPT-1:Ipv", "data": "3.1"},
+                    {"code": "MPPT-1:Ppv", "data": "0.99138"},
                 ],
             },
         ]
@@ -893,9 +895,11 @@ class TestSemsApi:
             "vac1": 233.3,
             "iac1": 4.3,
             "fac1": 49.95,
+            "power_factor": -0.001,
             "pac": 1064.0,
             "vpv1": 319.8,
             "ipv1": 3.1,
+            "ppv1": 991.38,
         }
 
     @patch.object(SemsApi, "_make_api_call")
@@ -955,6 +959,24 @@ class TestSemsApi:
             "power": 1.2,
             "voltage": 400.0,
         }
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_battery_system_devices(self, mock_api_call):
+        """Test optional BAT_SYS discovery."""
+        mock_api_call.return_value = [{"sn": "BAT1", "type": "BAT_SYS"}]
+
+        assert self.api.getBatterySystemDevices("station", "INV1") == [
+            {"sn": "BAT1", "type": "BAT_SYS"}
+        ]
+        mock_api_call.assert_called_once_with(
+            "/sems-plant/api/equipments/INV1/relatedDevices"
+            "?sn=INV1&deviceType=BAT_SYS&pwId=station",
+            method="GET",
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getBatterySystemDevices API call",
+            is_web=True,
+        )
 
     def test_get_power_station_ids_success_real_structure(self, requests_mock):
         """Test successful power station IDs retrieval with realistic response structure."""

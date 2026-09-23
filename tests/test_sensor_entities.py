@@ -279,6 +279,8 @@ async def test_exact_unique_ids_single_inverter_fixture(
     expected_unique_ids = {
         f"{sn}-capacity",
         f"{sn}-eday",
+        f"{sn}-eweek",
+        f"{sn}-eyear",
         f"{sn}-energy",
         f"{sn}-fac1",
         f"{sn}-fac2",
@@ -354,6 +356,8 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         # Regular inverter sensors
         f"{sn}-capacity",
         f"{sn}-eday",
+        f"{sn}-eweek",
+        f"{sn}-eyear",
         f"{sn}-energy",
         f"{sn}-fac1",
         f"{sn}-fac2",
