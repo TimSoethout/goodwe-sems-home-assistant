@@ -206,6 +206,27 @@ class TestSemsApi:
             mock_legacy.assert_called_once_with("test_user", "test_pass")
             mock_new.assert_called_once_with("test_user", "test_pass")
 
+    def test_get_login_token_exception_falls_back(self):
+        """Test fallback when the preferred login raises an exception."""
+        legacy_token = {
+            "uid": "legacy-uid",
+            "token": "legacy-token",
+            "api": "https://api.test.com/",
+        }
+
+        with (
+            patch.object(self.api, "_get_new_login_token") as mock_new,
+            patch.object(self.api, "_get_legacy_login_token") as mock_legacy,
+        ):
+            mock_new.side_effect = requests.RequestException("network error")
+            mock_legacy.return_value = legacy_token
+
+            result = self.api.getLoginToken("test_user", "test_pass")
+
+        assert result == legacy_token
+        mock_new.assert_called_once_with("test_user", "test_pass")
+        mock_legacy.assert_called_once_with("test_user", "test_pass")
+
     def test_get_login_token_rate_limit_backoff(self):
         """Test rate-limit handling is propagated for coordinator retry scheduling."""
         with (
@@ -504,6 +525,10 @@ class TestSemsApi:
             NEW_LOGIN_URL,
             exc=requests.ConnectionError("Network error"),
         )
+        requests_mock.post(
+            OLD_LOGIN_URL,
+            exc=requests.ConnectionError("Network error"),
+        )
 
         result = self.api.getLoginToken(self.username, self.password)
 
@@ -745,6 +770,104 @@ class TestSemsApi:
             operation_name="getPowerStationIds API call",
         )
 
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_devices(self, mock_api_call):
+        """Test SEMS+ inverter discovery normalization."""
+        mock_api_call.return_value = {
+            "deviceDetailList": [
+                {
+                    "deviceType": "INVERTER",
+                    "statusDetailList": [
+                        {
+                            "status": 1,
+                            "snList": ["SN1"],
+                            "detailMap": {
+                                "SN1": {
+                                    "sn": "SN1",
+                                    "name": "Inverter",
+                                    "subtype": "grid",
+                                }
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+
+        assert self.api.getWebInverterDevices("station") == [
+            {"sn": "SN1", "name": "Inverter", "subtype": "grid", "status": 1}
+        ]
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telemetry(self, mock_api_call):
+        """Test SEMS+ telemetry normalization and unit conversion."""
+        mock_api_call.return_value = [
+            {
+                "code": "system",
+                "factors": [
+                    {"code": "sn", "data": "SN1"},
+                    {"code": "hTotal", "data": "10"},
+                    {"code": "Temperature", "data": "25.5"},
+                ],
+            },
+            {
+                "code": "ac",
+                "factors": [
+                    {"code": "pAc", "data": "1.064"},
+                    {"code": "Vac", "data": "233.3"},
+                    {"code": "Iac", "data": "4.3"},
+                    {"code": "Fac", "data": "49.95"},
+                ],
+            },
+            {
+                "code": "pv",
+                "factors": [
+                    {"code": "MPPT-1:Vpv", "data": "319.8"},
+                    {"code": "MPPT-1:Ipv", "data": "3.1"},
+                ],
+            },
+        ]
+
+        assert self.api.getWebInverterTelemetry("station", "SN1") == {
+            "sn": "SN1",
+            "hour_total": 10.0,
+            "tempperature": 25.5,
+            "vac1": 233.3,
+            "iac1": 4.3,
+            "fac1": 49.95,
+            "pac": 1064.0,
+            "vpv1": 319.8,
+            "ipv1": 3.1,
+        }
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting(self, mock_api_call):
+        """Test SEMS+ energy counter normalization."""
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_today",
+                "factors": [{"code": "proPvStatsToday", "data": "12.34"}],
+            },
+            {
+                "code": "telecounting_month",
+                "factors": [{"code": "proPvStatsMonth", "data": "123.45"}],
+            },
+            {
+                "code": "telecounting_lifetime",
+                "factors": [
+                    {"code": "proPvStatsTotal", "data": "12345.67"},
+                    {"code": "ratedPower", "data": "5"},
+                ],
+            },
+        ]
+
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "capacity": 5.0,
+            "eday": 12.34,
+            "thismonthetotle": 123.45,
+            "etotal": 12345.67,
+        }
+
     def test_get_power_station_ids_success_real_structure(self, requests_mock):
         """Test successful power station IDs retrieval with realistic response structure."""
         self.api._preferred_login_mode = "legacy"
@@ -866,6 +989,20 @@ class TestSemsApi:
         result = self.api.getData("station123")
 
         assert result == {}
+
+    @patch.object(SemsApi, "getWebData")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_data_uses_web_fallback_for_empty_inverters(
+        self, mock_api_call, mock_web_data
+    ):
+        """Test empty legacy monitor data uses the SEMS+ Web fallback."""
+        mock_api_call.return_value = {"inverter": []}
+        mock_web_data.return_value = {"inverter": [{"invert_full": {"sn": "SN1"}}]}
+
+        result = self.api.getData("station123")
+
+        assert result == mock_web_data.return_value
+        mock_web_data.assert_called_once_with("station123")
 
     def test_get_data_returns_empty_on_failure(self, requests_mock):
         """Test getData returns empty dict on login failure."""
