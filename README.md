@@ -4,7 +4,13 @@
 <a href="https://www.buymeacoffee.com/TimSoethout" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="20"></a>
 <a href="https://github.com/sponsors/timsoethout"><img alt="Sponsor" src="https://img.shields.io/badge/sponsor-30363D?&logo=GitHub-Sponsors&logoColor=#white" height="20"/></a>
 
-Integration for Home Assistant that retrieves PV data from GoodWe SEMS API.
+Integration for Home Assistant that retrieves PV data from the GoodWe SEMS and
+SEMS+ APIs.
+
+The integration uses the SEMS+ Web API for inverter discovery, live telemetry,
+and energy counters. It falls back to the legacy SEMS monitor API when that
+endpoint provides usable data. If the legacy response is empty, the SEMS+ Web
+API is used automatically.
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/TimSoethout/goodwe-sems-home-assistant)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TimSoethout/goodwe-sems-home-assistant/total)](https://tooomm.github.io/github-release-stats/?username=TimSoethout&repository=goodwe-sems-home-assistant)
@@ -24,13 +30,24 @@ Then search for "SEMS" in the Integrations tab (under Community). Click `HACS` >
 
 ### Manual Setup
 
-Crude sensor for Home Assistant that scrapes from GoodWe SEMS portal. Copy all the files in `custom_components/sems/` to `custom_components/sems/` your Home Assistant config dir.
+Copy all files in `custom_components/sems/` to `custom_components/sems/` in
+your Home Assistant configuration directory.
 
 ## Configure integration
 
 In the home assistant GUI, go to `Configuration` > `Integrations` and click the `Add Integration` button. Search for `GoodWe SEMS API`.
 
 Log in with your Goodwe SEMS (Plus) credentials and it should find your inverters.
+
+The integration creates inverter sensors for status, power, capacity,
+temperature, energy counters, PV strings, and grid measurements when those
+values are supplied by SEMS. Battery entities are created when battery devices
+and their supported functions are reported by the API.
+
+Some live values can be `unknown` or `unavailable` when an inverter is
+waiting, offline, or not producing. SEMS+ may omit live telemetry in that
+state while still returning historical energy counters. The integration does
+not replace missing values with zero.
 
 ### Optional: control the invertor power output via the "switch" entity
 
