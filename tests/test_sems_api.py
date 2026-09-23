@@ -868,6 +868,36 @@ class TestSemsApi:
             "etotal": 12345.67,
         }
 
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_station_flow(self, mock_api_call):
+        """Test station-flow response retrieval."""
+        mock_api_call.return_value = {"id": "station", "pAc": 2.28}
+
+        assert self.api.getWebStationFlow("station") == {
+            "id": "station",
+            "pAc": 2.28,
+        }
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_battery_system_telemetry(self, mock_api_call):
+        """Test BAT_SYS telemetry normalization."""
+        mock_api_call.return_value = [
+            {
+                "code": "battery",
+                "factors": [
+                    {"code": "SOC", "data": "85"},
+                    {"code": "pBat", "data": "1.2"},
+                    {"code": "VBat", "data": "400"},
+                ],
+            }
+        ]
+
+        assert self.api.getBatterySystemTelemetry("station", "BAT1") == {
+            "soc": 85.0,
+            "power": 1.2,
+            "voltage": 400.0,
+        }
+
     def test_get_power_station_ids_success_real_structure(self, requests_mock):
         """Test successful power station IDs retrieval with realistic response structure."""
         self.api._preferred_login_mode = "legacy"

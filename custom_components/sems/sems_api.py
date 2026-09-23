@@ -22,6 +22,7 @@ _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
 _PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
 _WebDeviceStatusURLPart = "/sems-plant/api/stations/device/all-status"
+_WebStationFlowURLPart = "/sems-plant/api/stations/flow"
 _WebTelemetryURLPart = "/sems-plant/api/equipments/{serial_number}/telemetry"
 _WebTelecountingURLPart = "/sems-plant/api/equipments/{serial_number}/telecounting"
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
@@ -690,6 +691,20 @@ class SemsApi:
                         devices.append({**detail, "status": status_group.get("status")})
         return devices
 
+    def getWebStationFlow(
+        self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
+    ) -> dict[str, Any]:
+        """Get station-level power flow from SEMS+ Web."""
+        result = self._make_api_call(
+            f"{_WebStationFlowURLPart}?stationId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getWebStationFlow API call",
+            is_web=True,
+        )
+        return result if isinstance(result, dict) else {}
+
     def getWebInverterTelemetry(
         self,
         powerStationId: str,
@@ -783,6 +798,41 @@ class SemsApi:
         )
 
         return result if isinstance(result, list) else []
+
+    def getBatterySystemTelemetry(
+        self,
+        powerStationId: str,
+        serialNumber: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get telemetry for a related BAT_SYS device."""
+        result = self._make_api_call(
+            f"{_WebTelemetryURLPart.format(serial_number=serialNumber)}"
+            f"?deviceType=BAT_SYS&pwId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getBatterySystemTelemetry API call",
+            is_web=True,
+        )
+        factors = self._flatten_web_factors(
+            result if isinstance(result, list) else None
+        )
+        field_map = {
+            "SOC": "soc",
+            "pBat": "power",
+            "VBat": "voltage",
+            "IBat": "current",
+            "Temperature": "temperature",
+            "MaxChargeCurrent": "max_charge_current",
+            "MaxDischargeCurrent": "max_discharge_current",
+        }
+        return {
+            target: value
+            for source, target in field_map.items()
+            if (value := self._numeric_web_factor(factors, source)) is not None
+        }
 
     def getBatteryGeneralFunctions(
         self,
