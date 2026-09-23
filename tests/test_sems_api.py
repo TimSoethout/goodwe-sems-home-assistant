@@ -856,6 +856,31 @@ class TestSemsApi:
             {"sn": "SN1", "name": "Inverter", "subtype": "grid", "status": 1}
         ]
 
+    @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
+    @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
+    @patch.object(SemsApi, "getWebInverterDevices")
+    def test_get_web_data_uses_name_as_model(
+        self, mock_devices, mock_telemetry, mock_telecounting
+    ):
+        """Test SEMS+ fallback combines the device name and subtype as model."""
+        mock_devices.return_value = [{"sn": "SN1", "name": "Zolder", "subtype": "grid"}]
+
+        assert self.api.getWebData("station") == {
+            "inverter": [
+                {
+                    "invert_full": {
+                        "sn": "SN1",
+                        "name": "Zolder",
+                        "subtype": "grid",
+                        "powerstation_id": "station",
+                        "model_type": "Zolder (grid)",
+                    }
+                }
+            ]
+        }
+        mock_telemetry.assert_called_once_with("station", "SN1", False, 2)
+        mock_telecounting.assert_called_once_with("station", "SN1", False, 2)
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telemetry(self, mock_api_call):
         """Test SEMS+ telemetry normalization and unit conversion."""
@@ -915,6 +940,14 @@ class TestSemsApi:
                 "factors": [{"code": "proPvStatsMonth", "data": "123.45"}],
             },
             {
+                "code": "telecounting_week",
+                "factors": [{"code": "proPvStatsWeek", "data": "56.78"}],
+            },
+            {
+                "code": "telecounting_year",
+                "factors": [{"code": "proPvStatsYear", "data": "2345.67"}],
+            },
+            {
                 "code": "telecounting_lifetime",
                 "factors": [
                     {"code": "proPvStatsTotal", "data": "12345.67"},
@@ -926,18 +959,10 @@ class TestSemsApi:
         assert self.api.getWebInverterTelecounting("station", "SN1") == {
             "capacity": 5.0,
             "eday": 12.34,
+            "eweek": 56.78,
             "thismonthetotle": 123.45,
+            "eyear": 2345.67,
             "etotal": 12345.67,
-        }
-
-    @patch.object(SemsApi, "_make_api_call")
-    def test_get_web_station_flow(self, mock_api_call):
-        """Test station-flow response retrieval."""
-        mock_api_call.return_value = {"id": "station", "pAc": 2.28}
-
-        assert self.api.getWebStationFlow("station") == {
-            "id": "station",
-            "pAc": 2.28,
         }
 
     @patch.object(SemsApi, "_make_api_call")
@@ -977,22 +1002,6 @@ class TestSemsApi:
             operation_name="getBatterySystemDevices API call",
             is_web=True,
         )
-
-    @patch.object(SemsApi, "getBatterySystemTelemetry")
-    @patch.object(SemsApi, "getBatterySystemDevices")
-    def test_get_battery_system_data_skips_failed_devices(
-        self, mock_devices, mock_telemetry
-    ):
-        """Test optional battery enrichment isolates per-device failures."""
-        mock_devices.return_value = [{"sn": "BAT1"}, {"sn": "BAT2"}]
-        mock_telemetry.side_effect = [
-            {"soc": 85.0},
-            requests.ConnectionError("offline"),
-        ]
-
-        assert self.api.getBatterySystemData("station", "INV1") == {
-            "BAT1": {"soc": 85.0}
-        }
 
     def test_get_power_station_ids_success_real_structure(self, requests_mock):
         """Test successful power station IDs retrieval with realistic response structure."""
@@ -1107,14 +1116,17 @@ class TestSemsApi:
         assert result["inverter"][0]["out_pac"] == 589.0
         assert result["inverter"][0]["eday"] == 8.9
 
+    @patch.object(SemsApi, "getWebData")
     @patch.object(SemsApi, "_make_api_call")
-    def test_get_data_returns_empty_dict_on_none(self, mock_api_call):
-        """Test getData method returns empty dict when API call returns None."""
+    def test_get_data_uses_web_fallback_on_none(self, mock_api_call, mock_web_data):
+        """Test a failed legacy monitor call uses the SEMS+ Web fallback."""
         mock_api_call.return_value = None
+        mock_web_data.return_value = {"inverter": [{"invert_full": {"sn": "SN1"}}]}
 
         result = self.api.getData("station123")
 
-        assert result == {}
+        assert result == mock_web_data.return_value
+        mock_web_data.assert_called_once_with("station123")
 
     @patch.object(SemsApi, "getWebData")
     @patch.object(SemsApi, "_make_api_call")

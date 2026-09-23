@@ -22,7 +22,6 @@ _GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
 _PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
 _PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
 _WebDeviceStatusURLPart = "/sems-plant/api/stations/device/all-status"
-_WebStationFlowURLPart = "/sems-plant/api/stations/flow"
 _WebTelemetryURLPart = "/sems-plant/api/equipments/{serial_number}/telemetry"
 _WebTelecountingURLPart = "/sems-plant/api/equipments/{serial_number}/telecounting"
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
@@ -600,6 +599,12 @@ class SemsApi:
             maxTokenRetries=maxTokenRetries,
             operation_name="getData API call",
         )
+        if result is None:
+            _LOGGER.debug(
+                "Legacy monitor request returned no usable response; using SEMS+ Web fallback"
+            )
+            web_result = self.getWebData(powerStationId)
+            return web_result if web_result.get("inverter") else {}
         if not isinstance(result, dict):
             return {}
         if isinstance(result.get("inverter"), list) and result["inverter"]:
@@ -633,20 +638,16 @@ class SemsApi:
                 ),
             }
             inverter.setdefault("powerstation_id", powerStationId)
-            inverter.setdefault("model_type", inverter.get("subtype"))
+            if "model_type" not in inverter:
+                name = inverter.get("name")
+                subtype = inverter.get("subtype")
+                inverter["model_type"] = (
+                    f"{name} ({subtype})"
+                    if name and subtype
+                    else name or subtype or "unknown"
+                )
             inverters.append({"invert_full": inverter})
-        result: dict[str, Any] = {"inverter": inverters}
-        try:
-            result["station_flow"] = self.getWebStationFlow(
-                powerStationId, renewToken, maxTokenRetries
-            )
-        except (
-            OutOfRetries,
-            SemsRateLimitedError,
-            requests.RequestException,
-        ) as exception:
-            _LOGGER.warning("SEMS+ station-flow enrichment failed: %s", exception)
-        return result
+        return {"inverter": inverters}
 
     @staticmethod
     def _flatten_web_factors(
@@ -709,20 +710,6 @@ class SemsApi:
                     if isinstance(detail, dict):
                         devices.append({**detail, "status": status_group.get("status")})
         return devices
-
-    def getWebStationFlow(
-        self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
-    ) -> dict[str, Any]:
-        """Get station-level power flow from SEMS+ Web."""
-        result = self._make_api_call(
-            f"{_WebStationFlowURLPart}?stationId={powerStationId}",
-            method="GET",
-            renewToken=renewToken,
-            maxTokenRetries=maxTokenRetries,
-            operation_name="getWebStationFlow API call",
-            is_web=True,
-        )
-        return result if isinstance(result, dict) else {}
 
     def getWebInverterTelemetry(
         self,
@@ -878,39 +865,6 @@ class SemsApi:
             for source, target in field_map.items()
             if (value := self._numeric_web_factor(factors, source)) is not None
         }
-
-    def getBatterySystemData(
-        self,
-        powerStationId: str,
-        serialNumber: str,
-        renewToken: bool = False,
-        maxTokenRetries: int = 2,
-    ) -> dict[str, dict[str, Any]]:
-        """Return optional BAT_SYS telemetry without affecting inverter updates."""
-        battery_data: dict[str, dict[str, Any]] = {}
-        for device in self.getBatterySystemDevices(
-            powerStationId, serialNumber, renewToken, maxTokenRetries
-        ):
-            battery_serial = device.get("sn")
-            if not isinstance(battery_serial, str):
-                continue
-            try:
-                telemetry = self.getBatterySystemTelemetry(
-                    powerStationId,
-                    battery_serial,
-                    renewToken,
-                    maxTokenRetries,
-                )
-            except (
-                OutOfRetries,
-                SemsRateLimitedError,
-                requests.RequestException,
-            ) as exception:
-                _LOGGER.warning("SEMS+ BAT_SYS telemetry failed: %s", exception)
-                continue
-            if telemetry:
-                battery_data[battery_serial] = telemetry
-        return battery_data
 
     def getBatteryGeneralFunctions(
         self,
