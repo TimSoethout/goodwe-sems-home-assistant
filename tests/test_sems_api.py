@@ -862,7 +862,7 @@ class TestSemsApi:
     def test_get_web_data_uses_name_as_model(
         self, mock_devices, mock_telemetry, mock_telecounting
     ):
-        """Test SEMS+ fallback uses the device name instead of its subtype as model."""
+        """Test SEMS+ fallback combines the device name and subtype as model."""
         mock_devices.return_value = [{"sn": "SN1", "name": "Zolder", "subtype": "grid"}]
 
         assert self.api.getWebData("station") == {
@@ -873,7 +873,7 @@ class TestSemsApi:
                         "name": "Zolder",
                         "subtype": "grid",
                         "powerstation_id": "station",
-                        "model_type": "Zolder",
+                        "model_type": "Zolder (grid)",
                     }
                 }
             ]
