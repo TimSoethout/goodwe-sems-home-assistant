@@ -2,9 +2,11 @@
 !.gitignore
 !README.md
 !SEMSPlusMigrationProposal.md
+!legacy/
+legacy/*
+!legacy/legacy_monitor_empty.json
 !all_status.json
 !browser_api_endpoints.json
-!legacy_monitor_empty.json
 !web_cross_login.json
 !station_flow.json
 !telecounting.json
