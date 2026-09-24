@@ -354,7 +354,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
                 homekit_data = data_result.get(GOODWE_SPELLING.homeKit)
                 if not isinstance(homekit_data, dict):
-                    homekit_data = {}
+                    homekit_data = powerflow
                 powerflow["sn"] = homekit_data.get("sn")
 
                 # Goodwe 'Power Meter' (not HomeKit) doesn't have a sn

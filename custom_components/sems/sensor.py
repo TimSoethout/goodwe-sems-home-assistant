@@ -611,6 +611,80 @@ def sensor_options_for_data(
                 SensorStateClass.MEASUREMENT,
             ),
         ]
+        for key, name, device_class, unit in (
+            (
+                "meter_power",
+                "Smart Meter Power",
+                SensorDeviceClass.POWER,
+                UnitOfPower.WATT,
+            ),
+            (
+                "meter_phase_a_power",
+                "Smart Meter Phase A Power",
+                SensorDeviceClass.POWER,
+                UnitOfPower.KILO_WATT,
+            ),
+            (
+                "meter_phase_b_power",
+                "Smart Meter Phase B Power",
+                SensorDeviceClass.POWER,
+                UnitOfPower.KILO_WATT,
+            ),
+            (
+                "meter_phase_c_power",
+                "Smart Meter Phase C Power",
+                SensorDeviceClass.POWER,
+                UnitOfPower.KILO_WATT,
+            ),
+            (
+                "meter_phase_a_voltage",
+                "Smart Meter Phase A Voltage",
+                SensorDeviceClass.VOLTAGE,
+                UnitOfElectricPotential.VOLT,
+            ),
+            (
+                "meter_phase_b_voltage",
+                "Smart Meter Phase B Voltage",
+                SensorDeviceClass.VOLTAGE,
+                UnitOfElectricPotential.VOLT,
+            ),
+            (
+                "meter_phase_c_voltage",
+                "Smart Meter Phase C Voltage",
+                SensorDeviceClass.VOLTAGE,
+                UnitOfElectricPotential.VOLT,
+            ),
+            (
+                "meter_phase_a_current",
+                "Smart Meter Phase A Current",
+                SensorDeviceClass.CURRENT,
+                UnitOfElectricCurrent.AMPERE,
+            ),
+            (
+                "meter_phase_b_current",
+                "Smart Meter Phase B Current",
+                SensorDeviceClass.CURRENT,
+                UnitOfElectricCurrent.AMPERE,
+            ),
+            (
+                "meter_phase_c_current",
+                "Smart Meter Phase C Current",
+                SensorDeviceClass.CURRENT,
+                UnitOfElectricCurrent.AMPERE,
+            ),
+        ):
+            if key in data.homekit:
+                sensors.append(
+                    SemsHomekitSensorType(
+                        device_info,
+                        f"{homekit_sn}-{key}",
+                        [key],
+                        name,
+                        device_class,
+                        unit,
+                        SensorStateClass.MEASUREMENT,
+                    )
+                )
         if data.homekit.get(GOODWE_SPELLING.hasEnergyStatisticsCharts):
             if any(key.startswith("Charts_") for key in data.homekit):
                 sensors += [

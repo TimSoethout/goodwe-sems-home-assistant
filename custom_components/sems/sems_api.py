@@ -18,7 +18,11 @@ _LOGGER = logging.getLogger(__name__)
 
 OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
 NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
-_SUPPORTED_WEB_DEVICE_TYPES = {"INVERTER", "ENERGY_STORAGE_INTEGRATED_CABINET"}
+_SUPPORTED_WEB_DEVICE_TYPES = {
+    "INVERTER",
+    "SMART_METER",
+    "ENERGY_STORAGE_INTEGRATED_CABINET",
+}
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
 # Web token plus X-Signature headers; the legacy monitor request uses POST with
 # {"powerStationId": "<station_id>"} and the legacy token header.
@@ -86,6 +90,7 @@ _WEB_TELEMETRY_ENDPOINT = ApiEndpoint(
 _WEB_TELECOUNTING_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/equipments/{serial_number}/telecounting", "web"
 )
+_WEB_STATION_FLOW_ENDPOINT = ApiEndpoint("/sems-plant/api/stations/flow", "web")
 
 
 class SemsApi:
@@ -690,6 +695,7 @@ class SemsApi:
     ) -> dict[str, Any]:
         """Build the legacy coordinator shape from SEMS+ Web responses."""
         inverters: list[dict[str, Any]] = []
+        smart_meters: list[dict[str, Any]] = []
         for device in self.getWebInverterDevices(
             powerStationId, renewToken, maxTokenRetries
         ):
@@ -699,7 +705,7 @@ class SemsApi:
             device_type = device.get("deviceType", "INVERTER")
             if not isinstance(device_type, str):
                 device_type = "INVERTER"
-            inverter = {
+            device_data = {
                 **device,
                 **self.getWebInverterTelemetry(
                     powerStationId,
@@ -716,17 +722,90 @@ class SemsApi:
                     device_type=device_type,
                 ),
             }
-            inverter.setdefault("powerstation_id", powerStationId)
-            if "model_type" not in inverter:
-                name = inverter.get("name")
-                subtype = inverter.get("subtype")
-                inverter["model_type"] = (
+            device_data.setdefault("powerstation_id", powerStationId)
+            if device_type == "SMART_METER":
+                smart_meters.append(device_data)
+                continue
+            if "model_type" not in device_data:
+                name = device_data.get("name")
+                subtype = device_data.get("subtype")
+                device_data["model_type"] = (
                     f"{name} ({subtype})"
                     if name and subtype
                     else name or subtype or "unknown"
                 )
-            inverters.append({"invert_full": inverter})
-        return {"inverter": inverters}
+            inverters.append({"invert_full": device_data})
+
+        result: dict[str, Any] = {"inverter": inverters}
+        if smart_meters:
+            flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
+            result.update(
+                {
+                    "hasPowerflow": bool(flow),
+                    "powerflow": self._normalize_web_homekit_data(
+                        flow, smart_meters[0]
+                    ),
+                    "hasEnergeStatisticsCharts": True,
+                }
+            )
+        return result
+
+    def getWebStationFlow(
+        self,
+        powerStationId: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get station power-flow data from SEMS+ Web."""
+        result = self._make_api_call(
+            f"{_WEB_STATION_FLOW_ENDPOINT.url_part}?stationId={powerStationId}",
+            method="GET",
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getWebStationFlow API call",
+            is_web=True,
+            token_type=_WEB_STATION_FLOW_ENDPOINT.token_type,
+        )
+        return result if isinstance(result, dict) else {}
+
+    @staticmethod
+    def _normalize_web_homekit_data(
+        flow: dict[str, Any], smart_meter: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Map SEMS+ flow and smart-meter counters to HomeKit fields."""
+        homekit: dict[str, Any] = {
+            "sn": smart_meter.get("sn"),
+            "gridStatus": 1,
+            "loadStatus": 1,
+        }
+        for source, target in (
+            ("pAc", "pv"),
+            ("pGrid", "grid"),
+            ("pConsum", "load"),
+        ):
+            if (value := flow.get(source)) is not None:
+                homekit[target] = float(value) * 1000
+        homekit.update(
+            {
+                key: value
+                for key, value in smart_meter.items()
+                if key.startswith("meter_")
+            }
+        )
+
+        for source, target in (
+            ("proPurchaseStatsToday", "Charts_buy"),
+            ("proGridStatsToday", "Charts_sell"),
+            ("proPurchaseStatsTotal", "Totals_buy"),
+            ("proGridStatsTotal", "Totals_sell"),
+        ):
+            if (value := smart_meter.get(source)) is not None:
+                homekit[target] = value
+
+        homekit["hasEnergeStatisticsCharts"] = any(
+            key.startswith(("Charts_", "Totals_")) for key in homekit
+        )
+        return homekit
 
     @staticmethod
     def _flatten_web_factors(
@@ -828,6 +907,7 @@ class SemsApi:
         numeric_fields = {
             "hTotal": "hour_total",
             "Temperature": "tempperature",
+            "totalPac": "meter_power",
             "Vac": "vac1",
             "PHASE-A:Vac": "vac1",
             "PHASE-B:Vac": "vac2",
@@ -839,6 +919,20 @@ class SemsApi:
         for source, target in numeric_fields.items():
             if (value := self._numeric_web_factor(factors, source)) is not None:
                 telemetry[target] = value
+        if "meter_power" in telemetry:
+            telemetry["meter_power"] *= 1000
+        for phase in ("A", "B", "C"):
+            for suffix, target in (
+                ("pAc", f"meter_phase_{phase.lower()}_power"),
+                ("voltage", f"meter_phase_{phase.lower()}_voltage"),
+                ("current", f"meter_phase_{phase.lower()}_current"),
+            ):
+                if (
+                    value := self._numeric_web_factor(
+                        factors, f"PHASE-{phase}:{suffix}"
+                    )
+                ) is not None:
+                    telemetry[target] = value
         if (value := self._numeric_web_factor(factors, "pAc")) is not None:
             telemetry["pac"] = value * 1000
         for index in range(1, 5):
@@ -885,6 +979,14 @@ class SemsApi:
         ):
             if (value := self._numeric_web_factor(factors, source)) is not None:
                 counters[target] = value
+        if device_type == "SMART_METER":
+            for period in ("Today", "Week", "Month", "Year", "Total"):
+                for source, target in (
+                    (f"proPurchaseStats{period}", f"proPurchaseStats{period}"),
+                    (f"proGridStats{period}", f"proGridStats{period}"),
+                ):
+                    if (value := self._numeric_web_factor(factors, source)) is not None:
+                        counters[target] = value
         return counters
 
     def getEnergyStorageIntegratedCabinets(

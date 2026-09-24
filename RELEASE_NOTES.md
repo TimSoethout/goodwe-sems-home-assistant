@@ -1,5 +1,45 @@
 # Release notes
 
+## 11.4.0-beta - 2026-09-24
+
+## SEMS+ Web entity recovery
+
+This release promotes the SEMS+ Web fallback after the legacy monitor endpoint
+became unreliable or returned empty data.
+
+### Working with SEMS+ Web
+
+- Inverter discovery, status, live power, runtime, temperature, grid
+  measurements, MPPT values, and PV energy counters when those fields are
+  reported by the Web API.
+- Station-flow HomeKit PV, grid, and load power entities.
+- Smart-meter discovery and total power.
+- Smart-meter phase A/B/C power, voltage, and current entities.
+- Smart-meter daily and lifetime grid import/export energy entities.
+- Separate Web authentication/session handling and recovery after legacy token
+  renewal.
+
+The entity mappings are based on sanitized real captures in
+`api_examples/station_flow_import.json`,
+`api_examples/smart_meter_telemetry.json`, and
+`api_examples/smart_meter_telecounting.json`.
+
+### Still limited
+
+- Battery and BMS entities are not fully restored by the smart-meter fallback;
+  they require the separate SEMS+ battery/device APIs and device-specific
+  captures.
+- Per-inverter legacy meter and battery charge/discharge fields are only
+  available when the corresponding SEMS+ factors are reported.
+- Inverter switching and immediate battery-charging controls still use their
+  existing control endpoints and are not replaced by the station-flow
+  fallback.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - integration changes and
+  release preparation.
+
 ## 11.3.0-beta - 2026-09-24
 
 ## What's changed

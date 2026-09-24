@@ -1033,6 +1033,37 @@ class TestSemsApi:
             "station", "SN1", False, 2, device_type="INVERTER"
         )
 
+    def test_normalize_web_homekit_data_maps_station_flow_and_meter(self):
+        """Test SEMS+ station flow and smart-meter values use HomeKit fields."""
+        result = SemsApi._normalize_web_homekit_data(
+            {"pAc": 0, "pGrid": -1.351, "pConsum": 1.351},
+            {
+                "sn": "METER1",
+                "meter_power": 1351,
+                "meter_phase_a_power": -0.451,
+                "proPurchaseStatsToday": 1.2,
+                "proGridStatsToday": 0.3,
+                "proPurchaseStatsTotal": 12.4,
+                "proGridStatsTotal": 3.5,
+            },
+        )
+
+        assert result == {
+            "sn": "METER1",
+            "gridStatus": 1,
+            "loadStatus": 1,
+            "pv": 0,
+            "grid": -1351,
+            "load": 1351,
+            "meter_power": 1351,
+            "meter_phase_a_power": -0.451,
+            "Charts_buy": 1.2,
+            "Charts_sell": 0.3,
+            "Totals_buy": 12.4,
+            "Totals_sell": 3.5,
+            "hasEnergeStatisticsCharts": True,
+        }
+
     @patch.object(
         SemsApi,
         "getWebInverterTelecounting",
