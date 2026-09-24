@@ -811,6 +811,7 @@ class TestSemsApi:
         """Test API call with token renewal."""
         # No initial token
         self.api._token = None
+        self.api._web_token = {"token": "stale-web-token"}
 
         mock_login.return_value = {"token": "new-token", "api": "https://api.test.com"}
 
@@ -823,6 +824,7 @@ class TestSemsApi:
 
         assert result == {"result": "success"}
         mock_login.assert_called_once_with(self.username, self.password)
+        assert self.api._web_token is None
 
     @patch.object(SemsApi, "getLoginToken")
     def test_make_api_call_login_failure(self, mock_login):

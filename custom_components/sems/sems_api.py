@@ -306,6 +306,8 @@ class SemsApi:
                 token = self._new_token
             else:
                 self._token = self.getLoginToken(self._username, self._password)
+                # A legacy re-login invalidates the SEMS+ Web session server-side.
+                self._web_token = None
                 token = self._token
 
         if token is None:
