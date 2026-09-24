@@ -46,17 +46,16 @@ class TestSemsApi:
             self.api,
             "_make_api_call",
             return_value={
-                "proSystemTotalStats": {
-                    "dataList": [
-                        {
-                            "statisticsList": [
-                                {"val": "1.25"},
-                                {"val": "not-a-number"},
-                                {"val": "Infinity"},
-                            ]
-                        }
-                    ]
-                }
+                "dataList": [
+                    {
+                        "item": "proSystemTotalStats",
+                        "statisticsList": [
+                            {"val": "1.25"},
+                            {"val": "not-a-number"},
+                            {"val": "Infinity"},
+                        ],
+                    }
+                ]
             },
         ) as mock_call:
             result = self.api._get_web_statistics(
@@ -70,7 +69,8 @@ class TestSemsApi:
         request = json.loads(mock_call.call_args.kwargs["data"])
         assert request["stationId"] == MOCK_POWER_STATION_ID
         assert request["dimension"] == "day"
-        assert request["item"]
+        assert request["items"]
+        assert request["isReport"] is False
 
     @patch("custom_components.sems.sems_api.requests.request")
     def test_make_http_request_success(self, mock_request):
@@ -1029,11 +1029,12 @@ class TestSemsApi:
             token_type="web",
         )
 
+    @patch.object(SemsApi, "getWebStationFlow", return_value={})
     @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
     @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
     @patch.object(SemsApi, "getWebInverterDevices")
     def test_get_web_data_uses_name_as_model(
-        self, mock_devices, mock_telemetry, mock_telecounting
+        self, mock_devices, mock_telemetry, mock_telecounting, mock_flow
     ):
         """Test SEMS+ fallback combines the device name and subtype as model."""
         mock_devices.return_value = [
@@ -1097,6 +1098,32 @@ class TestSemsApi:
             "hasEnergeStatisticsCharts": True,
         }
 
+    def test_normalize_web_homekit_data_maps_station_flow_without_meter(self):
+        """Test station flow remains usable when no smart meter is discovered."""
+        result = SemsApi._normalize_web_homekit_data(
+            {
+                "pSystem": 2.4,
+                "pAc": 2.4,
+                "pBat": -1.1,
+                "pGrid": -0.5,
+                "pConsum": 1.8,
+                "soc": 62,
+            }
+        )
+
+        assert result == {
+            "sn": None,
+            "gridStatus": 1,
+            "loadStatus": 1,
+            "pv": 2400,
+            "grid": -500,
+            "load": 1800,
+            "battery": -1100,
+            "batteryStatus": 1,
+            "soc": 62,
+            "hasEnergeStatisticsCharts": False,
+        }
+
     @patch.object(
         SemsApi,
         "getWebInverterTelecounting",
@@ -1109,10 +1136,11 @@ class TestSemsApi:
             "etotal": 21841.1,
         },
     )
+    @patch.object(SemsApi, "getWebStationFlow", return_value={})
     @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
     @patch.object(SemsApi, "getWebInverterDevices")
     def test_get_web_data_preserves_counters_without_live_telemetry(
-        self, mock_devices, mock_telemetry, mock_telecounting
+        self, mock_devices, mock_telemetry, mock_flow, mock_telecounting
     ):
         """Test a waiting inverter response with counters but no live telemetry."""
         mock_devices.return_value = [

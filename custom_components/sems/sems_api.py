@@ -25,6 +25,8 @@ _SUPPORTED_WEB_DEVICE_TYPES = {
     "INVERTER",
     "SMART_METER",
     "ENERGY_STORAGE_INTEGRATED_CABINET",
+    "BATTERY_RACK",
+    "DONGLE",
 }
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
 # Web token plus X-Signature headers; the legacy monitor request uses POST with
@@ -731,8 +733,8 @@ class SemsApi:
             data=json.dumps(
                 {
                     "stationId": power_station_id,
-                    "isReport": 0,
-                    "item": _WEB_STATISTICS_ITEMS,
+                    "isReport": False,
+                    "items": _WEB_STATISTICS_ITEMS,
                     "dimension": dimension,
                     "startTime": start.strftime("%Y-%m-%d"),
                     "endTime": end.strftime("%Y-%m-%d"),
@@ -746,25 +748,41 @@ class SemsApi:
             return None
 
         parsed: dict[str, list[float]] = {}
-        for item, item_data in response.items():
+        for item_data in response.get("dataList", []):
             if not isinstance(item_data, dict):
                 continue
+            item = item_data.get("item")
+            if not isinstance(item, str):
+                continue
             values: list[float] = []
-            for entry in item_data.get("dataList", []):
-                if not isinstance(entry, dict):
+            for statistic in item_data.get("statisticsList", []):
+                if not isinstance(statistic, dict):
                     continue
-                for statistic in entry.get("statisticsList", []):
-                    if not isinstance(statistic, dict):
-                        continue
-                    value = statistic.get("val")
-                    try:
-                        numeric_value = float(value)
-                    except (TypeError, ValueError):
-                        continue
-                    if math.isfinite(numeric_value):
-                        values.append(numeric_value)
+                value = statistic.get("val")
+                try:
+                    numeric_value = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if math.isfinite(numeric_value):
+                    values.append(numeric_value)
             if values:
                 parsed[item] = values
+        for summary_key, item in (
+            ("production", "proSystemTotalStats"),
+            ("proConsum", "proConsumStats"),
+            ("proGrid", "proGridStats"),
+            ("proPurchase", "proPurchaseStats"),
+            ("proSelfConsum", "proSelfConsumStats"),
+            ("proDischar", "proDischarStats"),
+            ("proChar", "proCharStats"),
+        ):
+            value = response.get(summary_key)
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(numeric_value) and item not in parsed:
+                parsed[item] = [numeric_value]
 
         self._web_cache[cache_key] = (time.monotonic(), parsed)
         return parsed
@@ -873,13 +891,13 @@ class SemsApi:
             inverters.append({"invert_full": device_data})
 
         result: dict[str, Any] = {"inverter": inverters}
-        if smart_meters:
-            flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
+        flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
+        if flow:
             result.update(
                 {
-                    "hasPowerflow": bool(flow),
+                    "hasPowerflow": True,
                     "powerflow": self._normalize_web_homekit_data(
-                        flow, smart_meters[0]
+                        flow, smart_meters[0] if smart_meters else None
                     ),
                     "hasEnergeStatisticsCharts": True,
                 }
@@ -940,11 +958,11 @@ class SemsApi:
 
     @staticmethod
     def _normalize_web_homekit_data(
-        flow: dict[str, Any], smart_meter: dict[str, Any]
+        flow: dict[str, Any], smart_meter: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Map SEMS+ flow and smart-meter counters to HomeKit fields."""
         homekit: dict[str, Any] = {
-            "sn": smart_meter.get("sn"),
+            "sn": smart_meter.get("sn") if smart_meter else None,
             "gridStatus": 1,
             "loadStatus": 1,
         }
@@ -952,16 +970,22 @@ class SemsApi:
             ("pAc", "pv"),
             ("pGrid", "grid"),
             ("pConsum", "load"),
+            ("pBat", "battery"),
         ):
             if (value := flow.get(source)) is not None:
                 homekit[target] = float(value) * 1000
-        homekit.update(
-            {
-                key: value
-                for key, value in smart_meter.items()
-                if key.startswith("meter_")
-            }
-        )
+        if (soc := flow.get("soc")) is not None:
+            homekit["soc"] = soc
+        if "battery" in homekit:
+            homekit["batteryStatus"] = 1
+        if smart_meter:
+            homekit.update(
+                {
+                    key: value
+                    for key, value in smart_meter.items()
+                    if key.startswith("meter_")
+                }
+            )
 
         for source, target in (
             ("proPurchaseStatsToday", "Charts_buy"),
@@ -969,7 +993,7 @@ class SemsApi:
             ("proPurchaseStatsTotal", "Totals_buy"),
             ("proGridStatsTotal", "Totals_sell"),
         ):
-            if (value := smart_meter.get(source)) is not None:
+            if smart_meter and (value := smart_meter.get(source)) is not None:
                 homekit[target] = value
 
         homekit["hasEnergeStatisticsCharts"] = any(

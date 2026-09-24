@@ -1,0 +1,58 @@
+{
+  "_fixture_note": "Sanitized response schema reported from the EU SEMS+ Web UI by Richaaldo. Placeholder strings intentionally represent redacted values, not measured data.",
+  "endpoint": "POST /web/sems/sems-plant/api/stations/statistics",
+  "request": {
+    "stationId": "<redacted>",
+    "isReport": false,
+    "items": [
+      "proConsumStats",
+      "proGridStats",
+      "proPurchaseStats",
+      "proSelfConsumStats",
+      "proDischarStats",
+      "proCharStats",
+      "proSystemTotalStats"
+    ],
+    "dimension": "day",
+    "startTime": "YYYY-MM-DD",
+    "endTime": "YYYY-MM-DD"
+  },
+  "response": {
+    "code": "00000",
+    "description": "<string>",
+    "traceId": "<redacted>",
+    "data": {
+      "proSelfConsum": "<number>",
+      "proSelfConsumRate": "<number>",
+      "production": "<number>",
+      "proGrid": "<number>",
+      "proGridRate": "<number>",
+      "proConsum": "<number>",
+      "contributionRate": "<number>",
+      "proPurchase": "<number>",
+      "proPurchaseRate": "<number>",
+      "proDiesel": "<number>",
+      "proDieselRate": "<number>",
+      "proDieselLoad": "<number>",
+      "proPurchaseLoad": "<number>",
+      "proPvStoreContribution": "<number>",
+      "proAcTotal": "<number>",
+      "dataList": [
+        {
+          "item": "proSystemTotalStats",
+          "unit": "kWh",
+          "statisticsList": [
+            {
+              "date": "<string>",
+              "val": "<number>"
+            }
+          ]
+        }
+      ],
+      "metricsTipKeys": [
+        "<string>"
+      ],
+      "hasProfit": "<boolean>"
+    }
+  }
+}
