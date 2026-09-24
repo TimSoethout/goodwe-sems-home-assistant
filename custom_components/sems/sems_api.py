@@ -161,7 +161,12 @@ class SemsApi:
             # Validate response code if requested
             if validate_code:
                 if response_code not in _SuccessCodes:
-                    _LOGGER.error(
+                    log_method = (
+                        _LOGGER.debug
+                        if response_code == "C0602" and "Telecounting" in operation_name
+                        else _LOGGER.error
+                    )
+                    log_method(
                         "%s failed with code: %s, message: %s",
                         operation_name,
                         response_code,
