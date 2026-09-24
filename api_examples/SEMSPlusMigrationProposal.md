@@ -413,7 +413,8 @@ being published.
 
 ## Validation plan
 
-Add mocked response fixtures from `api_examples/` and test:
+Add mocked response fixtures from the repository root `api_examples/` directory
+and test:
 
 - Legacy response with empty `data` activates the Web fallback.
 - Web device discovery returns one or multiple inverters.

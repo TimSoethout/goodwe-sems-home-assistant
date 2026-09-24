@@ -1,9 +1,29 @@
-# SEMS API examples
+# SEMS API examples and response captures
 
 These sanitized JSON files document response shapes observed while testing the
 GoodWe SEMS and SEMS+ APIs. Credentials, tokens, trace IDs, station IDs, serial
 numbers, and names are replaced with placeholders or representative values.
 Legacy SEMS response examples are kept in [`legacy/`](./legacy/).
+
+## Capturing a new endpoint or response
+
+1. Enable `custom_components.sems: debug` logging in Home Assistant.
+2. Reproduce the request or response shape and copy only the relevant redacted
+   response payload from the log. The integration logs SEMS+ response data in
+   redacted form; still review it manually before sharing or committing it.
+3. Add the sanitized JSON response under this directory. Put legacy SEMS
+   monitor responses in [`legacy/`](./legacy/); keep SEMS+ Web responses at the
+   top level.
+4. Add the endpoint, request method, required token type, and important fields
+   to this README.
+5. Add or update a fixture-backed regression test before adding a production
+   mapping. Include units, device type, region, and any known limitations in
+   the fixture or test documentation.
+
+Never commit credentials, cookies, authorization headers, signatures, live
+tokens, station IDs, serial numbers, trace IDs, or personal names. Replace
+them with stable placeholders. Do not commit an unredacted browser HAR; extract
+the relevant JSON response and sanitize it instead.
 
 ## Response reference
 

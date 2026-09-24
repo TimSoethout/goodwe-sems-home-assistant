@@ -64,5 +64,5 @@ two important constraints:
 
 The official references are useful for historical endpoint names and
 controller coverage, but the live SEMS+ browser capture and sanitized fixtures
-in [`custom_components/sems/api_examples/`](custom_components/sems/api_examples/)
+in [`api_examples/`](api_examples/)
 are the authoritative sources for the current Web API behavior.
