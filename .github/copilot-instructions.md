@@ -37,6 +37,11 @@
   relying on the response in integration code. Never commit credentials,
   cookies, authorization headers, signatures, tokens, station IDs, serial
   numbers, trace IDs, or personal names.
+- Prefer sanitized responses captured from the real API for integration tests:
+  load them as fixtures and exercise the complete response-normalization and
+  entity-creation path. Use hand-built mocks only for isolated error handling,
+  missing-field, boundary, or otherwise hard-to-capture cases. Automated tests
+  must never call the live GoodWe API or require user credentials.
 
 ## Session Wrap-Up
 - Before ending a copilot session, ask the user whether the work is finished or whether they want to continue with feedback. Use a short prompt so the user can choose to stop or iterate.
