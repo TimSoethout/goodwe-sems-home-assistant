@@ -24,6 +24,9 @@ AC_FEQ_EMPTY = 655.35
 
 STATUS_LABELS = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault", 5: "Normal"}
 GRID_STATUS_LABELS = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
+INVERTER_ON_STATUSES = frozenset(
+    status for status, label in STATUS_LABELS.items() if label == "Normal"
+)
 
 
 class GOODWE_SPELLING:

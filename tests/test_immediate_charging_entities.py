@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from unittest.mock import patch
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
@@ -217,3 +218,17 @@ async def test_inverter_switch_without_battery(hass: HomeAssistant) -> None:
     hass.states.async_set(entity_id, "off")
     await hass.async_block_till_done()
     assert hass.states.get(entity_id).state == "off"
+
+
+async def test_inverter_switch_status_five_is_on(hass: HomeAssistant) -> None:
+    """Treat the SEMS+ normal status as an active inverter switch."""
+    get_data = deepcopy(MOCK_GET_DATA_RESULT_MINIMAL)
+    get_data["inverter"][0]["status"] = 5
+
+    await _setup_entry(hass, cabinets=[], functions={}, get_data=get_data)
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        Platform.SWITCH, DOMAIN, f"{INVERTER_SERIAL}-switch"
+    )
+    assert entity_id is not None
+    assert hass.states.get(entity_id).state == "on"
