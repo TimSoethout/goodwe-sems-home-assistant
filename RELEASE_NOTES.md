@@ -28,6 +28,12 @@ installations where the legacy monitor endpoint returns empty data.
 - Inverter switching and immediate battery-charging controls still use their
   existing control endpoints.
 
+### Contributor
+
+- [@kieranlee1970](https://github.com/kieranlee1970) - community battery
+  restoration code and station-statistics implementation that informed this
+  beta.
+
 ## 11.4.0-beta - 2026-09-24
 
 ## SEMS+ Web entity recovery
