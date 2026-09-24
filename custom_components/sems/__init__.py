@@ -34,6 +34,18 @@ _IMMEDIATE_CHARGING_FUNCTION_KEYS = {
     "bat_immediate_charge_power",
 }
 
+_ENERGY_STATISTICS_CHART_KEYS = {
+    "sum",
+    "buy",
+    "sell",
+    "selfUseOfPv",
+    "consumptionOfLoad",
+    "charge",
+    "disCharge",
+    "gensetGen",
+    "microGridGen",
+}
+
 
 @dataclass(slots=True)
 class SemsRuntimeData:
@@ -44,6 +56,32 @@ class SemsRuntimeData:
 
 
 type SemsConfigEntry = ConfigEntry[SemsRuntimeData]
+
+
+def _normalize_energy_statistics_charts(
+    charts: dict[str, Any], inverter_capacity_kw: float | None
+) -> dict[str, Any]:
+    """Convert daily chart fields from Wh when they exceed inverter capacity."""
+    if not inverter_capacity_kw or inverter_capacity_kw <= 0:
+        return charts.copy()
+
+    max_daily_energy_kwh = inverter_capacity_kw * 24
+    normalized = charts.copy()
+    for key in _ENERGY_STATISTICS_CHART_KEYS:
+        value = normalized.get(key)
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value > max_daily_energy_kwh
+        ):
+            normalized[key] = value / 1000
+            _LOGGER.debug(
+                "Normalized SEMS chart field %s from %s Wh to %s kWh",
+                key,
+                value,
+                normalized[key],
+            )
+    return normalized
 
 
 @dataclass(slots=True)
@@ -289,6 +327,16 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                     charts = data_result.get(GOODWE_SPELLING.energyStatisticsCharts)
                     if not isinstance(charts, dict):
                         charts = {}
+                    else:
+                        capacities = [
+                            inverter.get("capacity")
+                            for inverter in inverters_by_sn.values()
+                            if isinstance(inverter.get("capacity"), (int, float))
+                        ]
+                        inverter_capacity_kw = sum(capacities) if capacities else None
+                        charts = _normalize_energy_statistics_charts(
+                            charts, inverter_capacity_kw
+                        )
                     totals = data_result.get(GOODWE_SPELLING.energyStatisticsTotals)
                     if not isinstance(totals, dict):
                         totals = {}
