@@ -39,6 +39,8 @@ The entity mappings are based on sanitized real captures in
 
 - [@TimSoethout](https://github.com/TimSoethout) - integration changes and
   release preparation.
+- [@DingoDan21](https://github.com/DingoDan21) - sanitized SEMS+ smart-meter,
+  station-flow, telemetry, and telecounting API captures and validation.
 
 ## 11.3.0-beta - 2026-09-24
 
