@@ -1,5 +1,33 @@
 # Release notes
 
+## 11.5.0-beta - 2026-09-24
+
+## Additional SEMS+ entity recovery
+
+This beta builds on the SEMS+ Web fallback and restores more entities for
+installations where the legacy monitor endpoint returns empty data.
+
+### Working with SEMS+ Web
+
+- Battery and BAT_SYS telemetry for supported storage cabinets and store
+  devices, including state of charge, state of health, power, voltage,
+  current, temperature, and charge/discharge limits.
+- Battery daily and lifetime charge/discharge counters when reported.
+- Optional station day, month, and historical year energy statistics for
+  production, consumption, grid import/export, battery charge/discharge, and
+  self-consumption.
+- Cached statistics requests with defensive parsing so unavailable or
+  malformed historical data does not break coordinator updates.
+
+### Still limited
+
+- Battery/BMS availability depends on the installation exposing a related
+  storage device and the corresponding BAT_SYS factors.
+- Station statistics depend on the SEMS+ Web statistics endpoint being
+  available for the account; no legacy statistics fallback is added.
+- Inverter switching and immediate battery-charging controls still use their
+  existing control endpoints.
+
 ## 11.4.0-beta - 2026-09-24
 
 ## SEMS+ Web entity recovery

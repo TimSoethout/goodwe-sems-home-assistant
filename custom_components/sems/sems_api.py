@@ -4,13 +4,16 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import time
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any, Literal, NamedTuple
 
 import requests
 from homeassistant import exceptions
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import redact_for_log
 
@@ -91,6 +94,21 @@ _WEB_TELECOUNTING_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/equipments/{serial_number}/telecounting", "web"
 )
 _WEB_STATION_FLOW_ENDPOINT = ApiEndpoint("/sems-plant/api/stations/flow", "web")
+_WEB_STATION_STATISTICS_ENDPOINT = ApiEndpoint(
+    "/sems-plant/api/stations/statistics", "web"
+)
+_WEB_STATISTICS_ITEMS = [
+    "proConsumStats",
+    "proGridStats",
+    "proPurchaseStats",
+    "proSelfConsumStats",
+    "proDischarStats",
+    "proCharStats",
+    "proSystemTotalStats",
+]
+_WEB_STATISTICS_REFRESH_SECONDS = 300
+_WEB_HISTORIC_STATISTICS_REFRESH_SECONDS = 86_400
+_WEB_STATISTICS_EARLIEST_YEAR = 2015
 
 
 class SemsApi:
@@ -105,6 +123,7 @@ class SemsApi:
         self._new_token: dict[str, Any] | None = None
         self._web_token: dict[str, Any] | None = None  # Used for SEMS+ web APIs
         self._preferred_login_mode: TokenType | None = None
+        self._web_cache: dict[str, tuple[float, Any]] = {}
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
@@ -690,6 +709,123 @@ class SemsApi:
         )
         return self.getWebData(powerStationId)
 
+    def _get_web_statistics(
+        self,
+        power_station_id: str,
+        dimension: str,
+        start: datetime,
+        end: datetime,
+    ) -> dict[str, list[float]] | None:
+        cache_key = f"{power_station_id}:{dimension}:{start.date()}:{end.date()}"
+        refresh = (
+            _WEB_STATISTICS_REFRESH_SECONDS
+            if dimension == "day"
+            else _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS
+        )
+        cached = self._web_cache.get(cache_key)
+        if cached and time.monotonic() - cached[0] < refresh:
+            return cached[1]
+
+        response = self._make_api_call(
+            _WEB_STATION_STATISTICS_ENDPOINT.url_part,
+            data=json.dumps(
+                {
+                    "stationId": power_station_id,
+                    "isReport": 0,
+                    "item": _WEB_STATISTICS_ITEMS,
+                    "dimension": dimension,
+                    "startTime": start.strftime("%Y-%m-%d"),
+                    "endTime": end.strftime("%Y-%m-%d"),
+                }
+            ),
+            operation_name="getWebStationStatistics API call",
+            is_web=True,
+            token_type=_WEB_STATION_STATISTICS_ENDPOINT.token_type,
+        )
+        if not isinstance(response, dict):
+            return None
+
+        parsed: dict[str, list[float]] = {}
+        for item, item_data in response.items():
+            if not isinstance(item_data, dict):
+                continue
+            values: list[float] = []
+            for entry in item_data.get("dataList", []):
+                if not isinstance(entry, dict):
+                    continue
+                for statistic in entry.get("statisticsList", []):
+                    if not isinstance(statistic, dict):
+                        continue
+                    value = statistic.get("val")
+                    try:
+                        numeric_value = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if math.isfinite(numeric_value):
+                        values.append(numeric_value)
+            if values:
+                parsed[item] = values
+
+        self._web_cache[cache_key] = (time.monotonic(), parsed)
+        return parsed
+
+    def _get_web_energy_statistics(
+        self, power_station_id: str, inverters: list[dict[str, Any]]
+    ) -> tuple[dict[str, Any], dict[str, float], str | None, float | None] | None:
+        """Return chart and lifetime statistics without making them coordinator-critical."""
+        try:
+            now = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            current_year = now.year
+            charts: dict[str, Any] = {}
+            totals: dict[str, float] = {}
+            currency: str | None = None
+            last_month_pv: float | None = None
+
+            for dimension, start, end in (
+                ("day", now, now + timedelta(days=1)),
+                (
+                    "month",
+                    now.replace(day=1),
+                    now.replace(day=1) + timedelta(days=32),
+                ),
+            ):
+                data = self._get_web_statistics(power_station_id, dimension, start, end)
+                if not data:
+                    continue
+                if dimension == "day":
+                    charts.update(
+                        {
+                            "sum": sum(data.get("proSystemTotalStats", [])),
+                            "buy": sum(data.get("proPurchaseStats", [])),
+                            "sell": sum(data.get("proGridStats", [])),
+                            "selfUseOfPv": sum(data.get("proSelfConsumStats", [])),
+                            "consumptionOfLoad": sum(data.get("proConsumStats", [])),
+                            "charge": sum(data.get("proCharStats", [])),
+                            "disCharge": sum(data.get("proDischarStats", [])),
+                        }
+                    )
+                if dimension == "month":
+                    last_month_pv = sum(data.get("proSystemTotalStats", []))
+
+            for year in range(_WEB_STATISTICS_EARLIEST_YEAR, current_year + 1):
+                data = self._get_web_statistics(
+                    power_station_id,
+                    "year",
+                    datetime(year, 1, 1),
+                    datetime(year + 1, 1, 1),
+                )
+                if not data:
+                    continue
+                for item, values in data.items():
+                    totals[item] = totals.get(item, 0.0) + sum(values)
+
+            if len(inverters) == 1:
+                currency = inverters[0].get("invert_full", {}).get("currency")
+            return charts, totals, currency, last_month_pv
+        except (OutOfRetries, SemsRateLimitedError) as err:
+            _LOGGER.debug("SEMS station statistics unavailable: %s", err)
+            return None
+
     def getWebData(
         self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
     ) -> dict[str, Any]:
@@ -748,6 +884,40 @@ class SemsApi:
                     "hasEnergeStatisticsCharts": True,
                 }
             )
+        storage_cabinets: dict[str, list[dict[str, Any]]] = {}
+        for inverter in inverters:
+            inverter_full = inverter["invert_full"]
+            if not (
+                inverter_full.get("deviceType") == "ENERGY_STORAGE_INTEGRATED_CABINET"
+                or inverter_full.get("subtype") == "store"
+            ):
+                continue
+            serial_number = inverter_full["sn"]
+            cabinets = self.getEnergyStorageIntegratedCabinets(
+                powerStationId, serial_number, renewToken, maxTokenRetries
+            )
+            storage_cabinets[serial_number] = cabinets
+            batteries = self._get_web_batteries(powerStationId, cabinets)
+            if batteries:
+                inverter_full["battery_count"] = len(batteries)
+                inverter_full["more_batterys"] = batteries
+        if any(storage_cabinets.values()):
+            result["info"] = {"is_stored": True}
+            result["_energy_storage_cabinets"] = storage_cabinets
+        if result.get("hasPowerflow"):
+            statistics = self._get_web_energy_statistics(powerStationId, inverters)
+            if statistics is not None:
+                charts, totals, currency, last_month_pv = statistics
+                if charts:
+                    result["hasEnergeStatisticsCharts"] = True
+                    result["energeStatisticsCharts"] = charts
+                    result["energeStatisticsTotals"] = totals
+                if last_month_pv is not None and len(inverters) == 1:
+                    invert_full = inverters[0].get("invert_full")
+                    if isinstance(invert_full, dict):
+                        invert_full["lastmonthetotle"] = last_month_pv
+                if currency is not None:
+                    result["kpi"] = {"currency": currency}
         return result
 
     def getWebStationFlow(
@@ -976,6 +1146,10 @@ class SemsApi:
             ("proPvStatsMonth", "thismonthetotle"),
             ("proPvStatsYear", "eyear"),
             ("proPvStatsTotal", "etotal"),
+            ("proCharStatsToday", "eChargeDay"),
+            ("proDischarStatsToday", "eDischargeDay"),
+            ("proCharStatsTotal", "echarge_total"),
+            ("proDischarStatsTotal", "edischarge_total"),
         ):
             if (value := self._numeric_web_factor(factors, source)) is not None:
                 counters[target] = value
@@ -1007,6 +1181,38 @@ class SemsApi:
         )
 
         return result if isinstance(result, list) else []
+
+    def _get_web_batteries(
+        self, powerStationId: str, cabinets: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Map related BAT_SYS telemetry into the existing battery entity shape."""
+        batteries: list[dict[str, Any]] = []
+        for cabinet in cabinets:
+            if not isinstance(cabinet, dict):
+                continue
+            device_type = cabinet.get("type") or cabinet.get("deviceType")
+            if device_type != "BAT_SYS":
+                continue
+            serial_number = cabinet.get("sn")
+            if not isinstance(serial_number, str):
+                continue
+            telemetry = self.getBatterySystemTelemetry(powerStationId, serial_number)
+            battery: dict[str, Any] = {"sn": serial_number}
+            for source, target in (
+                ("power", "pbattery"),
+                ("voltage", "vbattery"),
+                ("current", "ibattery"),
+                ("soc", "soc"),
+                ("soh", "soh"),
+                ("temperature", "bms_temperature"),
+                ("max_charge_current", "bms_charge_i_max"),
+                ("max_discharge_current", "bms_discharge_i_max"),
+            ):
+                if (value := telemetry.get(source)) is not None:
+                    battery[target] = value * 1000 if source == "power" else value
+            if len(battery) > 1:
+                batteries.append(battery)
+        return batteries
 
     def getBatterySystemDevices(
         self,
@@ -1043,11 +1249,18 @@ class SemsApi:
             maxTokenRetries=maxTokenRetries,
             operation_name="getBatterySystemTelemetry API call",
             is_web=True,
+            token_type=_WEB_TELEMETRY_ENDPOINT.token_type,
         )
         factors = self._flatten_web_factors(
             result if isinstance(result, list) else None
         )
         field_map = {
+            "soc": "soc",
+            "soh": "soh",
+            "a": "current",
+            "batSysTemp": "temperature",
+            "aMaxChar": "max_charge_current",
+            "aMaxDischar": "max_discharge_current",
             "SOC": "soc",
             "pBat": "power",
             "VBat": "voltage",

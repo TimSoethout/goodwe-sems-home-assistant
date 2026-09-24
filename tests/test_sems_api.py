@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -38,6 +39,38 @@ class TestSemsApi:
         assert self.api._username == self.username
         assert self.api._password == self.password
         assert self.api._token is None
+
+    def test_web_station_statistics_parses_only_finite_values(self):
+        """Test station statistics parsing ignores malformed values."""
+        with patch.object(
+            self.api,
+            "_make_api_call",
+            return_value={
+                "proSystemTotalStats": {
+                    "dataList": [
+                        {
+                            "statisticsList": [
+                                {"val": "1.25"},
+                                {"val": "not-a-number"},
+                                {"val": "Infinity"},
+                            ]
+                        }
+                    ]
+                }
+            },
+        ) as mock_call:
+            result = self.api._get_web_statistics(
+                MOCK_POWER_STATION_ID,
+                "day",
+                datetime(2026, 1, 1),
+                datetime(2026, 1, 2),
+            )
+
+        assert result == {"proSystemTotalStats": [1.25]}
+        request = json.loads(mock_call.call_args.kwargs["data"])
+        assert request["stationId"] == MOCK_POWER_STATION_ID
+        assert request["dimension"] == "day"
+        assert request["item"]
 
     @patch("custom_components.sems.sems_api.requests.request")
     def test_make_http_request_success(self, mock_request):
@@ -1236,6 +1269,33 @@ class TestSemsApi:
         }
 
     @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_maps_battery_counters(self, mock_api_call):
+        """Test SEMS+ battery charge and discharge counter normalization."""
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_today",
+                "factors": [
+                    {"code": "proCharStatsToday", "data": "12.1"},
+                    {"code": "proDischarStatsToday", "data": "5.4"},
+                ],
+            },
+            {
+                "code": "telecounting_lifetime",
+                "factors": [
+                    {"code": "proCharStatsTotal", "data": "120.1"},
+                    {"code": "proDischarStatsTotal", "data": "55.4"},
+                ],
+            },
+        ]
+
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eChargeDay": 12.1,
+            "eDischargeDay": 5.4,
+            "echarge_total": 120.1,
+            "edischarge_total": 55.4,
+        }
+
+    @patch.object(SemsApi, "_make_api_call")
     def test_get_battery_system_telemetry(self, mock_api_call):
         """Test BAT_SYS telemetry normalization."""
         mock_api_call.return_value = [
@@ -1254,6 +1314,43 @@ class TestSemsApi:
             "power": 1.2,
             "voltage": 400.0,
         }
+        mock_api_call.assert_called_once_with(
+            "/sems-plant/api/equipments/BAT1/telemetry?deviceType=BAT_SYS&pwId=station",
+            method="GET",
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getBatterySystemTelemetry API call",
+            is_web=True,
+            token_type="web",
+        )
+
+    @patch.object(SemsApi, "getBatterySystemTelemetry")
+    def test_get_web_batteries_maps_existing_entity_shape(self, mock_telemetry):
+        """Test related BAT_SYS values map to the existing battery sensors."""
+        mock_telemetry.return_value = {
+            "soc": 85,
+            "soh": 98,
+            "power": -1.2,
+            "voltage": 400,
+            "current": -3,
+            "temperature": 24,
+        }
+
+        assert self.api._get_web_batteries(
+            "station",
+            [{"sn": "BAT1", "deviceType": "BAT_SYS"}],
+        ) == [
+            {
+                "sn": "BAT1",
+                "soc": 85,
+                "soh": 98,
+                "pbattery": -1200,
+                "vbattery": 400,
+                "ibattery": -3,
+                "bms_temperature": 24,
+            }
+        ]
+        mock_telemetry.assert_called_once_with("station", "BAT1")
 
     @patch.object(SemsApi, "_make_api_call")
     def test_get_battery_system_devices(self, mock_api_call):
