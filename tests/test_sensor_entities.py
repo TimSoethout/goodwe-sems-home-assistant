@@ -12,7 +12,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sems import SemsData
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
-from custom_components.sems.sensor import sensor_options_for_data
+from custom_components.sems.sensor import (
+    convert_status_to_label,
+    sensor_options_for_data,
+)
 
 from .fixtures import (
     MOCK_GET_DATA_ACTUAL_JSON,
@@ -20,6 +23,11 @@ from .fixtures import (
 )
 
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
+
+
+def test_status_code_5_is_normal() -> None:
+    """Test that the SEMS+ active status code is mapped to Normal."""
+    assert convert_status_to_label(5) == "Normal"
 
 
 @contextmanager

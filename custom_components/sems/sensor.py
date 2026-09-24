@@ -41,6 +41,7 @@ from .const import (
     AC_FEQ_EMPTY,
     DOMAIN,
     GOODWE_SPELLING,
+    GRID_STATUS_LABELS,
     STATUS_LABELS,
     redact_for_log,
 )
@@ -1056,11 +1057,10 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
 
     @staticmethod
     def _status_text(status: Any) -> str:
-        labels = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
         if status is None:
             return "Unknown"
         try:
-            return labels[int(status)]
+            return GRID_STATUS_LABELS[int(status)]
         except (TypeError, ValueError, KeyError):
             return "Unknown"
 

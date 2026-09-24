@@ -22,7 +22,8 @@ AC_CURRENT_EMPTY = 6553.5
 AC_FEQ_EMPTY = 655.35
 
 
-STATUS_LABELS = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
+STATUS_LABELS = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault", 5: "Normal"}
+GRID_STATUS_LABELS = {-1: "Offline", 0: "Waiting", 1: "Normal", 2: "Fault"}
 
 
 class GOODWE_SPELLING:
