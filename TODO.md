@@ -10,8 +10,8 @@
 - [x] Add regression coverage for the reported `40633.4 Wh` value.
 - [x] Add regression coverage proving that large, plausible kWh values are not
   divided.
-- [ ] Ask affected users for the exact entity name and a sanitized raw
-  `energeStatisticsCharts` response if the problem recurs.
+- [x] Ask affected users for the exact entity name and a sanitized raw
+  `energeStatisticsCharts` response if the problem recurs (#228).
 - [ ] Confirm whether GoodWe exposes an explicit unit or response variant that
   can replace the capacity-based inference.
 - [ ] Validate the released behavior with a large installation whose daily
@@ -41,6 +41,32 @@
   downstream automations do not need duplicate or absolute-value sensors (#202).
 - [ ] Validate multi-inverter stations, including distinct entities, device
   metadata, status, and energy counters (#215).
+- [ ] Accept supported non-`INVERTER` device types such as
+  `ENERGY_STORAGE_INTEGRATED_CABINET` when they expose inverter-like PV/AC
+  telemetry, while preserving the device type for subsequent requests (#219).
+- [ ] Use each discovered device's type for telemetry and telecounting instead
+  of hardcoding `deviceType=INVERTER` (#219).
+- [ ] Handle stations whose discovery response contains only storage cabinets,
+  battery racks, or dongles instead of treating them as invalid inverter data
+  (#219).
+- [ ] Map SEMS+ station-flow data into the existing grid meter and HomeKit
+  power-flow entities, ensuring an idle secondary station cannot overwrite
+  live flow data from another config entry (#219).
+- [ ] Restore SEMS+ battery-rack telemetry to the existing battery entity
+  shape, including SOC, SOH, power, voltage, temperature, and charge/discharge
+  limits (#219).
+- [ ] Map `proCharStats*` and `proDischarStats*` telecounting fields to the
+  existing battery charge/discharge energy sensors (#219).
+- [ ] Create PV string entities consistently even when MPPT factors are absent
+  during the first refresh, so later telemetry can populate them (#219).
+- [ ] Preserve legacy inverter attribute names such as `vload`, `iload`, and
+  `soc` when normalizing SEMS+ responses (#219).
+- [ ] Treat expired cached Web tokens and `C0602` as a quiet renew-and-retry
+  path, using the token timestamp where possible, to reduce repeated error
+  logging (#219).
+- [ ] Investigate repeated Web telemetry `100025` responses separately from
+  authentication failures and collect the affected device type, region, and
+  raw response (#219).
 
 ## Reliability and controls
 
