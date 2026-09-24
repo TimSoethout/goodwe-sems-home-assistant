@@ -24,6 +24,7 @@ _PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
 _WebDeviceStatusURLPart = "/sems-plant/api/stations/device/all-status"
 _WebTelemetryURLPart = "/sems-plant/api/equipments/{serial_number}/telemetry"
 _WebTelecountingURLPart = "/sems-plant/api/equipments/{serial_number}/telecounting"
+_SUPPORTED_WEB_DEVICE_TYPES = {"INVERTER", "ENERGY_STORAGE_INTEGRATED_CABINET"}
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
 # Web token plus X-Signature headers; the legacy monitor request uses POST with
 # {"powerStationId": "<station_id>"} and the legacy token header.
@@ -561,6 +562,13 @@ class SemsApi:
                     retry_on_api_error,
                 )
 
+            if is_web and not self._is_sensitive_operation(operation_name):
+                _LOGGER.debug(
+                    "SEMS - %s response data: %s",
+                    operation_name,
+                    redact_for_log(json_response.get("data")),
+                )
+
             # Response is valid, return the data
             return json_response.get("data", {}) if is_web else json_response["data"]
 
@@ -628,13 +636,24 @@ class SemsApi:
             serial_number = device.get("sn")
             if not isinstance(serial_number, str):
                 continue
+            device_type = device.get("deviceType", "INVERTER")
+            if not isinstance(device_type, str):
+                device_type = "INVERTER"
             inverter = {
                 **device,
                 **self.getWebInverterTelemetry(
-                    powerStationId, serial_number, renewToken, maxTokenRetries
+                    powerStationId,
+                    serial_number,
+                    renewToken,
+                    maxTokenRetries,
+                    device_type=device_type,
                 ),
                 **self.getWebInverterTelecounting(
-                    powerStationId, serial_number, renewToken, maxTokenRetries
+                    powerStationId,
+                    serial_number,
+                    renewToken,
+                    maxTokenRetries,
+                    device_type=device_type,
                 ),
             }
             inverter.setdefault("powerstation_id", powerStationId)
@@ -695,7 +714,8 @@ class SemsApi:
         ):
             if not isinstance(device_group, dict):
                 continue
-            if device_group.get("deviceType") != "INVERTER":
+            device_type = device_group.get("deviceType")
+            if device_type not in _SUPPORTED_WEB_DEVICE_TYPES:
                 continue
             for status_group in device_group.get("statusDetailList", []):
                 if not isinstance(status_group, dict):
@@ -708,7 +728,13 @@ class SemsApi:
                         continue
                     detail = detail_map.get(serial_number, {})
                     if isinstance(detail, dict):
-                        devices.append({**detail, "status": status_group.get("status")})
+                        devices.append(
+                            {
+                                **detail,
+                                "deviceType": device_type,
+                                "status": status_group.get("status"),
+                            }
+                        )
         return devices
 
     def getWebInverterTelemetry(
@@ -717,11 +743,12 @@ class SemsApi:
         serialNumber: str,
         renewToken: bool = False,
         maxTokenRetries: int = 2,
+        device_type: str = "INVERTER",
     ) -> dict[str, Any]:
         """Get normalized live inverter telemetry from SEMS+ Web."""
         result = self._make_api_call(
             f"{_WebTelemetryURLPart.format(serial_number=serialNumber)}"
-            f"?deviceType=INVERTER&pwId={powerStationId}",
+            f"?deviceType={device_type}&pwId={powerStationId}",
             method="GET",
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
@@ -769,11 +796,12 @@ class SemsApi:
         serialNumber: str,
         renewToken: bool = False,
         maxTokenRetries: int = 2,
+        device_type: str = "INVERTER",
     ) -> dict[str, Any]:
         """Get normalized inverter energy counters from SEMS+ Web."""
         result = self._make_api_call(
             f"{_WebTelecountingURLPart.format(serial_number=serialNumber)}"
-            f"?deviceType=INVERTER&pwId={powerStationId}",
+            f"?deviceType={device_type}&pwId={powerStationId}",
             method="GET",
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,

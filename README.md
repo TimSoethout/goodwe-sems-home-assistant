@@ -100,6 +100,10 @@ Then share the relevant log lines.
 See https://www.home-assistant.io/integrations/system_log/ and https://my.home-assistant.io/redirect/logs .
 Click `...` > `Show full logs`.
 
+SEMS+ Web response data is included in debug logs in redacted form to help
+diagnose unsupported device types and missing fields. Remove any remaining
+station details or personal information before sharing logs.
+
 ## Notes
 
 * Sometimes the SEMS API is a bit slow, so time-out messages may occur in the log as `[ERROR]`. The component should continue to work normally and try fetch again the next minute.

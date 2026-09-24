@@ -848,12 +848,41 @@ class TestSemsApi:
                             },
                         }
                     ],
-                }
+                },
+                {
+                    "deviceType": "ENERGY_STORAGE_INTEGRATED_CABINET",
+                    "statusDetailList": [
+                        {
+                            "status": 5,
+                            "snList": ["CABINET1"],
+                            "detailMap": {
+                                "CABINET1": {
+                                    "sn": "CABINET1",
+                                    "name": "All-in-One",
+                                    "subtype": "storage",
+                                }
+                            },
+                        }
+                    ],
+                },
             ]
         }
 
         assert self.api.getWebInverterDevices("station") == [
-            {"sn": "SN1", "name": "Inverter", "subtype": "grid", "status": 1}
+            {
+                "sn": "SN1",
+                "name": "Inverter",
+                "subtype": "grid",
+                "deviceType": "INVERTER",
+                "status": 1,
+            },
+            {
+                "sn": "CABINET1",
+                "name": "All-in-One",
+                "subtype": "storage",
+                "deviceType": "ENERGY_STORAGE_INTEGRATED_CABINET",
+                "status": 5,
+            },
         ]
 
     @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
@@ -863,7 +892,14 @@ class TestSemsApi:
         self, mock_devices, mock_telemetry, mock_telecounting
     ):
         """Test SEMS+ fallback combines the device name and subtype as model."""
-        mock_devices.return_value = [{"sn": "SN1", "name": "Zolder", "subtype": "grid"}]
+        mock_devices.return_value = [
+            {
+                "sn": "SN1",
+                "name": "Zolder",
+                "subtype": "grid",
+                "deviceType": "INVERTER",
+            }
+        ]
 
         assert self.api.getWebData("station") == {
             "inverter": [
@@ -872,14 +908,19 @@ class TestSemsApi:
                         "sn": "SN1",
                         "name": "Zolder",
                         "subtype": "grid",
+                        "deviceType": "INVERTER",
                         "powerstation_id": "station",
                         "model_type": "Zolder (grid)",
                     }
                 }
             ]
         }
-        mock_telemetry.assert_called_once_with("station", "SN1", False, 2)
-        mock_telecounting.assert_called_once_with("station", "SN1", False, 2)
+        mock_telemetry.assert_called_once_with(
+            "station", "SN1", False, 2, device_type="INVERTER"
+        )
+        mock_telecounting.assert_called_once_with(
+            "station", "SN1", False, 2, device_type="INVERTER"
+        )
 
     @patch.object(
         SemsApi,
@@ -904,6 +945,7 @@ class TestSemsApi:
                 "sn": "SN1",
                 "name": "Zolder",
                 "subtype": "grid",
+                "deviceType": "INVERTER",
                 "status": 0,
             }
         ]
@@ -914,6 +956,7 @@ class TestSemsApi:
             "sn": "SN1",
             "name": "Zolder",
             "subtype": "grid",
+            "deviceType": "INVERTER",
             "status": 0,
             "powerstation_id": "station",
             "model_type": "Zolder (grid)",
@@ -926,8 +969,12 @@ class TestSemsApi:
         }
         assert "pac" not in inverter
         assert "tempperature" not in inverter
-        mock_telemetry.assert_called_once_with("station", "SN1", False, 2)
-        mock_telecounting.assert_called_once_with("station", "SN1", False, 2)
+        mock_telemetry.assert_called_once_with(
+            "station", "SN1", False, 2, device_type="INVERTER"
+        )
+        mock_telecounting.assert_called_once_with(
+            "station", "SN1", False, 2, device_type="INVERTER"
+        )
 
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telemetry(self, mock_api_call):
@@ -978,6 +1025,35 @@ class TestSemsApi:
             "ipv1": 3.1,
             "ppv1": 991.38,
         }
+
+    @patch.object(SemsApi, "_make_api_call", return_value=[])
+    def test_get_web_data_uses_discovered_device_type(self, mock_api_call):
+        """Test cabinet telemetry and telecounting use the discovered type."""
+        self.api.getWebInverterTelemetry(
+            "station",
+            "CABINET1",
+            device_type="ENERGY_STORAGE_INTEGRATED_CABINET",
+        )
+        self.api.getWebInverterTelecounting(
+            "station",
+            "CABINET1",
+            device_type="ENERGY_STORAGE_INTEGRATED_CABINET",
+        )
+
+        assert (
+            mock_api_call.call_args_list[0]
+            .args[0]
+            .endswith(
+                "telemetry?deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=station"
+            )
+        )
+        assert (
+            mock_api_call.call_args_list[1]
+            .args[0]
+            .endswith(
+                "telecounting?deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=station"
+            )
+        )
 
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telecounting(self, mock_api_call):
