@@ -664,6 +664,32 @@ class TestSemsApi:
         mock_login.assert_called_once_with("test_user", "test_password", is_web=True)
         mock_http_request.assert_called_once()
 
+    @patch.object(SemsApi, "_get_new_login_token")
+    @patch.object(SemsApi, "_make_http_request")
+    def test_make_new_token_web_api_call_success(self, mock_http_request, mock_login):
+        """Test a SEMS+ endpoint can use the non-Web login token."""
+        mock_token = {
+            "uid": "test-uid",
+            "token": "test-token",
+            "timestamp": 1234567890,
+            "client": "semsPlus",
+            "api": "https://api.test.com/",
+        }
+        mock_login.return_value = mock_token
+        mock_http_request.return_value = {"code": 0, "data": {"result": "success"}}
+
+        result = self.api._make_api_call(
+            "/test/endpoint",
+            operation_name="test new-token Web API call",
+            is_web=True,
+            token_type="new",
+        )
+
+        assert result == {"result": "success"}
+        assert self.api._new_token == mock_token
+        mock_login.assert_called_once_with("test_user", "test_password")
+        mock_http_request.assert_called_once()
+
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_make_http_request")
     def test_make_api_call_success(self, mock_http_request, mock_login):
@@ -826,6 +852,7 @@ class TestSemsApi:
             renewToken=False,
             maxTokenRetries=2,
             operation_name="getPowerStationIds API call",
+            token_type="legacy",
         )
 
     @patch.object(SemsApi, "_make_api_call")
@@ -884,6 +911,15 @@ class TestSemsApi:
                 "status": 5,
             },
         ]
+        mock_api_call.assert_called_once_with(
+            "/sems-plant/api/stations/device/all-status?stationId=station",
+            method="GET",
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getWebInverterDevices API call",
+            is_web=True,
+            token_type="new",
+        )
 
     @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
     @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
@@ -1169,6 +1205,7 @@ class TestSemsApi:
             renewToken=False,
             maxTokenRetries=2,
             operation_name="getData API call",
+            token_type="legacy",
         )
 
     def test_get_data_success_real_structure(self, requests_mock):

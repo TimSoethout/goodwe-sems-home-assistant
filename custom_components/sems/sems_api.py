@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import requests
 from homeassistant import exceptions
@@ -18,12 +18,6 @@ _LOGGER = logging.getLogger(__name__)
 
 OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
 NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
-_GetPowerStationIdByOwnerURLPart = "/PowerStation/GetPowerStationIdByOwner"
-_PowerStationURLPart = "/v3/PowerStation/GetMonitorDetailByPowerstationId"
-_PowerControlURLPart = "/PowerStation/SaveRemoteControlInverter"
-_WebDeviceStatusURLPart = "/sems-plant/api/stations/device/all-status"
-_WebTelemetryURLPart = "/sems-plant/api/equipments/{serial_number}/telemetry"
-_WebTelecountingURLPart = "/sems-plant/api/equipments/{serial_number}/telecounting"
 _SUPPORTED_WEB_DEVICE_TYPES = {"INVERTER", "ENERGY_STORAGE_INTEGRATED_CABINET"}
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
 # Web token plus X-Signature headers; the legacy monitor request uses POST with
@@ -56,8 +50,35 @@ _NewSEMSPlusWebLoginHeaders = {
 _NewLoginFallbackApi = "https://eu-gateway.semsportal.com/web/sems"
 _LegacyApiFallback = "https://eu.semsportal.com/api"
 
-type LoginMode = Literal["new", "legacy", "web"]
+type TokenType = Literal["legacy", "new", "web"]
 type LoginHandler = Callable[[str, str], dict[str, Any] | None]
+
+
+class ApiEndpoint(NamedTuple):
+    """Authenticated API endpoint and the token type it requires."""
+
+    url_part: str
+    token_type: TokenType
+
+
+_POWER_STATION_IDS_ENDPOINT = ApiEndpoint(
+    "/PowerStation/GetPowerStationIdByOwner", "legacy"
+)
+_POWER_STATION_ENDPOINT = ApiEndpoint(
+    "/v3/PowerStation/GetMonitorDetailByPowerstationId", "legacy"
+)
+_POWER_CONTROL_ENDPOINT = ApiEndpoint(
+    "/PowerStation/SaveRemoteControlInverter", "legacy"
+)
+_WEB_DEVICE_STATUS_ENDPOINT = ApiEndpoint(
+    "/sems-plant/api/stations/device/all-status", "new"
+)
+_WEB_TELEMETRY_ENDPOINT = ApiEndpoint(
+    "/sems-plant/api/equipments/{serial_number}/telemetry", "web"
+)
+_WEB_TELECOUNTING_ENDPOINT = ApiEndpoint(
+    "/sems-plant/api/equipments/{serial_number}/telecounting", "web"
+)
 
 
 class SemsApi:
@@ -69,8 +90,9 @@ class SemsApi:
         self._username = username
         self._password = password
         self._token: dict[str, Any] | None = None
+        self._new_token: dict[str, Any] | None = None
         self._web_token: dict[str, Any] | None = None  # Used for SEMS+ web APIs
-        self._preferred_login_mode: LoginMode | None = None
+        self._preferred_login_mode: TokenType | None = None
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
@@ -240,11 +262,13 @@ class SemsApi:
         url_part: str,
         renewToken: bool,
         operation_name: str,
-        is_web: bool = False,
+        token_type: TokenType = "legacy",
     ) -> tuple[str, dict[str, str]] | None:
         """Return the request URL and headers for an authenticated call."""
-        if is_web:
+        if token_type == "web":
             token = self._web_token
+        elif token_type == "new":
+            token = self._new_token
         else:
             token = self._token
 
@@ -254,11 +278,16 @@ class SemsApi:
                 redact_for_log(token),
                 renewToken,
             )
-            if is_web:
+            if token_type == "web":
                 self._web_token = self._get_new_login_token(
                     self._username, self._password, is_web=True
                 )
                 token = self._web_token
+            elif token_type == "new":
+                self._new_token = self._get_new_login_token(
+                    self._username, self._password
+                )
+                token = self._new_token
             else:
                 self._token = self.getLoginToken(self._username, self._password)
                 token = self._token
@@ -305,15 +334,15 @@ class SemsApi:
         sig = f"{digest}@{epoch_ms}"
         return base64.b64encode(sig.encode()).decode()
 
-    def _get_login_mode_order(self) -> list[LoginMode]:
+    def _get_login_mode_order(self) -> list[TokenType]:
         """Return login modes in preferred order."""
-        login_modes: list[LoginMode] = ["new", "legacy", "web"]
+        login_modes: list[TokenType] = ["new", "legacy", "web"]
         if self._preferred_login_mode in login_modes:
             login_modes.remove(self._preferred_login_mode)
             login_modes.insert(0, self._preferred_login_mode)
         return login_modes
 
-    def _login_handler_for_mode(self, login_mode: LoginMode) -> LoginHandler:
+    def _login_handler_for_mode(self, login_mode: TokenType) -> LoginHandler:
         """Return the login handler for a given mode."""
         if login_mode == "legacy":
             return self._get_legacy_login_token
@@ -331,7 +360,7 @@ class SemsApi:
         self,
         json_response: dict[str, Any],
         token_data: dict[str, Any],
-        login_mode: LoginMode,
+        login_mode: TokenType,
         fallback_api_url: str | None,
     ) -> str | None:
         """Resolve API URL from login response with optional fallback."""
@@ -361,7 +390,7 @@ class SemsApi:
     def _extract_login_token(
         self,
         json_response: dict[str, Any] | None,
-        login_mode: LoginMode,
+        login_mode: TokenType,
         operation_name: str,
         fallback_api_url: str | None = None,
     ) -> dict[str, Any] | None:
@@ -444,7 +473,7 @@ class SemsApi:
         self, userName: str, password: str, is_web: bool = False
     ) -> dict[str, Any] | None:
         """Get a token from the SEMS+ login endpoint."""
-        login_mode: LoginMode = "web" if is_web else "new"
+        login_mode: TokenType = "web" if is_web else "new"
         operation_name = (
             "SEMS+ Web login API call" if is_web else "SEMS+ login API call"
         )
@@ -479,7 +508,7 @@ class SemsApi:
 
     def getLoginToken(self, userName: str, password: str) -> dict[str, Any] | None:
         """Get the login token for the SEMS API."""
-        tried_login_modes: list[LoginMode] = []
+        tried_login_modes: list[TokenType] = []
         for login_mode in self._get_login_mode_order():
             tried_login_modes.append(login_mode)
             try:
@@ -515,6 +544,7 @@ class SemsApi:
         method: str = "POST",
         is_web: bool = False,
         retry_on_api_error: bool = True,
+        token_type: TokenType | None = None,
     ) -> Any | None:
         """Make a generic API call with token management and retry logic."""
         _LOGGER.debug("SEMS - Making %s", operation_name)
@@ -522,11 +552,14 @@ class SemsApi:
             _LOGGER.info("SEMS - Maximum token fetch tries reached, aborting for now")
             raise OutOfRetries
 
+        if token_type is None:
+            token_type = "web" if is_web else "legacy"
+
         context = self._get_authenticated_request_context(
             url_part,
             renewToken,
             operation_name,
-            is_web=is_web,
+            token_type=token_type,
         )
         if context is None:
             return None
@@ -560,6 +593,7 @@ class SemsApi:
                     method,
                     is_web,
                     retry_on_api_error,
+                    token_type,
                 )
 
             if is_web and not self._is_sensitive_operation(operation_name):
@@ -588,11 +622,12 @@ class SemsApi:
     ) -> Any | None:
         """Get the power station ids from the SEMS API."""
         return self._make_api_call(
-            _GetPowerStationIdByOwnerURLPart,
+            _POWER_STATION_IDS_ENDPOINT.url_part,
             data=None,
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getPowerStationIds API call",
+            token_type=_POWER_STATION_IDS_ENDPOINT.token_type,
         )
 
     def getData(
@@ -601,11 +636,12 @@ class SemsApi:
         """Get the latest data from the SEMS API and updates the state."""
         data = '{"powerStationId":"' + powerStationId + '"}'
         result = self._make_api_call(
-            _PowerStationURLPart,
+            _POWER_STATION_ENDPOINT.url_part,
             data=data,
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getData API call",
+            token_type=_POWER_STATION_ENDPOINT.token_type,
         )
         if result is None:
             _LOGGER.debug(
@@ -701,12 +737,13 @@ class SemsApi:
     ) -> list[dict[str, Any]]:
         """Discover inverter devices through the SEMS+ Web API."""
         result = self._make_api_call(
-            f"{_WebDeviceStatusURLPart}?stationId={powerStationId}",
+            f"{_WEB_DEVICE_STATUS_ENDPOINT.url_part}?stationId={powerStationId}",
             method="GET",
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getWebInverterDevices API call",
             is_web=True,
+            token_type=_WEB_DEVICE_STATUS_ENDPOINT.token_type,
         )
         devices: list[dict[str, Any]] = []
         for device_group in (
@@ -747,13 +784,14 @@ class SemsApi:
     ) -> dict[str, Any]:
         """Get normalized live inverter telemetry from SEMS+ Web."""
         result = self._make_api_call(
-            f"{_WebTelemetryURLPart.format(serial_number=serialNumber)}"
+            f"{_WEB_TELEMETRY_ENDPOINT.url_part.format(serial_number=serialNumber)}"
             f"?deviceType={device_type}&pwId={powerStationId}",
             method="GET",
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getWebInverterTelemetry API call",
             is_web=True,
+            token_type=_WEB_TELEMETRY_ENDPOINT.token_type,
         )
         factors = self._flatten_web_factors(
             result if isinstance(result, list) else None
@@ -800,13 +838,14 @@ class SemsApi:
     ) -> dict[str, Any]:
         """Get normalized inverter energy counters from SEMS+ Web."""
         result = self._make_api_call(
-            f"{_WebTelecountingURLPart.format(serial_number=serialNumber)}"
+            f"{_WEB_TELECOUNTING_ENDPOINT.url_part.format(serial_number=serialNumber)}"
             f"?deviceType={device_type}&pwId={powerStationId}",
             method="GET",
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getWebInverterTelecounting API call",
             is_web=True,
+            token_type=_WEB_TELECOUNTING_ENDPOINT.token_type,
         )
         factors = self._flatten_web_factors(
             result if isinstance(result, list) else None
@@ -871,7 +910,7 @@ class SemsApi:
     ) -> dict[str, Any]:
         """Get telemetry for a related BAT_SYS device."""
         result = self._make_api_call(
-            f"{_WebTelemetryURLPart.format(serial_number=serialNumber)}"
+            f"{_WEB_TELEMETRY_ENDPOINT.url_part.format(serial_number=serialNumber)}"
             f"?deviceType=BAT_SYS&pwId={powerStationId}",
             method="GET",
             renewToken=renewToken,
@@ -1084,9 +1123,10 @@ class SemsApi:
             raise OutOfRetries
 
         context = self._get_authenticated_request_context(
-            _PowerControlURLPart,
+            _POWER_CONTROL_ENDPOINT.url_part,
             renewToken,
             operation_name,
+            token_type=_POWER_CONTROL_ENDPOINT.token_type,
         )
         if context is None:
             return False
