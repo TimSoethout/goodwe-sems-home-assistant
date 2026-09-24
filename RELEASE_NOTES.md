@@ -1,5 +1,38 @@
 # Release notes
 
+## 11.6.0-beta - 2026-09-24
+
+## Richaaldo EU SEMS+ compatibility fixes
+
+This beta incorporates sanitized EU SEMS+ Web contracts reported by
+[@Richaaldo](https://github.com/Richaaldo) and fixes response-shape assumptions
+that prevented entities from updating on some inverter and battery-rack
+stations.
+
+### Working with SEMS+ Web
+
+- Parse station statistics from the Web UI's `items` request and nested
+  `dataList[]` response, including daily, monthly, and historical series.
+- Fetch station flow for stations without a `SMART_METER`.
+- Restore PV, grid, load, battery power, and SOC flow fields when reported.
+- Discover and preserve `BATTERY_RACK` and `DONGLE` device types.
+- Add sanitized EU station-statistics, battery-rack flow, and HEMS graph
+  response schemas for future fixture-backed coverage.
+
+### Still limited
+
+- Detailed BMS voltage, current, SOH, and temperature remain unavailable when
+  the station exposes no BAT_SYS response.
+- Generator, grid-meter-power, and detailed load-status fields were not
+  present in the captured flow contracts.
+- The HEMS graph endpoint is documented but not yet consumed; units, timezone,
+  and direction semantics need validation against real measured values.
+
+### Contributor
+
+- [@Richaaldo](https://github.com/Richaaldo) - sanitized EU SEMS+ Web
+  response contracts and compatibility findings.
+
 ## 11.5.0-beta - 2026-09-24
 
 ## Additional SEMS+ entity recovery
