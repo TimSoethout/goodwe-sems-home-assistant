@@ -339,7 +339,7 @@ fixtures (`all-status`, `telemetry`, and `telecounting`).
 | Energy last month | `lastmonthetotle` | No equivalent in tested response | Missing |
 | Income today/total | `iday`, `itotal` | No equivalent in tested response | Missing |
 | PV string voltage/current | `vpv1`-`vpv4`, `ipv1`-`ipv4` | `MPPT-1:Vpv`, `MPPT-1:Ipv` | String/MPPT 1 available; 2-4 missing |
-| AC voltage/current/frequency | `vac1`-`vac3`, `iac1`-`iac3`, `fac1`-`fac3` | `Vac`, `Iac`, `Fac` | Phase 1 available; phases 2-3 missing |
+| AC voltage/current/frequency | `vac1`-`vac3`, `iac1`-`iac3`, `fac1`-`fac3` | `PHASE-A:Vac`-`PHASE-C:Vac`, `Iac`, `Fac` | Phase A/B/C voltage factors map to phases 1/2/3 |
 | Battery voltage/current | `vbattery1`, `ibattery1` | No battery factors in tested telemetry | Missing |
 | Grid meter power | `pmeter` | No equivalent in tested response | Missing |
 | Battery charge/discharge energy | `eChargeDay`, `eDischargeDay` | No equivalent in tested response | Missing |
