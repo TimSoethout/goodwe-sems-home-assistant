@@ -17,7 +17,9 @@ from .const import redact_for_log
 _LOGGER = logging.getLogger(__name__)
 
 OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
-NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
+NEW_LOGIN_URL = (
+    "https://eu-semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
+)
 _SUPPORTED_WEB_DEVICE_TYPES = {"INVERTER", "ENERGY_STORAGE_INTEGRATED_CABINET"}
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
 # Web token plus X-Signature headers; the legacy monitor request uses POST with
@@ -28,6 +30,11 @@ _RateLimitRetryAfterSeconds = 300
 _SuccessCodes = {0, "0", "00000"}
 _RateLimitCode = "GY0429"
 _BrowserUserAgent = "Home Assistant GoodWe SEMS API Integration"
+_SemsPlusWebUserAgent = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Safari/537.36"
+)
 
 _DefaultHeaders = {
     "Content-Type": "application/json",
@@ -42,7 +49,9 @@ _NewLoginHeaders = {
 
 _NewSEMSPlusWebLoginHeaders = {
     "Content-Type": "application/json",
-    "Accept": "application/json, */*;q=0.5",
+    "Accept": "application/json, text/plain, */*",
+    "Origin": "https://eu-semsplus.goodwe.com",
+    "Referer": "https://eu-semsplus.goodwe.com/",
     "Token": '{"uid":"","timestamp":0,"token":"","client":"semsPlusWeb","version":"","language":"en"}',
 }
 
@@ -509,6 +518,7 @@ class SemsApi:
             headers = {
                 **_NewSEMSPlusWebLoginHeaders,
                 "X-Signature": self._generate_signature({}),
+                "User-Agent": _SemsPlusWebUserAgent,
             }
 
         json_response = self._make_http_request(

@@ -668,6 +668,30 @@ class TestSemsApi:
         assert result == expected_token
         mock_http_request.assert_called_once()
 
+    def test_web_login_uses_regional_browser_identity(self, requests_mock):
+        """Test SEMS+ Web login matches the regional browser request."""
+        requests_mock.post(
+            NEW_LOGIN_URL,
+            json={
+                "code": "00000",
+                "data": {
+                    "uid": "test-uid",
+                    "token": "test-token",
+                    "client": "semsPlusWeb",
+                    "api": "https://api.test.com/",
+                },
+            },
+        )
+
+        assert self.api._get_new_login_token("test_user", "test_pass", is_web=True)
+
+        request = requests_mock.last_request
+        assert request is not None
+        assert request.headers["Origin"] == "https://eu-semsplus.goodwe.com"
+        assert request.headers["Referer"] == "https://eu-semsplus.goodwe.com/"
+        assert "Chrome/126.0.0.0" in request.headers["User-Agent"]
+        assert request.headers["X-Signature"]
+
     @patch("custom_components.sems.sems_api.time.time")
     def test_generate_signature(self, mock_time):
         """Test SEMS+ web signature encoding."""
