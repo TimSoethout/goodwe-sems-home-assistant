@@ -71,7 +71,7 @@ _POWER_CONTROL_ENDPOINT = ApiEndpoint(
     "/PowerStation/SaveRemoteControlInverter", "legacy"
 )
 _WEB_DEVICE_STATUS_ENDPOINT = ApiEndpoint(
-    "/sems-plant/api/stations/device/all-status", "new"
+    "/sems-plant/api/stations/device/all-status", "web"
 )
 _WEB_TELEMETRY_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/equipments/{serial_number}/telemetry", "web"
@@ -165,7 +165,7 @@ class SemsApi:
                         "%s failed with code: %s, message: %s",
                         operation_name,
                         response_code,
-                        json_response.get("msg", "Unknown error"),
+                        self._response_error_message(json_response),
                     )
                     return None
 
@@ -198,6 +198,15 @@ class SemsApi:
     def _is_sensitive_operation(self, operation_name: str) -> bool:
         """Return True if the operation name indicates it handles sensitive credentials."""
         return "login" in operation_name.lower()
+
+    @staticmethod
+    def _response_error_message(json_response: dict[str, Any]) -> str:
+        """Return the most useful non-sensitive message from an API response."""
+        for key in ("msg", "description", "errorMsg", "translationCode"):
+            message = json_response.get(key)
+            if isinstance(message, str) and message:
+                return message
+        return "Unknown error"
 
     def _hash_password_for_new_login(self, password: str) -> str:
         """Return the SEMS+ password encoding."""
@@ -293,7 +302,12 @@ class SemsApi:
                 token = self._token
 
         if token is None:
-            _LOGGER.error("Failed to obtain API token")
+            _LOGGER.error(
+                "Failed to obtain %s token for %s; endpoint %s cannot be called",
+                token_type,
+                operation_name,
+                url_part,
+            )
             return None
 
         api_base = self._normalize_powerstation_api_base(token["api"], url_part)

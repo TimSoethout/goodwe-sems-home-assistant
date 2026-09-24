@@ -1,6 +1,7 @@
 """Tests for the SEMS API module."""
 
 import json
+import logging
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -577,6 +578,28 @@ class TestSemsApi:
 
         assert result is None
 
+    def test_api_error_logs_server_description(self, requests_mock, caplog):
+        """Test API errors include the server description when msg is absent."""
+        requests_mock.post(
+            "https://example.test/api",
+            json={
+                "code": "100004",
+                "description": "parameter error.",
+                "errorMsg": "parameter error.",
+                "data": None,
+            },
+        )
+
+        with caplog.at_level(logging.ERROR):
+            result = self.api._make_http_request(
+                "https://example.test/api",
+                {},
+                operation_name="SEMS+ login API call",
+            )
+
+        assert result is None
+        assert "code: 100004, message: parameter error." in caplog.text
+
     def test_login_network_error(self, requests_mock):
         """Test login with network error."""
         requests_mock.post(
@@ -918,7 +941,7 @@ class TestSemsApi:
             maxTokenRetries=2,
             operation_name="getWebInverterDevices API call",
             is_web=True,
-            token_type="new",
+            token_type="web",
         )
 
     @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
