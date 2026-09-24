@@ -17,9 +17,7 @@ from .const import redact_for_log
 _LOGGER = logging.getLogger(__name__)
 
 OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
-NEW_LOGIN_URL = (
-    "https://eu-semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
-)
+NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
 _SUPPORTED_WEB_DEVICE_TYPES = {"INVERTER", "ENERGY_STORAGE_INTEGRATED_CABINET"}
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
 # Web token plus X-Signature headers; the legacy monitor request uses POST with
@@ -50,8 +48,8 @@ _NewLoginHeaders = {
 _NewSEMSPlusWebLoginHeaders = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/plain, */*",
-    "Origin": "https://eu-semsplus.goodwe.com",
-    "Referer": "https://eu-semsplus.goodwe.com/",
+    "Origin": "https://semsplus.goodwe.com",
+    "Referer": "https://semsplus.goodwe.com/",
     "Token": '{"uid":"","timestamp":0,"token":"","client":"semsPlusWeb","version":"","language":"en"}',
 }
 

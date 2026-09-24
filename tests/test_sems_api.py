@@ -687,8 +687,8 @@ class TestSemsApi:
 
         request = requests_mock.last_request
         assert request is not None
-        assert request.headers["Origin"] == "https://eu-semsplus.goodwe.com"
-        assert request.headers["Referer"] == "https://eu-semsplus.goodwe.com/"
+        assert request.headers["Origin"] == "https://semsplus.goodwe.com"
+        assert request.headers["Referer"] == "https://semsplus.goodwe.com/"
         assert "Chrome/126.0.0.0" in request.headers["User-Agent"]
         assert request.headers["X-Signature"]
 
