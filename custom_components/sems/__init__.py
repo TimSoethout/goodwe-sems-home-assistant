@@ -34,6 +34,30 @@ _IMMEDIATE_CHARGING_FUNCTION_KEYS = {
     "bat_immediate_charge_power",
 }
 
+_ENERGY_STATISTICS_CHART_KEYS = {
+    "sum",
+    "buy",
+    "sell",
+    "selfUseOfPv",
+    "consumptionOfLoad",
+    "charge",
+    "disCharge",
+    "gensetGen",
+    "microGridGen",
+}
+
+
+def _normalize_energy_statistics_charts(
+    charts: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize chart energy values when SEMS returns them in Wh."""
+    normalized = charts.copy()
+    for key in _ENERGY_STATISTICS_CHART_KEYS:
+        value = normalized.get(key)
+        if isinstance(value, (int, float)) and value > 1000:
+            normalized[key] = value / 1000
+    return normalized
+
 
 @dataclass(slots=True)
 class SemsRuntimeData:
@@ -289,6 +313,8 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                     charts = data_result.get(GOODWE_SPELLING.energyStatisticsCharts)
                     if not isinstance(charts, dict):
                         charts = {}
+                    else:
+                        charts = _normalize_energy_statistics_charts(charts)
                     totals = data_result.get(GOODWE_SPELLING.energyStatisticsTotals)
                     if not isinstance(totals, dict):
                         totals = {}

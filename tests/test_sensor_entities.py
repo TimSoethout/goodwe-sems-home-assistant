@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.sems import SemsData
+from custom_components.sems import SemsData, _normalize_energy_statistics_charts
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
 from custom_components.sems.sensor import sensor_options_for_data
 
@@ -20,6 +20,24 @@ from .fixtures import (
 )
 
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
+
+
+def test_normalize_energy_statistics_charts_wh_values() -> None:
+    """Convert chart values returned in Wh to the kWh sensor unit."""
+    charts = {
+        "sum": 40633.4,
+        "consumptionOfLoad": 40633.4,
+        "buy": 0.27,
+        "contributingRate": 0.5,
+    }
+
+    normalized = _normalize_energy_statistics_charts(charts)
+
+    assert normalized["sum"] == 40.6334
+    assert normalized["consumptionOfLoad"] == 40.6334
+    assert normalized["buy"] == 0.27
+    assert normalized["contributingRate"] == 0.5
+    assert charts["sum"] == 40633.4
 
 
 @contextmanager
