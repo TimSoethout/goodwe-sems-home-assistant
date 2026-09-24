@@ -9,5 +9,10 @@ legacy/*
 !browser_api_endpoints.json
 !web_cross_login.json
 !station_flow.json
+!station_flow_import.json
 !telecounting.json
 !telemetry.json
+!smart_meter_all_status.json
+!smart_meter_related_devices.json
+!smart_meter_telecounting.json
+!smart_meter_telemetry.json
