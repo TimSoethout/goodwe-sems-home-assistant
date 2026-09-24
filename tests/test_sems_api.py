@@ -600,8 +600,8 @@ class TestSemsApi:
         assert result is None
         assert "code: 100004, message: parameter error." in caplog.text
 
-    def test_telecounting_token_error_is_debug_logged(self, requests_mock, caplog):
-        """Test the expected telecounting token refresh is not logged as an error."""
+    def test_telecounting_token_error_is_error_logged(self, requests_mock, caplog):
+        """Test telecounting token errors remain visible in the logs."""
         requests_mock.post(
             "https://example.test/api",
             json={
@@ -620,7 +620,7 @@ class TestSemsApi:
 
         assert result is None
         assert "code: C0602, message: account login abnormal" in caplog.text
-        assert not any(
+        assert any(
             record.levelno >= logging.ERROR
             and "getWebInverterTelecounting API call" in record.message
             for record in caplog.records
