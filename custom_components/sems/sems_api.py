@@ -7,6 +7,7 @@ import logging
 import math
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Literal, NamedTuple
 
@@ -821,14 +822,7 @@ class SemsApi:
             month_start = now.replace(day=1)
             previous_month_end = month_start - timedelta(seconds=1)
             previous_month_start = previous_month_end.replace(day=1)
-            production = self._get_web_production(
-                power_station_id,
-                now,
-                now + timedelta(days=1) - timedelta(seconds=1),
-            )
-            if production:
-                currency = production.get("currency")
-            for dimension, start, end in (
+            statistic_ranges = (
                 ("day", now, now + timedelta(days=1) - timedelta(seconds=1)),
                 ("day", month_start, now + timedelta(days=1) - timedelta(seconds=1)),
                 (
@@ -836,8 +830,56 @@ class SemsApi:
                     previous_month_start,
                     previous_month_end,
                 ),
+            )
+
+            install_year: int | None = None
+            for inverter in inverters:
+                add_time = inverter.get("invert_full", {}).get("addTime")
+                try:
+                    year = datetime.fromtimestamp(int(add_time) / 1000).year
+                    install_year = (
+                        year if install_year is None else min(install_year, year)
+                    )
+                except (TypeError, ValueError, OSError, OverflowError):
+                    continue
+            if install_year is None:
+                install_year = _WEB_STATISTICS_EARLIEST_YEAR
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                production_future = executor.submit(
+                    self._get_web_production,
+                    power_station_id,
+                    now,
+                    now + timedelta(days=1) - timedelta(seconds=1),
+                )
+                statistics_futures = [
+                    executor.submit(
+                        self._get_web_statistics,
+                        power_station_id,
+                        dimension,
+                        start,
+                        end,
+                    )
+                    for dimension, start, end in statistic_ranges
+                ]
+                historic_statistics_future = executor.submit(
+                    self._get_web_statistics,
+                    power_station_id,
+                    "year",
+                    datetime(install_year, 1, 1),
+                    datetime(current_year + 1, 1, 1) - timedelta(seconds=1),
+                )
+
+                production = production_future.result()
+                statistic_data = [
+                    future.result() for future in statistics_futures
+                ]
+                historic_statistics = historic_statistics_future.result()
+
+            if production:
+                currency = production.get("currency")
+            for (_dimension, start, _), data in zip(
+                statistic_ranges, statistic_data, strict=True
             ):
-                data = self._get_web_statistics(power_station_id, dimension, start, end)
                 if not data:
                     continue
                 if start == now:
@@ -863,31 +905,11 @@ class SemsApi:
                 elif start == previous_month_start:
                     last_month_pv = sum(data.get("proSystemTotalStats", []))
 
-            install_year: int | None = None
-            for inverter in inverters:
-                add_time = inverter.get("invert_full", {}).get("addTime")
-                try:
-                    year = datetime.fromtimestamp(int(add_time) / 1000).year
-                    install_year = (
-                        year if install_year is None else min(install_year, year)
-                    )
-                except (TypeError, ValueError, OSError, OverflowError):
-                    continue
-            if install_year is None:
-                install_year = _WEB_STATISTICS_EARLIEST_YEAR
-            for year in range(install_year, current_year + 1):
-                data = self._get_web_statistics(
-                    power_station_id,
-                    "year",
-                    datetime(year, 1, 1),
-                    datetime(year + 1, 1, 1) - timedelta(seconds=1),
-                )
-                if not data:
-                    continue
-                for item, values in data.items():
+            if historic_statistics:
+                for item, values in historic_statistics.items():
                     target = _WEB_STATISTICS_KEY_MAP.get(item)
                     if target is not None:
-                        totals[target] = totals.get(target, 0.0) + sum(values)
+                        totals[target] = sum(values)
             self_use = totals.get("selfUseOfPv")
             consumption = totals.get("consumptionOfLoad")
             production = totals.get("sum")

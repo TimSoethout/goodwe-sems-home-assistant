@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -107,6 +107,38 @@ class TestSemsApi:
         assert request["isReport"] is False
         assert request["startTime"] == "2026-01-01 00:00:00"
         assert request["endTime"] == "2026-01-02 00:00:00"
+
+    @patch.object(
+        SemsApi,
+        "_get_web_statistics",
+        return_value={"proSystemTotalStats": [1.0]},
+    )
+    @patch.object(
+        SemsApi,
+        "_get_web_production",
+        return_value={"currency": "EUR"},
+    )
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_batches_historic_years(
+        self, mock_now, mock_production, mock_statistics
+    ):
+        """Test historical years are requested in one range."""
+        mock_now.return_value = datetime(2026, 9, 25)
+        inverters = [{"invert_full": {"addTime": "1545351495000"}}]
+
+        result = self.api._get_web_energy_statistics("station", inverters)
+
+        assert result is not None
+        assert mock_production.called
+        assert mock_statistics.call_count == 4
+        assert any(
+            call_args.args[1:] == (
+                "year",
+                datetime(2018, 1, 1),
+                datetime(2027, 1, 1) - timedelta(seconds=1),
+            )
+            for call_args in mock_statistics.call_args_list
+        )
 
     @patch.object(SemsApi, "_make_api_call")
     def test_web_station_production_uses_web_request_contract(self, mock_api_call):
