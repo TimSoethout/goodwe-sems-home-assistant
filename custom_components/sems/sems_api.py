@@ -804,6 +804,24 @@ class SemsApi:
             if math.isfinite(numeric_value):
                 parsed[summary_key] = [numeric_value]
 
+        response_dates = [
+            statistic.get("date")
+            for item_data in response.get("dataList", [])
+            if isinstance(item_data, dict)
+            for statistic in item_data.get("statisticsList", [])
+            if isinstance(statistic, dict) and isinstance(statistic.get("date"), str)
+        ]
+        _LOGGER.debug(
+            "SEMS - getWebStationStatistics response: dimension=%s "
+            "requested=%s..%s items=%s points=%s dates=%s..%s",
+            dimension,
+            start.date(),
+            end.date(),
+            sorted(parsed),
+            sum(len(values) for values in parsed.values()),
+            min(response_dates) if response_dates else None,
+            max(response_dates) if response_dates else None,
+        )
         self._web_cache[cache_key] = (time.monotonic(), parsed)
         return parsed
 
