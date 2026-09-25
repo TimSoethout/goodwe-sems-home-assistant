@@ -90,9 +90,6 @@ class ApiEndpoint(NamedTuple):
     token_type: TokenType
 
 
-_POWER_STATION_IDS_ENDPOINT = ApiEndpoint(
-    "/PowerStation/GetPowerStationIdByOwner", "legacy"
-)
 _POWER_CONTROL_ENDPOINT = ApiEndpoint(
     "/PowerStation/SaveRemoteControlInverter", "legacy"
 )
@@ -106,6 +103,9 @@ _WEB_TELECOUNTING_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/equipments/{serial_number}/telecounting", "web"
 )
 _WEB_STATION_FLOW_ENDPOINT = ApiEndpoint("/sems-plant/api/stations/flow", "web")
+_WEB_STATION_LIST_ENDPOINT = ApiEndpoint(
+    "/sems-plant/api/portal/stations/page", "web"
+)
 _WEB_STATION_STATISTICS_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/stations/statistics", "web"
 )
@@ -681,16 +681,24 @@ class SemsApi:
 
     def getPowerStationIds(
         self, renewToken: bool = False, maxTokenRetries: int = 2
-    ) -> Any | None:
-        """Get the power station ids from the SEMS API."""
-        return self._make_api_call(
-            _POWER_STATION_IDS_ENDPOINT.url_part,
-            data=None,
+    ) -> list[str]:
+        """Get power station ids from the SEMS+ Web API."""
+        result = self._make_api_call(
+            _WEB_STATION_LIST_ENDPOINT.url_part,
+            data=json.dumps({"current": 1, "size": 100}),
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
             operation_name="getPowerStationIds API call",
-            token_type=_POWER_STATION_IDS_ENDPOINT.token_type,
+            is_web=True,
+            token_type=_WEB_STATION_LIST_ENDPOINT.token_type,
         )
+        if not isinstance(result, dict):
+            return []
+        return [
+            station["id"]
+            for station in result.get("dataList", [])
+            if isinstance(station, dict) and isinstance(station.get("id"), str)
+        ]
 
     def getData(
         self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2

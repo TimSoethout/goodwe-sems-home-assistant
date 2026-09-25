@@ -123,8 +123,8 @@ related-device discovery.
 | Method | HTTP request | Token |
 | --- | --- | --- |
 | `getLoginToken` | `POST /api/v3/Common/CrossLogin` (legacy fallback) or `POST /web/sems/sems-user/api/v1/auth/cross-login` (SEMS+ login) | Legacy token or SEMS+ Web token, depending on the successful login |
-| `getPowerStationIds` | `POST /PowerStation/GetPowerStationIdByOwner` | Legacy token |
-| `getData` | `POST /v3/PowerStation/GetMonitorDetailByPowerstationId` with `powerStationId` | Legacy token; affected accounts can receive an empty `data` object |
+| `getPowerStationIds` | `POST /web/sems/sems-plant/api/portal/stations/page` with `current` and `size` | SEMS+ Web token |
+| `getData` | SEMS+ Web station flow, device discovery, telemetry, and telecounting requests | SEMS+ Web token |
 | `getEnergyStorageIntegratedCabinets` | `GET /web/sems/sems-plant/api/equipments/<sn>/relatedDevices?sn=<sn>&deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=<station_id>` | SEMS+ Web token |
 | `getBatteryGeneralFunctions` | `POST /web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus` | SEMS+ Web token |
 | `getBatteryImmediateChargingStates` | `POST /web/sems/sems-remote/api/v1/address/remote/get-cache-device-function-parameters` | SEMS+ Web token |

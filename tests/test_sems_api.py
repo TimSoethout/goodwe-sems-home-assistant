@@ -983,14 +983,15 @@ class TestSemsApi:
 
         result = self.api.getPowerStationIds()
 
-        assert result == "station123"
+        assert result == []
         mock_api_call.assert_called_once_with(
-            "/PowerStation/GetPowerStationIdByOwner",
-            data=None,
+            "/sems-plant/api/portal/stations/page",
+            data='{"current": 1, "size": 100}',
             renewToken=False,
             maxTokenRetries=2,
             operation_name="getPowerStationIds API call",
-            token_type="legacy",
+            is_web=True,
+            token_type="web",
         )
 
     @patch.object(SemsApi, "_make_api_call")
@@ -1446,29 +1447,23 @@ class TestSemsApi:
             is_web=True,
         )
 
-    def test_get_power_station_ids_success_real_structure(self, requests_mock):
-        """Test successful power station IDs retrieval with realistic response structure."""
-        self.api._preferred_login_mode = "legacy"
-        login_response = {
-            "code": 0,
-            "data": {"uid": "test-uid", "token": "test-token"},
-            "api": "https://eu.semsportal.com/api/",
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_power_station_ids_uses_web_station_list(self, mock_api_call):
+        """Test station discovery uses the SEMS+ Web station list."""
+        mock_api_call.return_value = {
+            "dataList": [{"id": "station-1"}, {"id": "station-2"}]
         }
-        requests_mock.post(OLD_LOGIN_URL, json=login_response)
 
-        station_response = {
-            "code": 0,
-            "data": MOCK_POWER_STATION_ID,
-            "msg": SUCCESS_MESSAGE,
-        }
-        requests_mock.post(
-            "https://eu.semsportal.com/api//PowerStation/GetPowerStationIdByOwner",
-            json=station_response,
+        assert self.api.getPowerStationIds() == ["station-1", "station-2"]
+        mock_api_call.assert_called_once_with(
+            "/sems-plant/api/portal/stations/page",
+            data='{"current": 1, "size": 100}',
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getPowerStationIds API call",
+            is_web=True,
+            token_type="web",
         )
-
-        result = self.api.getPowerStationIds()
-
-        assert result == MOCK_POWER_STATION_ID
 
     @patch.object(SemsApi, "getWebData")
     def test_get_data_uses_web_api(self, mock_web_data):
