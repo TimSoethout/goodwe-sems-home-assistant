@@ -104,9 +104,7 @@ _WEB_TELECOUNTING_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/equipments/{serial_number}/telecounting", "web"
 )
 _WEB_STATION_FLOW_ENDPOINT = ApiEndpoint("/sems-plant/api/stations/flow", "web")
-_WEB_STATION_LIST_ENDPOINT = ApiEndpoint(
-    "/sems-plant/api/portal/stations/page", "web"
-)
+_WEB_STATION_LIST_ENDPOINT = ApiEndpoint("/sems-plant/api/portal/stations/page", "web")
 _WEB_STATION_STATISTICS_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/stations/statistics", "web"
 )
@@ -126,6 +124,8 @@ _WEB_STATISTICS_REFRESH_SECONDS = 300
 _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS = 86_400
 _WEB_STATISTICS_EARLIEST_YEAR = 2015
 _WEB_RELATED_DEVICES_REFRESH_SECONDS = 3_600
+
+
 class SemsApi:
     """Interface to the SEMS API."""
 
@@ -143,9 +143,7 @@ class SemsApi:
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
         try:
-            self._web_token = self._get_web_login_token(
-                self._username, self._password
-            )
+            self._web_token = self._get_web_login_token(self._username, self._password)
         except (
             AttributeError,
             KeyError,
@@ -899,9 +897,7 @@ class SemsApi:
                 )
 
                 production = production_future.result()
-                statistic_data = [
-                    future.result() for future in statistics_futures
-                ]
+                statistic_data = [future.result() for future in statistics_futures]
                 historic_statistics = historic_statistics_future.result()
 
             if production:

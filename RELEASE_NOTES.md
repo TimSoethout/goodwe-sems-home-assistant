@@ -1,5 +1,37 @@
 # Release notes
 
+## 11.8.0-beta - 2026-09-25
+
+## SEMS+ Web migration and refresh optimization
+
+This beta continues the SEMS+ Web migration and reduces setup and refresh
+overhead while preserving legacy controls and authentication fallback.
+
+### Changes
+
+- Remove legacy monitor polling from the live data path.
+- Discover power stations through the verified SEMS+ Web station-list endpoint.
+- Prefer SEMS+ Web authentication and reuse the token during station discovery,
+  while retaining legacy login fallback.
+- Fetch historical yearly statistics in one range request and run independent
+  production and statistics requests concurrently.
+- Log compact statistics response ranges and point counts for troubleshooting.
+- Disable the previous-month `lastmonthetotle` sensor by default and skip its
+  statistics request unless explicitly requested.
+- Add sanitized station-list API response documentation and fixtures.
+
+### Limitations
+
+- Legacy inverter controls remain in place because no verified SEMS+ Web
+  control endpoint has been captured.
+- The explicit `include_last_month` API option is available for callers that
+  need the disabled-by-default previous-month sensor.
+
+### Contributor
+
+- [@TimSoethout](https://github.com/TimSoethout) - implementation, testing,
+  and SEMS+ Web migration.
+
 ## 11.7.0-beta - 2026-09-25
 
 ## SEMS+ hybrid follow-up fixes

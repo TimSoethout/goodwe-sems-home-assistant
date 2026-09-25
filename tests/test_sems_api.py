@@ -132,7 +132,8 @@ class TestSemsApi:
         assert mock_production.called
         assert mock_statistics.call_count == 3
         assert any(
-            call_args.args[1:] == (
+            call_args.args[1:]
+            == (
                 "year",
                 datetime(2018, 1, 1),
                 datetime(2027, 1, 1) - timedelta(seconds=1),
@@ -140,7 +141,8 @@ class TestSemsApi:
             for call_args in mock_statistics.call_args_list
         )
         assert not any(
-            call_args.args[1:] == (
+            call_args.args[1:]
+            == (
                 "day",
                 datetime(2026, 8, 1),
                 datetime(2026, 8, 31, 23, 59, 59),
