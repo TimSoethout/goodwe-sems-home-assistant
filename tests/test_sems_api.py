@@ -7,6 +7,7 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 import requests
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.sems.const import redact_for_log
 from custom_components.sems.sems_api import (
@@ -1781,8 +1782,11 @@ class TestSemsApi:
         """Test change_status method with failure."""
         mock_control_call.return_value = False
 
-        # Should not raise exception, just log error
-        self.api.change_status("inverter123", 1)
+        with pytest.raises(
+            HomeAssistantError,
+            match="Verify that the GoodWe account has remote-control permission",
+        ):
+            self.api.change_status("inverter123", 1)
 
         mock_control_call.assert_called_once()
 

@@ -18,12 +18,14 @@ overhead while preserving legacy controls and authentication fallback.
 - Log compact statistics response ranges and point counts for troubleshooting.
 - Disable the previous-month `lastmonthetotle` sensor by default and skip its
   statistics request unless explicitly requested.
-- Add sanitized station-list API response documentation and fixtures.
+- Add sanitized station-list and inverter-control API documentation and fixtures.
+- Use the verified SEMS+ Web endpoint for inverter start/stop controls, with
+  legacy control fallback.
 
 ### Limitations
 
-- Legacy inverter controls remain in place because no verified SEMS+ Web
-  control endpoint has been captured.
+- Web inverter controls require an account with remote-control permission.
+  Accounts without that permission automatically fall back to legacy controls.
 - The explicit `include_last_month` API option is available for callers that
   need the disabled-by-default previous-month sensor.
 

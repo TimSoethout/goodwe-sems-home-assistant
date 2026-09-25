@@ -1784,7 +1784,14 @@ class SemsApi:
         )
 
         if not success:
-            _LOGGER.error("Power control command failed after all retries")
+            message = (
+                "Unable to control the inverter. SEMS+ Web control was rejected "
+                "and the legacy control request also failed. Verify that the "
+                "GoodWe account has remote-control permission and re-register "
+                "the integration with that account."
+            )
+            _LOGGER.error("%s", message)
+            raise exceptions.HomeAssistantError(message)
 
 
 class OutOfRetries(exceptions.HomeAssistantError):

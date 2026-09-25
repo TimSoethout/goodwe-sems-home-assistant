@@ -62,7 +62,7 @@ class SemsInverterSwitch(SemsSwitchBase):
     """Switch controlling an inverter's operating status."""
 
     def __init__(self, coordinator: SemsCoordinator, serial_number: str) -> None:
-        super().__init__(coordinator, serial_number, "switch", "Switch")
+        super().__init__(coordinator, serial_number, "switch", "Inverter Control")
 
     @property
     def is_on(self) -> bool | None:
