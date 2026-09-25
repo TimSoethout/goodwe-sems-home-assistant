@@ -197,6 +197,60 @@ async def test_unique_id_migration_sn_to_sn_power(
     assert migrated_entry.unique_id == "GW0000SN000TEST1-power"
 
 
+async def test_web_meter_data_keeps_registered_homekit_serial(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test SEMS+ meter data updates earlier HomeKit entities, not duplicates."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    ent_reg = er.async_get(hass)
+    existing_entity_id = ent_reg.async_get_or_create(
+        Platform.SENSOR,
+        DOMAIN,
+        "GW-HOMEKIT-NO-SERIAL-import-energy-total",
+        config_entry=entry,
+    ).entity_id
+
+    # SEMS+ Web data: no "homKit" key and the smart meter SN on the powerflow.
+    web_data = {
+        "inverter": MOCK_GET_DATA_RESULT_MINIMAL["inverter"],
+        "hasPowerflow": True,
+        "powerflow": {"sn": "METER-SN-1", "grid": -1351.0, "load": 1351.0},
+        "hasEnergeStatisticsCharts": True,
+        "energeStatisticsCharts": {"buy": 12.84, "sell": 36.77},
+        "energeStatisticsTotals": {"buy": 20314.77, "sell": 38846.49},
+    }
+    with _mock_no_battery_api(web_data):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get(existing_entity_id)
+    assert state is not None
+    assert float(state.state) == 20314.77
+    export_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "GW-HOMEKIT-NO-SERIAL-export-energy"
+    )
+    assert export_entity_id is not None
+    assert float(hass.states.get(export_entity_id).state) == 36.77
+    assert (
+        ent_reg.async_get_entity_id(
+            Platform.SENSOR, DOMAIN, "METER-SN-1-import-energy-total"
+        )
+        is None
+    )
+
+
 async def test_unique_id_migration_powerflow_to_homekit_sn(
     hass: HomeAssistant,
     enable_custom_integrations: None,

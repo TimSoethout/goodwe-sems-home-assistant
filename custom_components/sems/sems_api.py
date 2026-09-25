@@ -915,10 +915,13 @@ class SemsApi:
                 if not data:
                     continue
                 if start == now:
+                    # Only map series the station reports; a missing series must
+                    # not become 0 and hide smart-meter counters.
                     charts.update(
                         {
-                            target: sum(data.get(source, []))
+                            target: sum(data[source])
                             for source, target in _WEB_STATISTICS_KEY_MAP.items()
+                            if data.get(source)
                         }
                     )
                     if production:
@@ -1154,18 +1157,35 @@ class SemsApi:
             inverters,
             include_last_month=include_last_month,
         )
-        if statistics is not None:
-            charts, totals, currency, last_month_pv = statistics
-            if charts:
-                result["hasEnergeStatisticsCharts"] = True
-                result["energeStatisticsCharts"] = charts
-                result["energeStatisticsTotals"] = totals
-            if last_month_pv is not None and len(inverters) == 1:
-                invert_full = inverters[0].get("invert_full")
-                if isinstance(invert_full, dict):
-                    invert_full["lastmonthetotle"] = last_month_pv
-            if currency is not None:
-                result["kpi"] = {"currency": currency}
+        charts, totals, currency, last_month_pv = (
+            statistics if statistics is not None else ({}, {}, None, None)
+        )
+        if smart_meters:
+            # The smart meter measures grid import/export directly; prefer its
+            # counters over station statistics, which may omit or zero them.
+            for source, stats, target in (
+                ("proPurchaseStatsToday", charts, "buy"),
+                ("proGridStatsToday", charts, "sell"),
+                ("proPurchaseStatsTotal", totals, "buy"),
+                ("proGridStatsTotal", totals, "sell"),
+            ):
+                values = [
+                    meter[source]
+                    for meter in smart_meters
+                    if isinstance(meter.get(source), (int, float))
+                ]
+                if values:
+                    stats[target] = sum(values)
+        if charts or totals:
+            result["hasEnergeStatisticsCharts"] = True
+            result["energeStatisticsCharts"] = charts
+            result["energeStatisticsTotals"] = totals
+        if last_month_pv is not None and len(inverters) == 1:
+            invert_full = inverters[0].get("invert_full")
+            if isinstance(invert_full, dict):
+                invert_full["lastmonthetotle"] = last_month_pv
+        if currency is not None:
+            result["kpi"] = {"currency": currency}
         return result
 
     def getWebStationFlow(
