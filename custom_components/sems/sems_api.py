@@ -213,7 +213,12 @@ class SemsApi:
                 response_code,
                 json_response.get("msg"),
                 json_response.get("description"),
-                json_response.get("api"),
+                json_response.get("api")
+                or (
+                    json_response.get("data", {}).get("api")
+                    if isinstance(json_response.get("data"), dict)
+                    else None
+                ),
                 json_response.get("data") not in (None, "", [], {}),
             )
 
@@ -223,6 +228,12 @@ class SemsApi:
                     message=(
                         f"{operation_name} returned rate-limit code {_RateLimitCode}"
                     ),
+                )
+
+            if str(response_code) == "100025":
+                raise SemsPermissionError(
+                    operation_name,
+                    self._response_error_message(json_response),
                 )
 
             # Validate response code if requested
@@ -697,6 +708,8 @@ class SemsApi:
                 exception.retry_after,
             )
             raise
+        except SemsPermissionError:
+            raise
         except (requests.RequestException, ValueError, KeyError) as exception:
             _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             return None
@@ -1018,9 +1031,14 @@ class SemsApi:
                             device_type=device_type,
                         )
                     )
-                except (OutOfRetries, SemsRateLimitedError) as err:
-                    _LOGGER.debug(
-                        "SEMS inverter telemetry unavailable for %s: %s",
+                except (
+                    OutOfRetries,
+                    SemsPermissionError,
+                    SemsRateLimitedError,
+                ) as err:
+                    _LOGGER.warning(
+                        "SEMS+ denied telemetry access for inverter %s: %s. "
+                        "Check the GoodWe account or plant permissions.",
                         serial_number,
                         err,
                     )
@@ -1034,9 +1052,14 @@ class SemsApi:
                             device_type=device_type,
                         )
                     )
-                except (OutOfRetries, SemsRateLimitedError) as err:
-                    _LOGGER.debug(
-                        "SEMS inverter counters unavailable for %s: %s",
+                except (
+                    OutOfRetries,
+                    SemsPermissionError,
+                    SemsRateLimitedError,
+                ) as err:
+                    _LOGGER.warning(
+                        "SEMS+ denied counter access for inverter %s: %s. "
+                        "Check the GoodWe account or plant permissions.",
                         serial_number,
                         err,
                     )
@@ -1875,3 +1898,11 @@ class SemsRateLimitedError(exceptions.HomeAssistantError):
         """Initialize rate limit exception."""
         super().__init__(message)
         self.retry_after = retry_after
+
+
+class SemsPermissionError(exceptions.HomeAssistantError):
+    """Error to indicate the SEMS API denied access to an operation."""
+
+    def __init__(self, operation_name: str, message: str):
+        """Initialize the permission error."""
+        super().__init__(f"{operation_name} was denied: {message}")

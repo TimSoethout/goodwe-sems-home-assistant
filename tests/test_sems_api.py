@@ -15,6 +15,7 @@ from custom_components.sems.sems_api import (
     OLD_LOGIN_URL,
     OutOfRetries,
     SemsApi,
+    SemsPermissionError,
     SemsRateLimitedError,
 )
 
@@ -739,6 +740,57 @@ class TestSemsApi:
 
         assert result is None
         assert "code: 100004, message: parameter error." in caplog.text
+
+    def test_response_summary_logs_nested_api(self, requests_mock, caplog):
+        """Test login response summaries include the nested gateway API."""
+        requests_mock.post(
+            "https://example.test/api",
+            json={
+                "code": "00000",
+                "description": "success",
+                "data": {"api": "https://eu-gateway.semsportal.com/web/sems"},
+            },
+        )
+
+        with caplog.at_level(logging.DEBUG):
+            self.api._make_http_request(
+                "https://example.test/api",
+                {},
+                operation_name="SEMS+ login API call",
+            )
+
+        assert "api=https://eu-gateway.semsportal.com/web/sems" in caplog.text
+
+    def test_permission_error_is_not_retried(self):
+        """Test permission failures propagate without fetching another token."""
+        self.api._web_token = {
+            "uid": "uid",
+            "token": "token",
+            "api": "https://example.test",
+            "client": "semsPlusWeb",
+        }
+
+        with (
+            patch.object(
+                self.api,
+                "_make_http_request",
+                side_effect=SemsPermissionError(
+                    "getWebInverterTelemetry API call",
+                    "You do not have access or operation rights",
+                ),
+            ) as mock_http_request,
+            patch.object(self.api, "_get_web_login_token") as mock_login,
+        ):
+            with pytest.raises(SemsPermissionError):
+                self.api._make_api_call(
+                    "/telemetry",
+                    operation_name="getWebInverterTelemetry API call",
+                    is_web=True,
+                    token_type="web",
+                )
+
+        mock_http_request.assert_called_once()
+        mock_login.assert_not_called()
 
     def test_telecounting_token_error_is_error_logged(self, requests_mock, caplog):
         """Test telecounting token errors remain visible in the logs."""
