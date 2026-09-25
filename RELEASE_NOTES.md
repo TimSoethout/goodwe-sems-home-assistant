@@ -1,10 +1,10 @@
 # Release notes
 
-## 11.11.0-beta - 2026-09-25
+## 11.11.0 - 2026-09-25
 
 ## Keep devices available when SEMS+ telemetry is restricted
 
-This beta keeps a discovered inverter available when SEMS+ returns an access
+This release keeps a discovered inverter available when SEMS+ returns an access
 rights error for device telemetry, while using station flow values for a
 single-inverter installation.
 
