@@ -54,10 +54,10 @@
       "integration_relevance": "not_required"
     },
     {
-      "method": "GET",
+      "method": "POST",
       "path": "/web/sems/sems-plant/api/stations/simple-query",
       "purpose": "Station lookup",
-      "integration_relevance": "optional"
+      "integration_relevance": "required_for_setup"
     },
     {
       "method": "GET",
@@ -78,10 +78,10 @@
       "integration_relevance": "not_required"
     },
     {
-      "method": "GET",
+      "method": "POST",
       "path": "/web/sems/sems-plant/api/portal/stations/page",
       "purpose": "Station-list page",
-      "integration_relevance": "optional"
+      "integration_relevance": "required_for_setup"
     },
     {
       "method": "GET",
