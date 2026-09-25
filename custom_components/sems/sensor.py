@@ -83,6 +83,7 @@ class SemsSensorType:
     empty_value: Any = None
     data_type_converter: Callable = Decimal
     custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None
+    entity_registry_enabled_default: bool = True
 
 
 @dataclass(slots=True)
@@ -232,6 +233,7 @@ def sensor_options_for_data(
                 SensorDeviceClass.ENERGY,
                 UnitOfEnergy.KILO_WATT_HOUR,
                 SensorStateClass.TOTAL_INCREASING,
+                entity_registry_enabled_default=False,
             ),
             SemsInverterSensorType(
                 device_info,
@@ -900,6 +902,7 @@ async def async_setup_entry(
                 sensor_option.state_class,
                 sensor_option.empty_value,
                 sensor_option.custom_value_handler,
+                sensor_option.entity_registry_enabled_default,
             )
         )
     async_add_entities(sensors)
@@ -962,6 +965,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         state_class: SensorStateClass | None = None,
         empty_value=None,
         custom_value_handler=None,
+        entity_registry_enabled_default=True,
     ) -> None:
         """Initialize a SEMS sensor."""
 
@@ -982,6 +986,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
             self._attr_name = name
 
         self._custom_value_handler = custom_value_handler
+        self._attr_entity_registry_enabled_default = entity_registry_enabled_default
 
         raw_value = self._get_native_value_from_coordinator()
 

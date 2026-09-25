@@ -130,12 +130,20 @@ class TestSemsApi:
 
         assert result is not None
         assert mock_production.called
-        assert mock_statistics.call_count == 4
+        assert mock_statistics.call_count == 3
         assert any(
             call_args.args[1:] == (
                 "year",
                 datetime(2018, 1, 1),
                 datetime(2027, 1, 1) - timedelta(seconds=1),
+            )
+            for call_args in mock_statistics.call_args_list
+        )
+        assert not any(
+            call_args.args[1:] == (
+                "day",
+                datetime(2026, 8, 1),
+                datetime(2026, 8, 31, 23, 59, 59),
             )
             for call_args in mock_statistics.call_args_list
         )
@@ -1539,7 +1547,9 @@ class TestSemsApi:
         result = self.api.getData("station123", renewToken=True, maxTokenRetries=1)
 
         assert result == mock_web_data.return_value
-        mock_web_data.assert_called_once_with("station123", True, 1)
+        mock_web_data.assert_called_once_with(
+            "station123", True, 1, include_last_month=False
+        )
 
     @patch.object(SemsApi, "_make_api_call")
     def test_get_energy_storage_integrated_cabinets(self, mock_api_call):

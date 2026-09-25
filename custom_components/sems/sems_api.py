@@ -718,10 +718,19 @@ class SemsApi:
         ]
 
     def getData(
-        self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
+        self,
+        powerStationId: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+        include_last_month: bool = False,
     ) -> dict[str, Any]:
         """Get the latest data from the SEMS+ Web API."""
-        return self.getWebData(powerStationId, renewToken, maxTokenRetries)
+        return self.getWebData(
+            powerStationId,
+            renewToken,
+            maxTokenRetries,
+            include_last_month=include_last_month,
+        )
 
     def _get_web_statistics(
         self,
@@ -826,7 +835,10 @@ class SemsApi:
         return parsed
 
     def _get_web_energy_statistics(
-        self, power_station_id: str, inverters: list[dict[str, Any]]
+        self,
+        power_station_id: str,
+        inverters: list[dict[str, Any]],
+        include_last_month: bool = False,
     ) -> tuple[dict[str, Any], dict[str, float], str | None, float | None] | None:
         """Return chart and lifetime statistics without making them coordinator-critical."""
         try:
@@ -840,15 +852,14 @@ class SemsApi:
             month_start = now.replace(day=1)
             previous_month_end = month_start - timedelta(seconds=1)
             previous_month_start = previous_month_end.replace(day=1)
-            statistic_ranges = (
+            statistic_ranges = [
                 ("day", now, now + timedelta(days=1) - timedelta(seconds=1)),
                 ("day", month_start, now + timedelta(days=1) - timedelta(seconds=1)),
-                (
-                    "day",
-                    previous_month_start,
-                    previous_month_end,
-                ),
-            )
+            ]
+            if include_last_month:
+                statistic_ranges.append(
+                    ("day", previous_month_start, previous_month_end)
+                )
 
             install_year: int | None = None
             for inverter in inverters:
@@ -971,7 +982,11 @@ class SemsApi:
         return response if isinstance(response, dict) else None
 
     def getWebData(
-        self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
+        self,
+        powerStationId: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+        include_last_month: bool = False,
     ) -> dict[str, Any]:
         """Build the legacy coordinator shape from SEMS+ Web responses."""
         inverters: list[dict[str, Any]] = []
@@ -1084,7 +1099,11 @@ class SemsApi:
         if any(storage_cabinets.values()):
             result["info"] = {"is_stored": True}
             result["_energy_storage_cabinets"] = storage_cabinets
-        statistics = self._get_web_energy_statistics(powerStationId, inverters)
+        statistics = self._get_web_energy_statistics(
+            powerStationId,
+            inverters,
+            include_last_month=include_last_month,
+        )
         if statistics is not None:
             charts, totals, currency, last_month_pv = statistics
             if charts:
