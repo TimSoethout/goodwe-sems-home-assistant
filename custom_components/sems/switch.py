@@ -76,6 +76,10 @@ class SemsInverterSwitch(SemsSwitchBase):
             self.coordinator.sems_api.change_status,
             self.serial_number,
             _COMMAND_TURN_ON,
+            self.coordinator.station_id,
+            self.coordinator.data.inverters[self.serial_number].get(
+                "name", self.serial_number
+            ),
         )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -83,6 +87,10 @@ class SemsInverterSwitch(SemsSwitchBase):
             self.coordinator.sems_api.change_status,
             self.serial_number,
             _COMMAND_TURN_OFF,
+            self.coordinator.station_id,
+            self.coordinator.data.inverters[self.serial_number].get(
+                "name", self.serial_number
+            ),
         )
 
 

@@ -94,6 +94,8 @@ class ApiEndpoint(NamedTuple):
 _POWER_CONTROL_ENDPOINT = ApiEndpoint(
     "/PowerStation/SaveRemoteControlInverter", "legacy"
 )
+_WEB_INVERTER_STATUS_ADDRESS = "80017"
+_WEB_INVERTER_STATUS_FUNCTION_ID = "2043643517552594945"
 _WEB_DEVICE_STATUS_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/stations/device/all-status", "web"
 )
@@ -1645,7 +1647,8 @@ class SemsApi:
         addr_func_map: dict[str, str],
         renewToken: bool = False,
         maxTokenRetries: int = 2,
-    ):
+        virtual_sn: str | None = None,
+    ) -> bool:
         data = {
             "sn": serial_number,
             "addressMap": address_map,
@@ -1655,15 +1658,20 @@ class SemsApi:
             "plantId": plant_id,
             "deviceName": device_name,
         }
+        if virtual_sn is not None:
+            data["virtualSn"] = virtual_sn
 
-        self._make_api_call(
-            "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
-            method="POST",
-            data=json.dumps(data),
-            renewToken=renewToken,
-            maxTokenRetries=maxTokenRetries,
-            operation_name="setDeviceFunctionParameters API call",
-            is_web=True,
+        return (
+            self._make_api_call(
+                "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
+                method="POST",
+                data=json.dumps(data),
+                renewToken=renewToken,
+                maxTokenRetries=maxTokenRetries,
+                operation_name="setDeviceFunctionParameters API call",
+                is_web=True,
+            )
+            is not None
         )
 
     def _make_control_api_call(
@@ -1727,10 +1735,31 @@ class SemsApi:
         self,
         inverterSn: str,
         status: str | int,
+        plant_id: str | None = None,
+        device_name: str | None = None,
         renewToken: bool = False,
         maxTokenRetries: int = 2,
     ) -> None:
-        """Schedule the downtime of the station."""
+        """Change inverter status through SEMS+ Web, falling back to legacy API."""
+        if plant_id is not None and device_name is not None:
+            web_status = str(status)
+            if web_status in {"2", "4"}:
+                if self.setDeviceFunctionParameters(
+                    plant_id,
+                    inverterSn,
+                    device_name,
+                    {_WEB_INVERTER_STATUS_ADDRESS: int(web_status)},
+                    {"status_setting": ("stop" if web_status == "2" else "start_up")},
+                    {_WEB_INVERTER_STATUS_ADDRESS: _WEB_INVERTER_STATUS_FUNCTION_ID},
+                    renewToken=renewToken,
+                    maxTokenRetries=maxTokenRetries,
+                    virtual_sn=inverterSn,
+                ):
+                    return
+                _LOGGER.warning(
+                    "SEMS+ Web inverter status command failed; trying legacy API"
+                )
+
         data = {
             "InverterSN": inverterSn,
             "InverterStatusSettingMark": "1",

@@ -1697,6 +1697,50 @@ class TestSemsApi:
             operation_name="power control command for inverter inverter123",
         )
 
+    @patch.object(SemsApi, "_make_control_api_call")
+    @patch.object(SemsApi, "setDeviceFunctionParameters")
+    def test_change_status_uses_web_control(self, mock_web_control, mock_control_call):
+        """Test inverter status uses the SEMS+ Web control endpoint."""
+        mock_web_control.return_value = True
+
+        self.api.change_status(
+            "inverter123",
+            4,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        mock_web_control.assert_called_once_with(
+            "station123",
+            "inverter123",
+            "Inverter",
+            {"80017": 4},
+            {"status_setting": "start_up"},
+            {"80017": "2043643517552594945"},
+            renewToken=False,
+            maxTokenRetries=2,
+            virtual_sn="inverter123",
+        )
+        mock_control_call.assert_not_called()
+
+    @patch.object(SemsApi, "_make_control_api_call")
+    @patch.object(SemsApi, "setDeviceFunctionParameters")
+    def test_change_status_falls_back_to_legacy_control(
+        self, mock_web_control, mock_control_call
+    ):
+        """Test inverter status falls back when Web control fails."""
+        mock_web_control.return_value = False
+        mock_control_call.return_value = True
+
+        self.api.change_status(
+            "inverter123",
+            2,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        mock_control_call.assert_called_once()
+
     def test_change_status_success_real_structure(self, requests_mock):
         """Test successful inverter status change."""
         self.api._preferred_login_mode = "legacy"
