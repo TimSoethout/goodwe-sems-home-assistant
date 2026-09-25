@@ -1741,6 +1741,24 @@ class TestSemsApi:
 
         mock_control_call.assert_called_once()
 
+    @patch.object(SemsApi, "_make_control_api_call")
+    @patch.object(SemsApi, "setDeviceFunctionParameters")
+    def test_change_status_falls_back_after_web_retries(
+        self, mock_web_control, mock_control_call
+    ):
+        """Test inverter status falls back after Web retries are exhausted."""
+        mock_web_control.side_effect = OutOfRetries
+        mock_control_call.return_value = True
+
+        self.api.change_status(
+            "inverter123",
+            2,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        mock_control_call.assert_called_once()
+
     def test_change_status_success_real_structure(self, requests_mock):
         """Test successful inverter status change."""
         self.api._preferred_login_mode = "legacy"

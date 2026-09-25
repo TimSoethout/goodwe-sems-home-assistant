@@ -1744,17 +1744,27 @@ class SemsApi:
         if plant_id is not None and device_name is not None:
             web_status = str(status)
             if web_status in {"2", "4"}:
-                if self.setDeviceFunctionParameters(
-                    plant_id,
-                    inverterSn,
-                    device_name,
-                    {_WEB_INVERTER_STATUS_ADDRESS: int(web_status)},
-                    {"status_setting": ("stop" if web_status == "2" else "start_up")},
-                    {_WEB_INVERTER_STATUS_ADDRESS: _WEB_INVERTER_STATUS_FUNCTION_ID},
-                    renewToken=renewToken,
-                    maxTokenRetries=maxTokenRetries,
-                    virtual_sn=inverterSn,
-                ):
+                try:
+                    web_control_succeeded = self.setDeviceFunctionParameters(
+                        plant_id,
+                        inverterSn,
+                        device_name,
+                        {_WEB_INVERTER_STATUS_ADDRESS: int(web_status)},
+                        {
+                            "status_setting": (
+                                "stop" if web_status == "2" else "start_up"
+                            )
+                        },
+                        {
+                            _WEB_INVERTER_STATUS_ADDRESS: _WEB_INVERTER_STATUS_FUNCTION_ID
+                        },
+                        renewToken=renewToken,
+                        maxTokenRetries=maxTokenRetries,
+                        virtual_sn=inverterSn,
+                    )
+                except OutOfRetries:
+                    web_control_succeeded = False
+                if web_control_succeeded:
                     return
                 _LOGGER.warning(
                     "SEMS+ Web inverter status command failed; trying legacy API"
