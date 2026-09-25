@@ -43,8 +43,7 @@ _WEB_STATISTICS_RATE_MAP = {
     "proSelfConsumRate": "selfUseRate",
 }
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
-# Web token plus X-Signature headers; the legacy monitor request uses POST with
-# {"powerStationId": "<station_id>"} and the legacy token header.
+# Web token plus X-Signature headers.
 _RequestTimeout = 30  # seconds
 _RateLimitRetryAfterSeconds = 300
 
@@ -94,9 +93,6 @@ class ApiEndpoint(NamedTuple):
 _POWER_STATION_IDS_ENDPOINT = ApiEndpoint(
     "/PowerStation/GetPowerStationIdByOwner", "legacy"
 )
-_POWER_STATION_ENDPOINT = ApiEndpoint(
-    "/v3/PowerStation/GetMonitorDetailByPowerstationId", "legacy"
-)
 _POWER_CONTROL_ENDPOINT = ApiEndpoint(
     "/PowerStation/SaveRemoteControlInverter", "legacy"
 )
@@ -129,9 +125,6 @@ _WEB_STATISTICS_REFRESH_SECONDS = 300
 _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS = 86_400
 _WEB_STATISTICS_EARLIEST_YEAR = 2015
 _WEB_RELATED_DEVICES_REFRESH_SECONDS = 3_600
-_LEGACY_MONITOR_RETRY_SECONDS = 3_600
-
-
 class SemsApi:
     """Interface to the SEMS API."""
 
@@ -145,7 +138,6 @@ class SemsApi:
         self._web_token: dict[str, Any] | None = None  # Used for SEMS+ web APIs
         self._preferred_login_mode: TokenType | None = None
         self._web_cache: dict[str, tuple[float, Any]] = {}
-        self._legacy_monitor_empty_since: float | None = None
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
@@ -703,42 +695,8 @@ class SemsApi:
     def getData(
         self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
     ) -> dict[str, Any]:
-        """Get the latest data from the SEMS API and updates the state."""
-        if self._legacy_monitor_empty_since is not None:
-            if (
-                time.monotonic() - self._legacy_monitor_empty_since
-                < _LEGACY_MONITOR_RETRY_SECONDS
-            ):
-                return self.getWebData(powerStationId, renewToken, maxTokenRetries)
-            self._legacy_monitor_empty_since = None
-        data = '{"powerStationId":"' + powerStationId + '"}'
-        result = self._make_api_call(
-            _POWER_STATION_ENDPOINT.url_part,
-            data=data,
-            renewToken=renewToken,
-            maxTokenRetries=maxTokenRetries,
-            operation_name="getData API call",
-            token_type=_POWER_STATION_ENDPOINT.token_type,
-        )
-        if result is None:
-            _LOGGER.debug(
-                "Legacy monitor request returned no usable response; using SEMS+ Web fallback"
-            )
-            self._legacy_monitor_empty_since = time.monotonic()
-            web_result = self.getWebData(powerStationId)
-            return web_result if web_result.get("inverter") else {}
-        if not isinstance(result, dict):
-            return {}
-        if isinstance(result.get("inverter"), list) and result["inverter"]:
-            return result
-        if result and "inverter" not in result:
-            return result
-
-        _LOGGER.debug(
-            "Legacy monitor response has no usable inverter data; using SEMS+ Web fallback"
-        )
-        self._legacy_monitor_empty_since = time.monotonic()
-        return self.getWebData(powerStationId)
+        """Get the latest data from the SEMS+ Web API."""
+        return self.getWebData(powerStationId, renewToken, maxTokenRetries)
 
     def _get_web_statistics(
         self,
