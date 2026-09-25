@@ -9,6 +9,28 @@ This release incorporates sanitized EU SEMS+ Web contracts reported by
 that prevented entities from updating on some inverter and battery-rack
 stations.
 
+### Changes since 11.1.0
+
+- Added SEMS+ Web authentication with endpoint-specific token profiles,
+  browser-compatible headers/signatures, regional gateway handling, and
+  session recovery after legacy token renewal.
+- Added SEMS+ Web fallback discovery and telemetry for supported inverters,
+  integrated storage cabinets, battery racks, dongles, and smart meters.
+- Added SEMS+ mappings for inverter status, three-phase voltage, runtime,
+  temperature, grid/MPPT values, PV counters, and device-specific
+  telecounting.
+- Restored smart-meter/HomeKit entities for total and per-phase power,
+  voltage/current, and cumulative grid import/export counters.
+- Restored station-flow PV, grid, load, battery power, and SOC values,
+  including stations without a smart meter.
+- Restored supported BAT_SYS battery telemetry and daily/lifetime
+  charge/discharge counters while preserving the existing battery entity
+  shape.
+- Added station day/month/year statistics parsing with defensive validation,
+  caching, and compatibility with the Web UI's nested `dataList[]` response.
+- Added sanitized real-response examples, fixture-backed regression coverage,
+  and expanded release/migration documentation.
+
 ### Working with SEMS+ Web
 
 - Parse station statistics from the Web UI's `items` request and nested
