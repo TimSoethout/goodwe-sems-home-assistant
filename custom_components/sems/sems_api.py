@@ -1784,8 +1784,12 @@ class SemsApi:
         )
 
         if not success:
+            action = {"2": "stop", "4": "start"}.get(str(status), str(status))
+            device = device_name or inverterSn
+            station = f" at station {plant_id}" if plant_id else ""
             message = (
-                "Unable to control the inverter. SEMS+ Web control was rejected "
+                f"Unable to {action} inverter {device} "
+                f"(serial {inverterSn}){station}. SEMS+ Web control was rejected "
                 "and the legacy control request also failed. Verify that the "
                 "GoodWe account has remote-control permission and re-register "
                 "the integration with that account."

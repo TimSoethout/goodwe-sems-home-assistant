@@ -53,15 +53,24 @@ waiting, offline, or not producing. SEMS+ may omit live telemetry in that
 state while still returning historical energy counters. The integration does
 not replace missing values with zero.
 
-### Optional: control the inverter power output via the "switch" entity
+### Optional: control the inverter power output via the "Inverter Control" switch
 
-It is possible to temporarily pause energy production using the inverter's
-`downtime` functionality. This is exposed as a switch and can be used in your
-own automations.
+It is possible to temporarily pause and resume energy production using the
+inverter's `downtime` functionality. This is exposed as the **Inverter
+Control** switch and can be used in your own automations.
 
-This uses an undocumented API and can take a few minutes for the inverter to
-pick up the change. It takes approximately 60 seconds to start again when the
-inverter is in downtime mode.
+The switch uses the SEMS+ Web control API when the configured account has
+remote-control permission. The legacy control API is used as a fallback when
+the Web API is unavailable or rejects the operation. A read-only Visitor
+account can continue to provide monitoring data, but cannot be expected to
+control the inverter.
+
+These are undocumented APIs, and the inverter can take a few minutes to pick
+up a change. It takes approximately 60 seconds to start again when the
+inverter is in downtime mode. If both control APIs fail, Home Assistant
+reports the inverter name, serial number, and station in the service error.
+Re-register the integration with the GoodWe account that has remote-control
+permission.
 
 ### Recommended: use visitor account if you do not need to control the inverter
 
