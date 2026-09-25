@@ -1855,6 +1855,41 @@ class TestSemsApi:
             is_web=True,
         )
 
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
+    @patch.object(SemsApi, "getWebStationFlow", return_value={"pAc": 2.5, "pGrid": -1})
+    @patch.object(SemsApi, "getWebInverterTelecounting", side_effect=OutOfRetries)
+    @patch.object(SemsApi, "getWebInverterTelemetry", side_effect=OutOfRetries)
+    @patch.object(SemsApi, "getWebInverterDevices")
+    def test_get_web_data_keeps_device_when_telemetry_is_unavailable(
+        self,
+        mock_devices,
+        mock_telemetry,
+        mock_telecounting,
+        mock_flow,
+        mock_statistics,
+    ):
+        """Test station flow keeps a device usable when telemetry is forbidden."""
+        mock_devices.return_value = [
+            {
+                "sn": "SN1",
+                "name": "Zolder",
+                "subtype": "grid",
+                "deviceType": "INVERTER",
+            }
+        ]
+
+        inverter = self.api.getWebData("station")["inverter"][0]["invert_full"]
+
+        assert inverter["pac"] == 2500
+        assert inverter["pmeter"] == -1000
+        mock_telemetry.assert_called_once_with(
+            "station", "SN1", False, 2, device_type="INVERTER"
+        )
+        mock_telecounting.assert_called_once_with(
+            "station", "SN1", False, 2, device_type="INVERTER"
+        )
+        mock_flow.assert_called_once_with("station", False, 2)
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_battery_rack_telemetry_maps_existing_battery_entities(
         self, mock_api_call

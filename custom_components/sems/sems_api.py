@@ -1008,24 +1008,38 @@ class SemsApi:
             # making unsupported requests for them while preserving their
             # device/entity entry.
             if device_type != "DONGLE":
-                device_data.update(
-                    self.getWebInverterTelemetry(
-                        powerStationId,
-                        serial_number,
-                        renewToken,
-                        maxTokenRetries,
-                        device_type=device_type,
+                try:
+                    device_data.update(
+                        self.getWebInverterTelemetry(
+                            powerStationId,
+                            serial_number,
+                            renewToken,
+                            maxTokenRetries,
+                            device_type=device_type,
+                        )
                     )
-                )
-                device_data.update(
-                    self.getWebInverterTelecounting(
-                        powerStationId,
+                except (OutOfRetries, SemsRateLimitedError) as err:
+                    _LOGGER.debug(
+                        "SEMS inverter telemetry unavailable for %s: %s",
                         serial_number,
-                        renewToken,
-                        maxTokenRetries,
-                        device_type=device_type,
+                        err,
                     )
-                )
+                try:
+                    device_data.update(
+                        self.getWebInverterTelecounting(
+                            powerStationId,
+                            serial_number,
+                            renewToken,
+                            maxTokenRetries,
+                            device_type=device_type,
+                        )
+                    )
+                except (OutOfRetries, SemsRateLimitedError) as err:
+                    _LOGGER.debug(
+                        "SEMS inverter counters unavailable for %s: %s",
+                        serial_number,
+                        err,
+                    )
             if device_type == "BATTERY_RACK":
                 battery_data = {
                     key: device_data.pop(key)
@@ -1076,6 +1090,16 @@ class SemsApi:
                         inverter["invert_full"]["pmeter"] = float(grid_power) * 1000
                 except (TypeError, ValueError):
                     _LOGGER.debug("SEMS station flow has an invalid pGrid value")
+            if len(inverters) == 1:
+                inverter_full = inverters[0]["invert_full"]
+                if (
+                    "pac" not in inverter_full
+                    and (solar_power := flow.get("pAc")) is not None
+                ):
+                    try:
+                        inverter_full["pac"] = float(solar_power) * 1000
+                    except (TypeError, ValueError):
+                        _LOGGER.debug("SEMS station flow has an invalid pAc value")
             result.update(
                 {
                     "hasPowerflow": True,
