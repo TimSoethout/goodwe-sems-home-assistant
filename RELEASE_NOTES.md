@@ -1,5 +1,35 @@
 # Release notes
 
+## 11.7.0-beta - 2026-09-25
+
+## SEMS+ hybrid follow-up fixes
+
+This beta contains the follow-up changes since stable `11.6.0`.
+
+### Changes
+
+- Map SEMS+ standby status code `3` to `Waiting` instead of `Unknown`.
+- Keep HomeKit load consumption positive while grid export is reported through
+  the separate direction status.
+- Avoid assigning one station-level `pmeter` value to multiple inverters.
+- Reduce repeated empty legacy-monitor requests by temporarily preferring the
+  working SEMS+ Web fallback after an empty response.
+- Cache storage-cabinet discovery and retain the last valid discovery result
+  when a refresh is empty.
+- Organize the sanitized SEMS+ hybrid captures, including the previous-month
+  statistics fixture used to document the `lastmonthetotle` request.
+
+### Limitations
+
+- The SEMS+ production endpoint is requested optionally, but a real response
+  capture is still needed to validate production totals and currency parsing.
+- HEMS graph sign and unit semantics remain unvalidated.
+
+### Contributor
+
+- [@Richaaldo](https://github.com/Richaaldo) - sanitized hybrid SEMS+ Web
+  captures and compatibility findings.
+
 ## 11.6.0 - 2026-09-25
 
 ## Richaaldo EU SEMS+ compatibility fixes
