@@ -28,6 +28,20 @@ _SUPPORTED_WEB_DEVICE_TYPES = {
     "BATTERY_RACK",
     "DONGLE",
 }
+_WEB_INVERTER_ENTITY_TYPES = {"INVERTER", "ENERGY_STORAGE_INTEGRATED_CABINET"}
+_WEB_STATISTICS_KEY_MAP = {
+    "proSystemTotalStats": "sum",
+    "proPurchaseStats": "buy",
+    "proGridStats": "sell",
+    "proConsumStats": "consumptionOfLoad",
+    "proSelfConsumStats": "selfUseOfPv",
+    "proCharStats": "charge",
+    "proDischarStats": "disCharge",
+}
+_WEB_STATISTICS_RATE_MAP = {
+    "contributionRate": "contributingRate",
+    "proSelfConsumRate": "selfUseRate",
+}
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
 # Web token plus X-Signature headers; the legacy monitor request uses POST with
 # {"powerStationId": "<station_id>"} and the legacy token header.
@@ -99,6 +113,9 @@ _WEB_STATION_FLOW_ENDPOINT = ApiEndpoint("/sems-plant/api/stations/flow", "web")
 _WEB_STATION_STATISTICS_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/stations/statistics", "web"
 )
+_WEB_STATION_PRODUCTION_ENDPOINT = ApiEndpoint(
+    "/sems-plant/api/stations/production", "web"
+)
 _WEB_STATISTICS_ITEMS = [
     "proConsumStats",
     "proGridStats",
@@ -111,6 +128,8 @@ _WEB_STATISTICS_ITEMS = [
 _WEB_STATISTICS_REFRESH_SECONDS = 300
 _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS = 86_400
 _WEB_STATISTICS_EARLIEST_YEAR = 2015
+_WEB_RELATED_DEVICES_REFRESH_SECONDS = 3_600
+_LEGACY_MONITOR_RETRY_SECONDS = 3_600
 
 
 class SemsApi:
@@ -126,6 +145,7 @@ class SemsApi:
         self._web_token: dict[str, Any] | None = None  # Used for SEMS+ web APIs
         self._preferred_login_mode: TokenType | None = None
         self._web_cache: dict[str, tuple[float, Any]] = {}
+        self._legacy_monitor_empty_since: float | None = None
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
@@ -684,6 +704,13 @@ class SemsApi:
         self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
     ) -> dict[str, Any]:
         """Get the latest data from the SEMS API and updates the state."""
+        if self._legacy_monitor_empty_since is not None:
+            if (
+                time.monotonic() - self._legacy_monitor_empty_since
+                < _LEGACY_MONITOR_RETRY_SECONDS
+            ):
+                return self.getWebData(powerStationId, renewToken, maxTokenRetries)
+            self._legacy_monitor_empty_since = None
         data = '{"powerStationId":"' + powerStationId + '"}'
         result = self._make_api_call(
             _POWER_STATION_ENDPOINT.url_part,
@@ -697,6 +724,7 @@ class SemsApi:
             _LOGGER.debug(
                 "Legacy monitor request returned no usable response; using SEMS+ Web fallback"
             )
+            self._legacy_monitor_empty_since = time.monotonic()
             web_result = self.getWebData(powerStationId)
             return web_result if web_result.get("inverter") else {}
         if not isinstance(result, dict):
@@ -709,6 +737,7 @@ class SemsApi:
         _LOGGER.debug(
             "Legacy monitor response has no usable inverter data; using SEMS+ Web fallback"
         )
+        self._legacy_monitor_empty_since = time.monotonic()
         return self.getWebData(powerStationId)
 
     def _get_web_statistics(
@@ -736,8 +765,8 @@ class SemsApi:
                     "isReport": False,
                     "items": _WEB_STATISTICS_ITEMS,
                     "dimension": dimension,
-                    "startTime": start.strftime("%Y-%m-%d"),
-                    "endTime": end.strftime("%Y-%m-%d"),
+                    "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+                    "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
                 }
             ),
             operation_name="getWebStationStatistics API call",
@@ -783,6 +812,14 @@ class SemsApi:
                 continue
             if math.isfinite(numeric_value) and item not in parsed:
                 parsed[item] = [numeric_value]
+        for summary_key in _WEB_STATISTICS_RATE_MAP:
+            value = response.get(summary_key)
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(numeric_value):
+                parsed[summary_key] = [numeric_value]
 
         self._web_cache[cache_key] = (time.monotonic(), parsed)
         return parsed
@@ -799,50 +836,117 @@ class SemsApi:
             currency: str | None = None
             last_month_pv: float | None = None
 
+            month_start = now.replace(day=1)
+            previous_month_end = month_start - timedelta(seconds=1)
+            previous_month_start = previous_month_end.replace(day=1)
+            production = self._get_web_production(
+                power_station_id,
+                now,
+                now + timedelta(days=1) - timedelta(seconds=1),
+            )
+            if production:
+                currency = production.get("currency")
             for dimension, start, end in (
-                ("day", now, now + timedelta(days=1)),
+                ("day", now, now + timedelta(days=1) - timedelta(seconds=1)),
+                ("day", month_start, now + timedelta(days=1) - timedelta(seconds=1)),
                 (
-                    "month",
-                    now.replace(day=1),
-                    now.replace(day=1) + timedelta(days=32),
+                    "day",
+                    previous_month_start,
+                    previous_month_end,
                 ),
             ):
                 data = self._get_web_statistics(power_station_id, dimension, start, end)
                 if not data:
                     continue
-                if dimension == "day":
+                if start == now:
                     charts.update(
                         {
-                            "sum": sum(data.get("proSystemTotalStats", [])),
-                            "buy": sum(data.get("proPurchaseStats", [])),
-                            "sell": sum(data.get("proGridStats", [])),
-                            "selfUseOfPv": sum(data.get("proSelfConsumStats", [])),
-                            "consumptionOfLoad": sum(data.get("proConsumStats", [])),
-                            "charge": sum(data.get("proCharStats", [])),
-                            "disCharge": sum(data.get("proDischarStats", [])),
+                            target: sum(data.get(source, []))
+                            for source, target in _WEB_STATISTICS_KEY_MAP.items()
                         }
                     )
-                if dimension == "month":
+                    if production:
+                        for source, target in _WEB_STATISTICS_KEY_MAP.items():
+                            if target not in charts and isinstance(
+                                production.get(source), (int, float)
+                            ):
+                                charts[target] = production[source]
+                    charts.update(
+                        {
+                            target: sum(data.get(source, [])) / 100
+                            for source, target in _WEB_STATISTICS_RATE_MAP.items()
+                            if data.get(source)
+                        }
+                    )
+                elif start == previous_month_start:
                     last_month_pv = sum(data.get("proSystemTotalStats", []))
 
-            for year in range(_WEB_STATISTICS_EARLIEST_YEAR, current_year + 1):
+            install_year: int | None = None
+            for inverter in inverters:
+                add_time = inverter.get("invert_full", {}).get("addTime")
+                try:
+                    year = datetime.fromtimestamp(int(add_time) / 1000).year
+                    install_year = (
+                        year if install_year is None else min(install_year, year)
+                    )
+                except (TypeError, ValueError, OSError, OverflowError):
+                    continue
+            if install_year is None:
+                install_year = _WEB_STATISTICS_EARLIEST_YEAR
+            for year in range(install_year, current_year + 1):
                 data = self._get_web_statistics(
                     power_station_id,
                     "year",
                     datetime(year, 1, 1),
-                    datetime(year + 1, 1, 1),
+                    datetime(year + 1, 1, 1) - timedelta(seconds=1),
                 )
                 if not data:
                     continue
                 for item, values in data.items():
-                    totals[item] = totals.get(item, 0.0) + sum(values)
+                    target = _WEB_STATISTICS_KEY_MAP.get(item)
+                    if target is not None:
+                        totals[target] = totals.get(target, 0.0) + sum(values)
+            self_use = totals.get("selfUseOfPv")
+            consumption = totals.get("consumptionOfLoad")
+            production = totals.get("sum")
+            if self_use is not None and consumption:
+                totals["contributingRate"] = self_use / consumption
+            if self_use is not None and production:
+                totals["selfUseRate"] = self_use / production
 
-            if len(inverters) == 1:
-                currency = inverters[0].get("invert_full", {}).get("currency")
             return charts, totals, currency, last_month_pv
         except (OutOfRetries, SemsRateLimitedError) as err:
             _LOGGER.debug("SEMS station statistics unavailable: %s", err)
             return None
+
+    def _get_web_production(
+        self, power_station_id: str, start: datetime, end: datetime
+    ) -> dict[str, Any] | None:
+        """Get optional flat station production totals and currency."""
+        response = self._make_api_call(
+            _WEB_STATION_PRODUCTION_ENDPOINT.url_part,
+            data=json.dumps(
+                {
+                    "stationId": power_station_id,
+                    "items": [
+                        "proConsumStats",
+                        "proGridStats",
+                        "proPurchaseStats",
+                        "profitGridStats",
+                        "profitProStats",
+                        "proSystemTotalStats",
+                    ],
+                    "dimension": "day",
+                    "isReport": False,
+                    "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+                    "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            ),
+            operation_name="getWebStationProduction API call",
+            is_web=True,
+            token_type=_WEB_STATION_PRODUCTION_ENDPOINT.token_type,
+        )
+        return response if isinstance(response, dict) else None
 
     def getWebData(
         self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
@@ -880,6 +984,8 @@ class SemsApi:
             if device_type == "SMART_METER":
                 smart_meters.append(device_data)
                 continue
+            if device_type not in _WEB_INVERTER_ENTITY_TYPES:
+                continue
             if "model_type" not in device_data:
                 name = device_data.get("name")
                 subtype = device_data.get("subtype")
@@ -891,8 +997,22 @@ class SemsApi:
             inverters.append({"invert_full": device_data})
 
         result: dict[str, Any] = {"inverter": inverters}
-        flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
+        try:
+            flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
+        except (OutOfRetries, SemsRateLimitedError) as err:
+            _LOGGER.debug("SEMS station flow unavailable: %s", err)
+            flow = {}
         if flow:
+            if (
+                not smart_meters
+                and len(inverters) == 1
+                and (grid_power := flow.get("pGrid")) is not None
+            ):
+                try:
+                    for inverter in inverters:
+                        inverter["invert_full"]["pmeter"] = float(grid_power) * 1000
+                except (TypeError, ValueError):
+                    _LOGGER.debug("SEMS station flow has an invalid pGrid value")
             result.update(
                 {
                     "hasPowerflow": True,
@@ -911,9 +1031,29 @@ class SemsApi:
             ):
                 continue
             serial_number = inverter_full["sn"]
-            cabinets = self.getEnergyStorageIntegratedCabinets(
-                powerStationId, serial_number, renewToken, maxTokenRetries
-            )
+            cache_key = f"cabinets:{powerStationId}:{serial_number}"
+            cached = self._web_cache.get(cache_key)
+            if (
+                cached
+                and time.monotonic() - cached[0] < _WEB_RELATED_DEVICES_REFRESH_SECONDS
+            ):
+                cabinets = cached[1]
+            else:
+                try:
+                    cabinets = self.getEnergyStorageIntegratedCabinets(
+                        powerStationId, serial_number, renewToken, maxTokenRetries
+                    )
+                except (OutOfRetries, SemsRateLimitedError) as err:
+                    _LOGGER.debug(
+                        "SEMS related storage devices unavailable for %s: %s",
+                        serial_number,
+                        err,
+                    )
+                    cabinets = []
+                if cabinets:
+                    self._web_cache[cache_key] = (time.monotonic(), cabinets)
+                elif cached:
+                    cabinets = cached[1]
             storage_cabinets[serial_number] = cabinets
             batteries = self._get_web_batteries(powerStationId, cabinets)
             if batteries:
@@ -922,20 +1062,19 @@ class SemsApi:
         if any(storage_cabinets.values()):
             result["info"] = {"is_stored": True}
             result["_energy_storage_cabinets"] = storage_cabinets
-        if result.get("hasPowerflow"):
-            statistics = self._get_web_energy_statistics(powerStationId, inverters)
-            if statistics is not None:
-                charts, totals, currency, last_month_pv = statistics
-                if charts:
-                    result["hasEnergeStatisticsCharts"] = True
-                    result["energeStatisticsCharts"] = charts
-                    result["energeStatisticsTotals"] = totals
-                if last_month_pv is not None and len(inverters) == 1:
-                    invert_full = inverters[0].get("invert_full")
-                    if isinstance(invert_full, dict):
-                        invert_full["lastmonthetotle"] = last_month_pv
-                if currency is not None:
-                    result["kpi"] = {"currency": currency}
+        statistics = self._get_web_energy_statistics(powerStationId, inverters)
+        if statistics is not None:
+            charts, totals, currency, last_month_pv = statistics
+            if charts:
+                result["hasEnergeStatisticsCharts"] = True
+                result["energeStatisticsCharts"] = charts
+                result["energeStatisticsTotals"] = totals
+            if last_month_pv is not None and len(inverters) == 1:
+                invert_full = inverters[0].get("invert_full")
+                if isinstance(invert_full, dict):
+                    invert_full["lastmonthetotle"] = last_month_pv
+            if currency is not None:
+                result["kpi"] = {"currency": currency}
         return result
 
     def getWebStationFlow(
@@ -961,13 +1100,18 @@ class SemsApi:
         flow: dict[str, Any], smart_meter: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Map SEMS+ flow and smart-meter counters to HomeKit fields."""
+        grid_status = -1 if float(flow.get("pGrid", 0)) > 0 else 1
+        battery_power = flow.get("pBat")
+        battery_status = (
+            -1 if battery_power is not None and float(battery_power) > 0 else 1
+        )
         homekit: dict[str, Any] = {
             "sn": smart_meter.get("sn") if smart_meter else None,
-            "gridStatus": 1,
-            "loadStatus": 1,
+            "gridStatus": grid_status,
+            "loadStatus": grid_status,
         }
         for source, target in (
-            ("pAc", "pv"),
+            ("pSystem" if "pSystem" in flow else "pAc", "pv"),
             ("pGrid", "grid"),
             ("pConsum", "load"),
             ("pBat", "battery"),
@@ -977,7 +1121,9 @@ class SemsApi:
         if (soc := flow.get("soc")) is not None:
             homekit["soc"] = soc
         if "battery" in homekit:
-            homekit["batteryStatus"] = 1
+            homekit["batteryStatus"] = battery_status
+            homekit["bettery"] = homekit["battery"]
+            homekit["betteryStatus"] = battery_status
         if smart_meter:
             homekit.update(
                 {
@@ -1220,7 +1366,17 @@ class SemsApi:
             serial_number = cabinet.get("sn")
             if not isinstance(serial_number, str):
                 continue
-            telemetry = self.getBatterySystemTelemetry(powerStationId, serial_number)
+            try:
+                telemetry = self.getBatterySystemTelemetry(
+                    powerStationId, serial_number
+                )
+            except (OutOfRetries, SemsRateLimitedError) as err:
+                _LOGGER.debug(
+                    "SEMS BAT_SYS telemetry unavailable for %s: %s",
+                    serial_number,
+                    err,
+                )
+                continue
             battery: dict[str, Any] = {"sn": serial_number}
             for source, target in (
                 ("power", "pbattery"),
@@ -1285,6 +1441,7 @@ class SemsApi:
             "batSysTemp": "temperature",
             "aMaxChar": "max_charge_current",
             "aMaxDischar": "max_discharge_current",
+            "voltage": "voltage",
             "SOC": "soc",
             "pBat": "power",
             "VBat": "voltage",

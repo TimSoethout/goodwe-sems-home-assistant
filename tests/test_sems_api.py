@@ -46,6 +46,8 @@ class TestSemsApi:
             self.api,
             "_make_api_call",
             return_value={
+                "proSelfConsumRate": 63.85,
+                "contributionRate": 59.43,
                 "dataList": [
                     {
                         "item": "proSystemTotalStats",
@@ -55,7 +57,7 @@ class TestSemsApi:
                             {"val": "Infinity"},
                         ],
                     }
-                ]
+                ],
             },
         ) as mock_call:
             result = self.api._get_web_statistics(
@@ -65,12 +67,40 @@ class TestSemsApi:
                 datetime(2026, 1, 2),
             )
 
-        assert result == {"proSystemTotalStats": [1.25]}
+        assert result == {
+            "proSystemTotalStats": [1.25],
+            "proSelfConsumRate": [63.85],
+            "contributionRate": [59.43],
+        }
         request = json.loads(mock_call.call_args.kwargs["data"])
         assert request["stationId"] == MOCK_POWER_STATION_ID
         assert request["dimension"] == "day"
         assert request["items"]
         assert request["isReport"] is False
+        assert request["startTime"] == "2026-01-01 00:00:00"
+        assert request["endTime"] == "2026-01-02 00:00:00"
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_web_station_production_uses_web_request_contract(self, mock_api_call):
+        """Test optional station production totals and currency request."""
+        mock_api_call.return_value = {
+            "proSystemTotalStats": 31.4,
+            "currency": "EUR",
+        }
+
+        result = self.api._get_web_production(
+            "station",
+            datetime(2026, 1, 1),
+            datetime(2026, 1, 1, 23, 59, 59),
+        )
+
+        assert result == {"proSystemTotalStats": 31.4, "currency": "EUR"}
+        mock_api_call.assert_called_once()
+        request = json.loads(mock_api_call.call_args.kwargs["data"])
+        assert request["items"]
+        assert request["isReport"] is False
+        assert request["startTime"] == "2026-01-01 00:00:00"
+        assert request["endTime"] == "2026-01-01 23:59:59"
 
     @patch("custom_components.sems.sems_api.requests.request")
     def test_make_http_request_success(self, mock_request):
@@ -1029,12 +1059,18 @@ class TestSemsApi:
             token_type="web",
         )
 
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
     @patch.object(SemsApi, "getWebStationFlow", return_value={})
     @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
     @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
     @patch.object(SemsApi, "getWebInverterDevices")
     def test_get_web_data_uses_name_as_model(
-        self, mock_devices, mock_telemetry, mock_telecounting, mock_flow
+        self,
+        mock_devices,
+        mock_telemetry,
+        mock_telecounting,
+        mock_flow,
+        mock_statistics,
     ):
         """Test SEMS+ fallback combines the device name and subtype as model."""
         mock_devices.return_value = [
@@ -1120,6 +1156,8 @@ class TestSemsApi:
             "load": 1800,
             "battery": -1100,
             "batteryStatus": 1,
+            "bettery": -1100,
+            "betteryStatus": 1,
             "soc": 62,
             "hasEnergeStatisticsCharts": False,
         }
@@ -1136,11 +1174,17 @@ class TestSemsApi:
             "etotal": 21841.1,
         },
     )
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
     @patch.object(SemsApi, "getWebStationFlow", return_value={})
     @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
     @patch.object(SemsApi, "getWebInverterDevices")
     def test_get_web_data_preserves_counters_without_live_telemetry(
-        self, mock_devices, mock_telemetry, mock_flow, mock_telecounting
+        self,
+        mock_devices,
+        mock_telemetry,
+        mock_flow,
+        mock_statistics,
+        mock_telecounting,
     ):
         """Test a waiting inverter response with counters but no live telemetry."""
         mock_devices.return_value = [
@@ -1330,9 +1374,11 @@ class TestSemsApi:
             {
                 "code": "battery",
                 "factors": [
-                    {"code": "SOC", "data": "85"},
+                    {"code": "soc", "data": "85"},
                     {"code": "pBat", "data": "1.2"},
-                    {"code": "VBat", "data": "400"},
+                    {"code": "voltage", "data": "400"},
+                    {"code": "a", "data": "3"},
+                    {"code": "batSysTemp", "data": "24"},
                 ],
             }
         ]
@@ -1341,6 +1387,8 @@ class TestSemsApi:
             "soc": 85.0,
             "power": 1.2,
             "voltage": 400.0,
+            "current": 3.0,
+            "temperature": 24.0,
         }
         mock_api_call.assert_called_once_with(
             "/sems-plant/api/equipments/BAT1/telemetry?deviceType=BAT_SYS&pwId=station",
@@ -1537,6 +1585,21 @@ class TestSemsApi:
 
         assert result == mock_web_data.return_value
         mock_web_data.assert_called_once_with("station123")
+
+    @patch.object(SemsApi, "getWebData")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_data_skips_empty_legacy_monitor_temporarily(
+        self, mock_api_call, mock_web_data
+    ):
+        """Test repeated polls use Web fallback after an empty legacy response."""
+        mock_api_call.return_value = {"inverter": []}
+        mock_web_data.return_value = {"inverter": [{"invert_full": {"sn": "SN1"}}]}
+
+        assert self.api.getData("station123") == mock_web_data.return_value
+        assert self.api.getData("station123") == mock_web_data.return_value
+
+        mock_api_call.assert_called_once()
+        assert mock_web_data.call_count == 2
 
     def test_get_data_returns_empty_on_failure(self, requests_mock):
         """Test getData returns empty dict on login failure."""

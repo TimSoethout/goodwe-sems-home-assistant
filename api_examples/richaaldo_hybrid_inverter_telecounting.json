@@ -1,0 +1,156 @@
+{
+  "code": "00000",
+  "description": "success",
+  "traceId": "<trace_id>",
+  "data": [
+    {
+      "code": "telecounting_real",
+      "factors": [
+        {
+          "code": "pAc",
+          "data": "0.897",
+          "dataType": "NUMERIC",
+          "unit": "kW",
+          "alias": "cur_power"
+        },
+        {
+          "code": "ratedPower",
+          "data": "5",
+          "dataType": "NUMERIC",
+          "unit": "kW",
+          "alias": "rated_power"
+        }
+      ]
+    },
+    {
+      "code": "telecounting_today",
+      "factors": [
+        {
+          "code": "proPvStatsToday",
+          "data": "31.4",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "power_generation"
+        },
+        {
+          "code": "proCharStatsToday",
+          "data": "20.3",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "charge_quantity"
+        },
+        {
+          "code": "proDischarStatsToday",
+          "data": "12.8",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "energy_discharged"
+        }
+      ]
+    },
+    {
+      "code": "telecounting_week",
+      "factors": [
+        {
+          "code": "proPvStatsWeek",
+          "data": "122.6",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "power_generation"
+        },
+        {
+          "code": "proCharStatsWeek",
+          "data": "96.4",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "charge_quantity"
+        },
+        {
+          "code": "proDischarStatsWeek",
+          "data": "82.6",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "energy_discharged"
+        }
+      ]
+    },
+    {
+      "code": "telecounting_month",
+      "factors": [
+        {
+          "code": "proPvStatsMonth",
+          "data": "621.2",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "power_generation"
+        },
+        {
+          "code": "proCharStatsMonth",
+          "data": "667.3",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "charge_quantity"
+        },
+        {
+          "code": "proDischarStatsMonth",
+          "data": "627.8",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "energy_discharged"
+        }
+      ]
+    },
+    {
+      "code": "telecounting_year",
+      "factors": [
+        {
+          "code": "proPvStatsYear",
+          "data": "6791",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "power_generation"
+        },
+        {
+          "code": "proCharStatsYear",
+          "data": "7587.800000",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "charge_quantity"
+        },
+        {
+          "code": "proDischarStatsYear",
+          "data": "7309",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "energy_discharged"
+        }
+      ]
+    },
+    {
+      "code": "telecounting_lifetime",
+      "factors": [
+        {
+          "code": "proPvStatsTotal",
+          "data": "7492.4",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "power_generation"
+        },
+        {
+          "code": "proCharStatsTotal",
+          "data": "7587.800000",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "charge_quantity"
+        },
+        {
+          "code": "proDischarStatsTotal",
+          "data": "7309",
+          "dataType": "NUMERIC",
+          "unit": "kWh",
+          "alias": "energy_discharged"
+        }
+      ]
+    }
+  ]
+}

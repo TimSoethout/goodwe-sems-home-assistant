@@ -545,7 +545,6 @@ def sensor_options_for_data(
                 SensorDeviceClass.POWER,
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
-                custom_value_handler=status_value_handler(["loadStatus"]),
             ),
             SemsHomekitSensorType(
                 device_info,
