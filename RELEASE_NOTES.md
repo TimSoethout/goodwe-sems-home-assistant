@@ -10,16 +10,53 @@ single-inverter installation.
 
 ### Changes
 
-- Preserve discovered devices when telemetry or counter requests exhaust their
-  token retries.
+- Continued the SEMS+ Web migration and reduced setup and refresh overhead.
+- Discover power stations through the SEMS+ Web station-list endpoint.
+- Prefer SEMS+ Web authentication and reuse its token, while retaining legacy
+  login fallback.
+- Fetch historical yearly statistics in one range request and run independent
+  production and statistics requests concurrently.
+- Cache storage-cabinet discovery and retain the last valid result when a
+  refresh is empty.
+- Map SEMS+ standby status code `3` to `Waiting`.
+- Keep HomeKit load consumption positive while reporting grid export through
+  the separate direction status.
+- Avoid assigning one station-level meter value to multiple inverters.
+- Add SEMS+ Web inverter start/stop control with legacy control fallback.
+- Document that inverter control requires an account with remote-control
+  permission.
+- Preserve discovered battery-rack and dongle devices as Home Assistant
+  entities.
+- Map battery-rack BMS telemetry to the existing battery entity fields.
+- Skip unsupported telemetry and counter requests for dongles.
+- Preserve discovered devices when telemetry or counter requests are denied.
 - Use station-level `pAc` and `pGrid` for the single-inverter fallback.
 - Add regression coverage for restricted telemetry access.
+
+### Limitations
+
+- Web inverter controls require a GoodWe account with remote-control
+  permission. Read-only Visitor accounts provide monitoring only.
+- The SEMS+ production endpoint is requested optionally, but production totals
+  and currency parsing still need validation against real responses.
+- The previous-month energy sensor is disabled by default unless explicitly
+  requested.
+- Detailed BMS values remain unavailable when the station exposes no BAT_SYS
+  response.
+- Generator, grid-meter-power, and detailed load-status fields were not
+  present in the captured flow contracts.
+- HEMS graph units, timezone, and direction semantics need validation against
+  real measured values.
 
 ### Contributors
 
 - [@TimSoethout](https://github.com/TimSoethout) - implementation and testing.
 - [@GoodnessJSON](https://github.com/GoodnessJSON) - diagnostic report and
   troubleshooting data.
+- [@Richaaldo](https://github.com/Richaaldo) - sanitized EU SEMS+ Web
+  captures and compatibility findings.
+- [@kieranlee1970](https://github.com/kieranlee1970) - community battery
+  restoration and station-statistics work that informed these changes.
 
 ## 11.10.0-beta - 2026-09-25
 
