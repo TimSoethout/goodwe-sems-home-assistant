@@ -7,6 +7,7 @@ legacy/*
 !legacy/legacy_monitor_empty.json
 !all_status.json
 !browser_api_endpoints.json
+!device_start_stop.json
 !web_cross_login.json
 !station_flow.json
 !station_flow_import.json

@@ -1,0 +1,96 @@
+{
+  "capability_request": {
+    "method": "POST",
+    "path": "/web/sems/sems-remote/api/v2/address/remote/getTopTreeByCode",
+    "body": {
+      "sn": "<device_sn>",
+      "menuCode": 0,
+      "batIndex": ""
+    }
+  },
+  "function_menus_request": {
+    "method": "POST",
+    "path": "/web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+    "body": {
+      "sn": "<device_sn>",
+      "menuId": "<device_menu_id>"
+    },
+    "response": {
+      "code": "00000",
+      "description": "success",
+      "functions": "Includes the device_start_stop function schema below"
+    }
+  },
+  "capability": {
+    "function": "device_start_stop",
+    "translateKey": "status_setting",
+    "address": "80017",
+    "functionId": "<function_id>",
+    "control": 4,
+    "controlType": 2,
+    "preCommand": "F7",
+    "range": "[0,4]",
+    "readWrite": "RW",
+    "size": 1,
+    "type": "U16",
+    "unit": "N/A",
+    "values": {
+      "restart": 1,
+      "stop": 2,
+      "start_up": 4
+    }
+  },
+  "control_endpoint": {
+    "method": "POST",
+    "path": "/web/sems/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
+    "token": "SEMS+ Web token and X-Signature"
+  },
+  "captures": [
+    {
+      "action": "stop",
+      "request": {
+        "sn": "<device_sn>",
+        "addressMap": {
+          "80017": 2
+        },
+        "addrFuncMap": {
+          "80017": "<function_id>"
+        },
+        "controlItemLogs": {
+          "status_setting": "stop"
+        },
+        "waitingForDevice": true,
+        "plantId": "<station_id>",
+        "deviceName": "<device_name>",
+        "virtualSn": "<device_sn>"
+      },
+      "response": {
+        "code": "00000",
+        "description": "success"
+      }
+    },
+    {
+      "action": "start_up",
+      "request": {
+        "sn": "<device_sn>",
+        "addressMap": {
+          "80017": 4
+        },
+        "addrFuncMap": {
+          "80017": "<function_id>"
+        },
+        "controlItemLogs": {
+          "status_setting": "start_up"
+        },
+        "waitingForDevice": true,
+        "plantId": "<station_id>",
+        "deviceName": "<device_name>",
+        "virtualSn": "<device_sn>"
+      },
+      "response": {
+        "code": "00000",
+        "description": "success"
+      }
+    }
+  ]
+}

@@ -112,6 +112,18 @@
       "path": "/web/sems/sems-plant/api/equipments/<sn>/relatedDevices?sn=<sn>&deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=<station_id>",
       "purpose": "Storage cabinet discovery",
       "integration_relevance": "required_for_battery_support"
+    },
+    {
+      "method": "POST",
+      "path": "/web/sems/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
+      "purpose": "Inverter remote function control, including start and stop",
+      "integration_relevance": "candidate_for_control_migration"
+    },
+    {
+      "method": "POST",
+      "path": "/web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+      "purpose": "Device remote-control function capability details",
+      "integration_relevance": "candidate_for_control_migration"
     }
   ],
   "notes": [
