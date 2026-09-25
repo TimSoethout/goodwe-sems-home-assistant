@@ -1259,6 +1259,7 @@ class TestSemsApi:
             "sn": "METER1",
             "gridStatus": 1,
             "loadStatus": 1,
+            "isSemsPlusFlow": True,
             "pv": 0,
             "grid": -1351,
             "load": 1351,
@@ -1270,6 +1271,16 @@ class TestSemsApi:
             "Totals_sell": 3.5,
             "hasEnergeStatisticsCharts": True,
         }
+
+    def test_normalize_web_homekit_data_load_is_never_negative(self):
+        """Test a negative pConsum while exporting maps to positive consumption."""
+        result = SemsApi._normalize_web_homekit_data(
+            {"pSystem": 3.03, "pGrid": 2.53, "pConsum": -0.5}
+        )
+
+        assert result["load"] == 500
+        assert result["grid"] == 2530
+        assert result["gridStatus"] == -1
 
     def test_normalize_web_homekit_data_maps_station_flow_without_meter(self):
         """Test station flow remains usable when no smart meter is discovered."""
@@ -1288,6 +1299,7 @@ class TestSemsApi:
             "sn": None,
             "gridStatus": 1,
             "loadStatus": 1,
+            "isSemsPlusFlow": True,
             "pv": 2400,
             "grid": -500,
             "load": 1800,

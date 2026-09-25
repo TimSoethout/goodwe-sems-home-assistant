@@ -15,6 +15,7 @@ from custom_components.sems import (
     _normalize_energy_statistics_charts,
 )
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
+from custom_components.sems.sems_api import SemsApi
 from custom_components.sems.sensor import (
     convert_status_to_label,
     sensor_options_for_data,
@@ -249,6 +250,43 @@ async def test_web_meter_data_keeps_registered_homekit_serial(
         )
         is None
     )
+
+
+async def test_web_flow_load_sensors_report_consumption_while_exporting(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Test SEMS+ load sensors stay positive and non-zero while exporting."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    web_data = {
+        "inverter": MOCK_GET_DATA_RESULT_MINIMAL["inverter"],
+        "hasPowerflow": True,
+        "powerflow": SemsApi._normalize_web_homekit_data(
+            {"pSystem": 3.03, "pGrid": 2.53, "pConsum": -0.5}
+        ),
+    }
+    with _mock_no_battery_api(web_data):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    for suffix in ("-load", "-homekit"):
+        entity_id = ent_reg.async_get_entity_id(
+            Platform.SENSOR, DOMAIN, f"GW-HOMEKIT-NO-SERIAL{suffix}"
+        )
+        assert entity_id is not None
+        assert float(hass.states.get(entity_id).state) == 500.0
 
 
 async def test_unique_id_migration_powerflow_to_homekit_sn(

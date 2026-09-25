@@ -1220,6 +1220,8 @@ class SemsApi:
             "sn": smart_meter.get("sn") if smart_meter else None,
             "gridStatus": grid_status,
             "loadStatus": grid_status,
+            # Marks SEMS+ Web flow data, whose load is always the consumption.
+            "isSemsPlusFlow": True,
         }
         for source, target in (
             ("pSystem" if "pSystem" in flow else "pAc", "pv"),
@@ -1229,6 +1231,10 @@ class SemsApi:
         ):
             if (value := flow.get(source)) is not None:
                 homekit[target] = float(value) * 1000
+        if "load" in homekit:
+            # Household consumption is never negative; SEMS+ can report pConsum
+            # with a flow-direction sign.
+            homekit["load"] = abs(homekit["load"])
         if (soc := flow.get("soc")) is not None:
             homekit["soc"] = soc
         if "battery" in homekit:
