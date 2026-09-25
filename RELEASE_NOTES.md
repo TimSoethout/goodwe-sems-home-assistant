@@ -1,10 +1,10 @@
 # Release notes
 
-## 11.6.0-beta - 2026-09-24
+## 11.6.0 - 2026-09-25
 
 ## Richaaldo EU SEMS+ compatibility fixes
 
-This beta incorporates sanitized EU SEMS+ Web contracts reported by
+This release incorporates sanitized EU SEMS+ Web contracts reported by
 [@Richaaldo](https://github.com/Richaaldo) and fixes response-shape assumptions
 that prevented entities from updating on some inverter and battery-rack
 stations.
