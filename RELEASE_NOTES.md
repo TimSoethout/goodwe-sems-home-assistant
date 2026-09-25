@@ -1,5 +1,25 @@
 # Release notes
 
+## 11.9.0-beta - 2026-09-25
+
+## SEMS+ Web inverter controls
+
+This beta adds SEMS+ Web inverter start/stop control while preserving
+compatibility with accounts that only support the legacy control endpoint.
+
+### Changes
+
+- Use the verified SEMS+ Web control endpoint for inverter start and stop.
+- Fall back to the legacy control endpoint when Web authentication or
+  permissions are unavailable.
+- Show the affected inverter and station in control errors.
+- Document the remote-control account permission requirement.
+
+### Limitations
+
+- Web inverter controls require a GoodWe account with remote-control
+  permission. Read-only Visitor accounts provide monitoring only.
+
 ## 11.8.0-beta - 2026-09-25
 
 ## SEMS+ Web migration and refresh optimization
