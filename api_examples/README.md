@@ -31,11 +31,43 @@ the relevant JSON response and sanitize it instead.
 | --- | --- | --- | --- |
 | [`legacy/legacy_monitor_empty.json`](./legacy/legacy_monitor_empty.json) | `POST /api/v3/PowerStation/GetMonitorDetailByPowerstationId` with `powerStationId` in the JSON body | Legacy token from `Common/CrossLogin`, sent in the `token` header | `code`, `components`, `hasError`, `msg`, empty `data` |
 | `web_cross_login.json` | `POST /web/sems/sems-user/api/v1/auth/cross-login` | Account credentials; returns a SEMS+ Web token | `code=00000`, regional `api`, `region`, Web token metadata |
+| `station_list.json` | `POST /web/sems/sems-plant/api/portal/stations/page` with `current` and `size` | SEMS+ Web token and `X-Signature` | `dataList[].id`, station status, capacity, generation, and timezone |
 | `browser_api_endpoints.json` | Sanitized inventory of API URLs observed in the Web UI | Web token and `X-Signature` for authenticated calls | Authentication, station, device, alarm, message, and UI-support endpoints |
 | `station_flow.json` | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `id`, `name`, `status`, `pSystem`, `pAc`, `consumFlag`, `refreshTime` |
+| `station_flow_import.json` | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | Importing example with `pGrid`, `pConsum`, and flow direction |
 | `all_status.json` | `GET /web/sems/sems-plant/api/stations/device/all-status?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `deviceDetailList`, `statusDetailList`, `snList`, `detailMap` |
+| `smart_meter_all_status.json` | `GET /web/sems/sems-plant/api/stations/device/all-status?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `INVERTER` plus `SMART_METER` device discovery |
 | `telemetry.json` | `GET /web/sems/sems-plant/api/equipments/<sn>/telemetry?deviceType=INVERTER&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | `sn`, `hTotal`, `Temperature`, `pAc`, `qAc`, `gridPF`, `Vac`, `Iac`, `Fac`, MPPT fields |
+| `smart_meter_telemetry.json` | `GET /web/sems/sems-plant/api/equipments/<meter_sn>/telemetry?deviceType=SMART_METER&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | `totalPac`, per-phase power, voltage, and current |
 | `telecounting.json` | `GET /web/sems/sems-plant/api/equipments/<sn>/telecounting?deviceType=INVERTER&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | `pAc`, `ratedPower`, `proPvStatsToday`, `proPvStatsWeek`, `proPvStatsMonth`, `proPvStatsYear`, `proPvStatsTotal` |
+| `smart_meter_telecounting.json` | `GET /web/sems-plant/api/equipments/<meter_sn>/telecounting?deviceType=SMART_METER&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | `proGridStats*` and `proPurchaseStats*` import counters |
+| `smart_meter_related_devices.json` | `GET /web/sems-plant/api/equipments/<sn>/relatedDevices` for `INVERTER` and `SMART_METER` | SEMS+ Web token and `X-Signature` | Both responses return an empty `data` list |
+| [`semsplus_hybrid/all_status.json`](./semsplus_hybrid/all_status.json) | `GET /web/sems-plant/api/stations/device/all-status?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `INVERTER`, `BATTERY_RACK`, and `DONGLE` groups; install `addTime` |
+| [`semsplus_hybrid/station_flow.json`](./semsplus_hybrid/station_flow.json) | `GET /web/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | Hybrid `pSystem`, `pAc`, `pBat`, `pGrid`, `pConsum`, `soc`, and flow directions |
+| [`semsplus_hybrid/battery_system_telemetry.json`](./semsplus_hybrid/battery_system_telemetry.json) | `GET /web/sems-plant/api/equipments/<bat_sys_sn>/telemetry?deviceType=BAT_SYS&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | BAT_SYS SOC/SOH, power, voltage, current, temperature, and current limits |
+| [`semsplus_hybrid/inverter_telemetry.json`](./semsplus_hybrid/inverter_telemetry.json) | `GET /web/sems-plant/api/equipments/<sn>/telemetry?deviceType=INVERTER&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | Hybrid inverter AC/PV and MPPT factors |
+| [`semsplus_hybrid/inverter_telecounting.json`](./semsplus_hybrid/inverter_telecounting.json) | `GET /web/sems-plant/api/equipments/<sn>/telecounting?deviceType=INVERTER&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | PV, charge, and discharge counters |
+| [`semsplus_hybrid/related_devices_storage_cabinet.json`](./semsplus_hybrid/related_devices_storage_cabinet.json) | `GET /web/sems-plant/api/equipments/<sn>/relatedDevices?deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | Related BAT_SYS device metadata |
+| [`semsplus_hybrid/statistics_day.json`](./semsplus_hybrid/statistics_day.json) | `POST /web/sems-plant/api/stations/statistics` with local timestamp boundaries | SEMS+ Web token and `X-Signature` | Nested daily series plus flat energy summaries |
+| [`semsplus_hybrid/statistics_year_2025.json`](./semsplus_hybrid/statistics_year_2025.json) | `POST /web/sems-plant/api/stations/statistics` with `dimension=year` | SEMS+ Web token and `X-Signature` | Real yearly series for lifetime aggregation |
+| [`semsplus_hybrid/statistics_year_2026.json`](./semsplus_hybrid/statistics_year_2026.json) | `POST /web/sems-plant/api/stations/statistics` with `dimension=year` | SEMS+ Web token and `X-Signature` | Current-year series for lifetime aggregation |
+| [`semsplus_hybrid/statistics_invalid_dimension.json`](./semsplus_hybrid/statistics_invalid_dimension.json) | `POST /web/sems-plant/api/stations/statistics` with `dimension=total` | SEMS+ Web token and `X-Signature` | Rejected `S0327` response; `total` is not supported |
+
+The hybrid capture analysis and proposed follow-up fixes are documented in
+[`richaaldo_2026-09-24_differences.md`](./richaaldo_2026-09-24_differences.md).
+
+## `semsplus_hybrid` capture set
+
+The sanitized files in [`semsplus_hybrid/`](./semsplus_hybrid/) are the
+incorporated hybrid capture set. They cover the hybrid station's device
+discovery, station flow, inverter telemetry and counters, related BAT_SYS
+metadata, and station statistics. The capture-specific README documents the
+synthetic month fixture and the observed units; duplicate top-level copies are
+not maintained.
+
+The production endpoint is also implemented as an optional request, but the
+available capture/log contains only the request and not a response payload.
+No production response fixture is included until one can be sanitized.
 
 ## Token types
 
@@ -92,8 +124,8 @@ related-device discovery.
 | Method | HTTP request | Token |
 | --- | --- | --- |
 | `getLoginToken` | `POST /api/v3/Common/CrossLogin` (legacy fallback) or `POST /web/sems/sems-user/api/v1/auth/cross-login` (SEMS+ login) | Legacy token or SEMS+ Web token, depending on the successful login |
-| `getPowerStationIds` | `POST /PowerStation/GetPowerStationIdByOwner` | Legacy token |
-| `getData` | `POST /v3/PowerStation/GetMonitorDetailByPowerstationId` with `powerStationId` | Legacy token; affected accounts can receive an empty `data` object |
+| `getPowerStationIds` | `POST /web/sems/sems-plant/api/portal/stations/page` with `current` and `size` | SEMS+ Web token |
+| `getData` | SEMS+ Web station flow, device discovery, telemetry, and telecounting requests | SEMS+ Web token |
 | `getEnergyStorageIntegratedCabinets` | `GET /web/sems/sems-plant/api/equipments/<sn>/relatedDevices?sn=<sn>&deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=<station_id>` | SEMS+ Web token |
 | `getBatteryGeneralFunctions` | `POST /web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus` | SEMS+ Web token |
 | `getBatteryImmediateChargingStates` | `POST /web/sems/sems-remote/api/v1/address/remote/get-cache-device-function-parameters` | SEMS+ Web token |

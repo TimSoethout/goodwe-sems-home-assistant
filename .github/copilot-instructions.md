@@ -1,5 +1,34 @@
 # Copilot instructions for GoodWe SEMS Home Assistant integration
 
+## Highest-priority rules
+
+These rules apply before all other instructions in this file:
+
+1. **Use actual sanitized API examples as the source of truth.** Before
+   changing API parsing, coordinator data, or entities, inspect the relevant
+   files under [api_examples/](../api_examples/), especially the request
+   endpoint, response nesting, device type, factor names, units, sign
+   conventions, and missing fields.
+2. **Do not infer a payload from a name or from a hand-built mock.** If an
+   implementation needs a response shape that is not represented by an
+   actual sanitized capture, first add or update a sanitized example from a
+   real response and document it in
+   [api_examples/README.md](../api_examples/README.md). Never commit live
+   credentials, tokens, cookies, signatures, station IDs, serial numbers,
+   trace IDs, or personal names.
+3. **Test the complete path with captured data.** Load the relevant sanitized
+   JSON in a fixture-backed regression test and exercise response
+   normalization through entity creation/state where practical. Use
+   hand-built mocks only for isolated errors, missing fields, boundaries, or
+   behavior that cannot be captured safely. Tests must never call the live
+   GoodWe API or require user credentials.
+4. **Validate units and signs explicitly.** Do not silently convert kW/ W,
+   kWh/Wh, import/export, or grid-flow signs. Assert the conversion against
+   the captured example in the test.
+5. **If the capture and existing code disagree, stop and investigate the
+   discrepancy.** Do not “make the fixture fit” or choose an endpoint,
+   token type, field, or default solely because it seems plausible.
+
 ## Big picture architecture
 - This is a Home Assistant custom integration under custom_components/sems with two platforms: sensors and a switch (see [custom_components/sems/manifest.json](../custom_components/sems/manifest.json)).
 - Config flow validates credentials and optionally fetches the first power station ID via the SEMS API (see [custom_components/sems/config_flow.py](../custom_components/sems/config_flow.py)).
@@ -37,7 +66,7 @@
   relying on the response in integration code. Never commit credentials,
   cookies, authorization headers, signatures, tokens, station IDs, serial
   numbers, trace IDs, or personal names.
-- Prefer sanitized responses captured from the real API for integration tests:
+- Prefer sanitized responses captured from the real API for integration tests (../api_examples/):
   load them as fixtures and exercise the complete response-normalization and
   entity-creation path. Use hand-built mocks only for isolated error handling,
   missing-field, boundary, or otherwise hard-to-capture cases. Automated tests

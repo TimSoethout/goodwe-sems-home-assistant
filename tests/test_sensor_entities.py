@@ -33,6 +33,11 @@ def test_status_code_5_is_normal() -> None:
     assert convert_status_to_label(5) == "Normal"
 
 
+def test_status_code_3_is_waiting() -> None:
+    """Test that the SEMS+ non-producing status code is mapped to Waiting."""
+    assert convert_status_to_label(3) == "Waiting"
+
+
 def test_normalize_energy_statistics_charts_wh_values() -> None:
     """Convert chart values returned in Wh to the kWh sensor unit."""
     charts = {

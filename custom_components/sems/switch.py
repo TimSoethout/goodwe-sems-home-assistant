@@ -20,12 +20,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
-from .const import CONF_STATION_ID
+from .const import CONF_STATION_ID, INVERTER_ON_STATUSES
 from .device import device_info_for_inverter
 
 _LOGGER = logging.getLogger(__name__)
 
-_INVERTER_STATUS_ON = 1
 _COMMAND_TURN_OFF = 2
 _COMMAND_TURN_ON = 4
 
@@ -69,7 +68,7 @@ class SemsInverterSwitch(SemsSwitchBase):
     def is_on(self) -> bool | None:
         return (
             self.coordinator.data.inverters.get(self.serial_number, {}).get("status")
-            == _INVERTER_STATUS_ON
+            in INVERTER_ON_STATUSES
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:

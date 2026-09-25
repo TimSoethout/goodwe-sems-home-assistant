@@ -1,0 +1,89 @@
+{
+  "code": "00000",
+  "description": "success",
+  "traceId": "<trace_id>",
+  "data": {
+    "total": 3,
+    "deviceDetailList": [
+      {
+        "deviceType": "INVERTER",
+        "total": 1,
+        "statusDetailList": [
+          {
+            "status": 5,
+            "total": 1,
+            "snList": [
+              "<inverter_serial>"
+            ],
+            "isHemsMap": {
+              "<inverter_serial>": false
+            },
+            "detailMap": {
+              "<inverter_serial>": {
+                "sn": "<inverter_serial>",
+                "name": "Inverter",
+                "deviceType": "INVERTER",
+                "status": 5,
+                "isHems": false,
+                "subtype": "store",
+                "addTime": "1765869281483"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "deviceType": "BATTERY_RACK",
+        "total": 1,
+        "statusDetailList": [
+          {
+            "status": 0,
+            "total": 1,
+            "snList": [
+              "<battery_rack_serial>"
+            ],
+            "isHemsMap": {
+              "<battery_rack_serial>": false
+            },
+            "detailMap": {
+              "<battery_rack_serial>": {
+                "sn": "<battery_rack_serial>",
+                "name": "<battery_rack_serial>",
+                "deviceType": "BATTERY_RACK",
+                "status": 0,
+                "isHems": false,
+                "addTime": "1767837606560"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "deviceType": "DONGLE",
+        "total": 1,
+        "statusDetailList": [
+          {
+            "status": 1,
+            "total": 1,
+            "snList": [
+              "<dongle_serial>"
+            ],
+            "isHemsMap": {
+              "<dongle_serial>": false
+            },
+            "detailMap": {
+              "<dongle_serial>": {
+                "sn": "<dongle_serial>",
+                "name": "Dongle 1",
+                "deviceType": "DONGLE",
+                "status": 1,
+                "isHems": false,
+                "addTime": "1765869566170"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

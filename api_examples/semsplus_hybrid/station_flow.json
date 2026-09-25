@@ -1,0 +1,30 @@
+{
+  "code": "00000",
+  "description": "success",
+  "traceId": "<trace_id>",
+  "data": {
+    "id": "<station_id>",
+    "name": "<station_name>",
+    "status": "1",
+    "isGoodweInverter": true,
+    "flows": {
+      "pSystem": [
+        "pConsum"
+      ],
+      "pBat": [
+        "pConsum"
+      ],
+      "pGrid": [
+        "pConsum"
+      ]
+    },
+    "pSystem": 0.07772,
+    "pAc": 0.84017,
+    "pBat": 0.76245,
+    "pGrid": -0.001,
+    "soc": 99,
+    "pConsum": 0.84117,
+    "consumFlag": false,
+    "refreshTime": "2026-09-24T18:02:00"
+  }
+}

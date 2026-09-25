@@ -1,0 +1,64 @@
+{
+  "code": "00000",
+  "description": "成功",
+  "traceId": "<TRACE_ID>",
+  "data": {
+    "total": 2,
+    "deviceDetailList": [
+      {
+        "deviceType": "INVERTER",
+        "total": 1,
+        "statusDetailList": [
+          {
+            "status": 0,
+            "total": 1,
+            "snList": [
+              "<INVERTER_SN>"
+            ],
+            "isHemsMap": {
+              "<INVERTER_SN>": false
+            },
+            "detailMap": {
+              "<INVERTER_SN>": {
+                "sn": "<INVERTER_SN>",
+                "name": "<INVERTER_SN>",
+                "deviceType": "INVERTER",
+                "status": 0,
+                "isHems": false,
+                "subtype": "grid",
+                "addTime": "<EPOCH_MS>"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "deviceType": "SMART_METER",
+        "total": 1,
+        "statusDetailList": [
+          {
+            "status": 1,
+            "total": 1,
+            "snList": [
+              "<METER_SN>"
+            ],
+            "isHemsMap": {
+              "<METER_SN>": false
+            },
+            "detailMap": {
+              "<METER_SN>": {
+                "sn": "<METER_SN>",
+                "name": "<METER_SN>",
+                "deviceType": "SMART_METER",
+                "status": 1,
+                "isHems": false,
+                "subtype": "goodwe",
+                "addTime": "<EPOCH_MS>"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

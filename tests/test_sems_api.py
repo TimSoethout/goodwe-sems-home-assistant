@@ -1,6 +1,8 @@
 """Tests for the SEMS API module."""
 
 import json
+import logging
+from datetime import datetime, timedelta
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -37,6 +39,136 @@ class TestSemsApi:
         assert self.api._username == self.username
         assert self.api._password == self.password
         assert self.api._token is None
+
+    @patch.object(SemsApi, "getLoginToken")
+    @patch.object(SemsApi, "_get_web_login_token")
+    def test_authentication_reuses_web_token(
+        self, mock_web_login, mock_get_login_token
+    ):
+        """Test Web authentication is reused for station discovery."""
+        web_token = {"client": "semsPlusWeb", "api": "https://api.test.com"}
+        mock_web_login.return_value = web_token
+
+        assert self.api.test_authentication() is True
+
+        assert self.api._web_token == web_token
+        mock_web_login.assert_called_once_with(self.username, self.password)
+        mock_get_login_token.assert_not_called()
+
+    @patch.object(SemsApi, "getLoginToken")
+    @patch.object(SemsApi, "_get_web_login_token")
+    def test_authentication_falls_back_when_web_login_fails(
+        self, mock_web_login, mock_get_login_token
+    ):
+        """Test legacy authentication remains available as a fallback."""
+        mock_web_login.return_value = None
+        mock_get_login_token.return_value = {"token": "legacy-token"}
+
+        assert self.api.test_authentication() is True
+
+        mock_get_login_token.assert_called_once_with(self.username, self.password)
+
+    def test_web_station_statistics_parses_only_finite_values(self):
+        """Test station statistics parsing ignores malformed values."""
+        with patch.object(
+            self.api,
+            "_make_api_call",
+            return_value={
+                "proSelfConsumRate": 63.85,
+                "contributionRate": 59.43,
+                "dataList": [
+                    {
+                        "item": "proSystemTotalStats",
+                        "statisticsList": [
+                            {"val": "1.25"},
+                            {"val": "not-a-number"},
+                            {"val": "Infinity"},
+                        ],
+                    }
+                ],
+            },
+        ) as mock_call:
+            result = self.api._get_web_statistics(
+                MOCK_POWER_STATION_ID,
+                "day",
+                datetime(2026, 1, 1),
+                datetime(2026, 1, 2),
+            )
+
+        assert result == {
+            "proSystemTotalStats": [1.25],
+            "proSelfConsumRate": [63.85],
+            "contributionRate": [59.43],
+        }
+        request = json.loads(mock_call.call_args.kwargs["data"])
+        assert request["stationId"] == MOCK_POWER_STATION_ID
+        assert request["dimension"] == "day"
+        assert request["items"]
+        assert request["isReport"] is False
+        assert request["startTime"] == "2026-01-01 00:00:00"
+        assert request["endTime"] == "2026-01-02 00:00:00"
+
+    @patch.object(
+        SemsApi,
+        "_get_web_statistics",
+        return_value={"proSystemTotalStats": [1.0]},
+    )
+    @patch.object(
+        SemsApi,
+        "_get_web_production",
+        return_value={"currency": "EUR"},
+    )
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_batches_historic_years(
+        self, mock_now, mock_production, mock_statistics
+    ):
+        """Test historical years are requested in one range."""
+        mock_now.return_value = datetime(2026, 9, 25)
+        inverters = [{"invert_full": {"addTime": "1545351495000"}}]
+
+        result = self.api._get_web_energy_statistics("station", inverters)
+
+        assert result is not None
+        assert mock_production.called
+        assert mock_statistics.call_count == 3
+        assert any(
+            call_args.args[1:] == (
+                "year",
+                datetime(2018, 1, 1),
+                datetime(2027, 1, 1) - timedelta(seconds=1),
+            )
+            for call_args in mock_statistics.call_args_list
+        )
+        assert not any(
+            call_args.args[1:] == (
+                "day",
+                datetime(2026, 8, 1),
+                datetime(2026, 8, 31, 23, 59, 59),
+            )
+            for call_args in mock_statistics.call_args_list
+        )
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_web_station_production_uses_web_request_contract(self, mock_api_call):
+        """Test optional station production totals and currency request."""
+        mock_api_call.return_value = {
+            "proSystemTotalStats": 31.4,
+            "currency": "EUR",
+        }
+
+        result = self.api._get_web_production(
+            "station",
+            datetime(2026, 1, 1),
+            datetime(2026, 1, 1, 23, 59, 59),
+        )
+
+        assert result == {"proSystemTotalStats": 31.4, "currency": "EUR"}
+        mock_api_call.assert_called_once()
+        request = json.loads(mock_api_call.call_args.kwargs["data"])
+        assert request["items"]
+        assert request["isReport"] is False
+        assert request["startTime"] == "2026-01-01 00:00:00"
+        assert request["endTime"] == "2026-01-01 23:59:59"
 
     @patch("custom_components.sems.sems_api.requests.request")
     def test_make_http_request_success(self, mock_request):
@@ -334,7 +466,8 @@ class TestSemsApi:
 
         assert result is None
 
-    def test_test_authentication_success(self):
+    @patch.object(SemsApi, "_get_web_login_token", return_value=None)
+    def test_test_authentication_success(self, mock_web_login):
         """Test successful authentication test."""
         with patch.object(self.api, "getLoginToken") as mock_login:
             mock_login.return_value = {"token": "test-token"}
@@ -343,8 +476,10 @@ class TestSemsApi:
 
             assert result is True
             assert self.api._token == {"token": "test-token"}
+            mock_web_login.assert_called_once()
 
-    def test_test_authentication_failure(self):
+    @patch.object(SemsApi, "_get_web_login_token", return_value=None)
+    def test_test_authentication_failure(self, mock_web_login):
         """Test failed authentication test."""
         with patch.object(self.api, "getLoginToken") as mock_login:
             mock_login.return_value = None
@@ -352,8 +487,10 @@ class TestSemsApi:
             result = self.api.test_authentication()
 
             assert result is False
+            mock_web_login.assert_called_once()
 
-    def test_test_authentication_exception(self):
+    @patch.object(SemsApi, "_get_web_login_token", return_value=None)
+    def test_test_authentication_exception(self, mock_web_login):
         """Test authentication test with exception."""
         with patch.object(self.api, "getLoginToken") as mock_login:
             mock_login.side_effect = TypeError("Test error")
@@ -361,6 +498,7 @@ class TestSemsApi:
             result = self.api.test_authentication()
 
             assert result is False
+            mock_web_login.assert_called_once()
 
     def test_successful_login_real_structure(self, requests_mock):
         """Test successful login token retrieval with real SEMS API response structure."""
@@ -577,6 +715,54 @@ class TestSemsApi:
 
         assert result is None
 
+    def test_api_error_logs_server_description(self, requests_mock, caplog):
+        """Test API errors include the server description when msg is absent."""
+        requests_mock.post(
+            "https://example.test/api",
+            json={
+                "code": "100004",
+                "description": "parameter error.",
+                "errorMsg": "parameter error.",
+                "data": None,
+            },
+        )
+
+        with caplog.at_level(logging.ERROR):
+            result = self.api._make_http_request(
+                "https://example.test/api",
+                {},
+                operation_name="SEMS+ login API call",
+            )
+
+        assert result is None
+        assert "code: 100004, message: parameter error." in caplog.text
+
+    def test_telecounting_token_error_is_error_logged(self, requests_mock, caplog):
+        """Test telecounting token errors remain visible in the logs."""
+        requests_mock.post(
+            "https://example.test/api",
+            json={
+                "code": "C0602",
+                "description": "account login abnormal",
+                "data": None,
+            },
+        )
+
+        with caplog.at_level(logging.DEBUG):
+            result = self.api._make_http_request(
+                "https://example.test/api",
+                {},
+                operation_name="getWebInverterTelecounting API call",
+            )
+
+        assert result is None
+        assert "code: C0602, message: account login abnormal" in caplog.text
+        assert any(
+            record.levelno >= logging.ERROR
+            and "getWebInverterTelecounting API call" in record.message
+            for record in caplog.records
+        )
+
     def test_login_network_error(self, requests_mock):
         """Test login with network error."""
         requests_mock.post(
@@ -618,6 +804,30 @@ class TestSemsApi:
         }
         assert result == expected_token
         mock_http_request.assert_called_once()
+
+    def test_web_login_uses_regional_browser_identity(self, requests_mock):
+        """Test SEMS+ Web login matches the regional browser request."""
+        requests_mock.post(
+            NEW_LOGIN_URL,
+            json={
+                "code": "00000",
+                "data": {
+                    "uid": "test-uid",
+                    "token": "test-token",
+                    "client": "semsPlusWeb",
+                    "api": "https://api.test.com/",
+                },
+            },
+        )
+
+        assert self.api._get_new_login_token("test_user", "test_pass", is_web=True)
+
+        request = requests_mock.last_request
+        assert request is not None
+        assert request.headers["Origin"] == "https://semsplus.goodwe.com"
+        assert request.headers["Referer"] == "https://semsplus.goodwe.com/"
+        assert "Chrome/126.0.0.0" in request.headers["User-Agent"]
+        assert request.headers["X-Signature"]
 
     @patch("custom_components.sems.sems_api.time.time")
     def test_generate_signature(self, mock_time):
@@ -664,6 +874,32 @@ class TestSemsApi:
         mock_login.assert_called_once_with("test_user", "test_password", is_web=True)
         mock_http_request.assert_called_once()
 
+    @patch.object(SemsApi, "_get_new_login_token")
+    @patch.object(SemsApi, "_make_http_request")
+    def test_make_new_token_web_api_call_success(self, mock_http_request, mock_login):
+        """Test a SEMS+ endpoint can use the non-Web login token."""
+        mock_token = {
+            "uid": "test-uid",
+            "token": "test-token",
+            "timestamp": 1234567890,
+            "client": "semsPlus",
+            "api": "https://api.test.com/",
+        }
+        mock_login.return_value = mock_token
+        mock_http_request.return_value = {"code": 0, "data": {"result": "success"}}
+
+        result = self.api._make_api_call(
+            "/test/endpoint",
+            operation_name="test new-token Web API call",
+            is_web=True,
+            token_type="new",
+        )
+
+        assert result == {"result": "success"}
+        assert self.api._new_token == mock_token
+        mock_login.assert_called_once_with("test_user", "test_password")
+        mock_http_request.assert_called_once()
+
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_make_http_request")
     def test_make_api_call_success(self, mock_http_request, mock_login):
@@ -682,10 +918,10 @@ class TestSemsApi:
         mock_http_request.assert_called_once()
 
     @patch.object(SemsApi, "_make_http_request")
-    def test_make_api_call_rewrites_gateway_base_for_powerstation_paths(
+    def test_make_api_call_rewrites_gateway_base_for_powerstation_control_paths(
         self, mock_http_request
     ):
-        """Test SEMS+ gateway base is rewritten for legacy PowerStation routes."""
+        """Test gateway base is rewritten for legacy PowerStation control routes."""
         self.api._token = {
             "token": "test-token",
             "api": "https://eu-gateway.semsportal.com/web/sems",
@@ -694,16 +930,16 @@ class TestSemsApi:
         mock_http_request.return_value = {"code": 0, "data": {"result": "success"}}
 
         result = self.api._make_api_call(
-            "/v3/PowerStation/GetMonitorDetailByPowerstationId",
+            "/PowerStation/SaveRemoteControlInverter",
             data='{"powerStationId":"station123"}',
-            operation_name="getData API call",
+            operation_name="control API call",
         )
 
         assert result == {"result": "success"}
         called_url = mock_http_request.call_args[0][0]
         assert (
             called_url
-            == "https://eu.semsportal.com/api/v3/PowerStation/GetMonitorDetailByPowerstationId"
+            == "https://eu.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
         )
 
     @patch.object(SemsApi, "getLoginToken")
@@ -712,6 +948,7 @@ class TestSemsApi:
         """Test API call with token renewal."""
         # No initial token
         self.api._token = None
+        self.api._web_token = {"token": "stale-web-token"}
 
         mock_login.return_value = {"token": "new-token", "api": "https://api.test.com"}
 
@@ -724,6 +961,7 @@ class TestSemsApi:
 
         assert result == {"result": "success"}
         mock_login.assert_called_once_with(self.username, self.password)
+        assert self.api._web_token is None
 
     @patch.object(SemsApi, "getLoginToken")
     def test_make_api_call_login_failure(self, mock_login):
@@ -819,13 +1057,15 @@ class TestSemsApi:
 
         result = self.api.getPowerStationIds()
 
-        assert result == "station123"
+        assert result == []
         mock_api_call.assert_called_once_with(
-            "/PowerStation/GetPowerStationIdByOwner",
-            data=None,
+            "/sems-plant/api/portal/stations/page",
+            data='{"current": 1, "size": 100}',
             renewToken=False,
             maxTokenRetries=2,
             operation_name="getPowerStationIds API call",
+            is_web=True,
+            token_type="web",
         )
 
     @patch.object(SemsApi, "_make_api_call")
@@ -884,12 +1124,28 @@ class TestSemsApi:
                 "status": 5,
             },
         ]
+        mock_api_call.assert_called_once_with(
+            "/sems-plant/api/stations/device/all-status?stationId=station",
+            method="GET",
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getWebInverterDevices API call",
+            is_web=True,
+            token_type="web",
+        )
 
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
+    @patch.object(SemsApi, "getWebStationFlow", return_value={})
     @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
     @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
     @patch.object(SemsApi, "getWebInverterDevices")
     def test_get_web_data_uses_name_as_model(
-        self, mock_devices, mock_telemetry, mock_telecounting
+        self,
+        mock_devices,
+        mock_telemetry,
+        mock_telecounting,
+        mock_flow,
+        mock_statistics,
     ):
         """Test SEMS+ fallback combines the device name and subtype as model."""
         mock_devices.return_value = [
@@ -922,6 +1178,65 @@ class TestSemsApi:
             "station", "SN1", False, 2, device_type="INVERTER"
         )
 
+    def test_normalize_web_homekit_data_maps_station_flow_and_meter(self):
+        """Test SEMS+ station flow and smart-meter values use HomeKit fields."""
+        result = SemsApi._normalize_web_homekit_data(
+            {"pAc": 0, "pGrid": -1.351, "pConsum": 1.351},
+            {
+                "sn": "METER1",
+                "meter_power": 1351,
+                "meter_phase_a_power": -0.451,
+                "proPurchaseStatsToday": 1.2,
+                "proGridStatsToday": 0.3,
+                "proPurchaseStatsTotal": 12.4,
+                "proGridStatsTotal": 3.5,
+            },
+        )
+
+        assert result == {
+            "sn": "METER1",
+            "gridStatus": 1,
+            "loadStatus": 1,
+            "pv": 0,
+            "grid": -1351,
+            "load": 1351,
+            "meter_power": 1351,
+            "meter_phase_a_power": -0.451,
+            "Charts_buy": 1.2,
+            "Charts_sell": 0.3,
+            "Totals_buy": 12.4,
+            "Totals_sell": 3.5,
+            "hasEnergeStatisticsCharts": True,
+        }
+
+    def test_normalize_web_homekit_data_maps_station_flow_without_meter(self):
+        """Test station flow remains usable when no smart meter is discovered."""
+        result = SemsApi._normalize_web_homekit_data(
+            {
+                "pSystem": 2.4,
+                "pAc": 2.4,
+                "pBat": -1.1,
+                "pGrid": -0.5,
+                "pConsum": 1.8,
+                "soc": 62,
+            }
+        )
+
+        assert result == {
+            "sn": None,
+            "gridStatus": 1,
+            "loadStatus": 1,
+            "pv": 2400,
+            "grid": -500,
+            "load": 1800,
+            "battery": -1100,
+            "batteryStatus": 1,
+            "bettery": -1100,
+            "betteryStatus": 1,
+            "soc": 62,
+            "hasEnergeStatisticsCharts": False,
+        }
+
     @patch.object(
         SemsApi,
         "getWebInverterTelecounting",
@@ -934,10 +1249,17 @@ class TestSemsApi:
             "etotal": 21841.1,
         },
     )
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
+    @patch.object(SemsApi, "getWebStationFlow", return_value={})
     @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
     @patch.object(SemsApi, "getWebInverterDevices")
     def test_get_web_data_preserves_counters_without_live_telemetry(
-        self, mock_devices, mock_telemetry, mock_telecounting
+        self,
+        mock_devices,
+        mock_telemetry,
+        mock_flow,
+        mock_statistics,
+        mock_telecounting,
     ):
         """Test a waiting inverter response with counters but no live telemetry."""
         mock_devices.return_value = [
@@ -1094,15 +1416,44 @@ class TestSemsApi:
         }
 
     @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_maps_battery_counters(self, mock_api_call):
+        """Test SEMS+ battery charge and discharge counter normalization."""
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_today",
+                "factors": [
+                    {"code": "proCharStatsToday", "data": "12.1"},
+                    {"code": "proDischarStatsToday", "data": "5.4"},
+                ],
+            },
+            {
+                "code": "telecounting_lifetime",
+                "factors": [
+                    {"code": "proCharStatsTotal", "data": "120.1"},
+                    {"code": "proDischarStatsTotal", "data": "55.4"},
+                ],
+            },
+        ]
+
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eChargeDay": 12.1,
+            "eDischargeDay": 5.4,
+            "echarge_total": 120.1,
+            "edischarge_total": 55.4,
+        }
+
+    @patch.object(SemsApi, "_make_api_call")
     def test_get_battery_system_telemetry(self, mock_api_call):
         """Test BAT_SYS telemetry normalization."""
         mock_api_call.return_value = [
             {
                 "code": "battery",
                 "factors": [
-                    {"code": "SOC", "data": "85"},
+                    {"code": "soc", "data": "85"},
                     {"code": "pBat", "data": "1.2"},
-                    {"code": "VBat", "data": "400"},
+                    {"code": "voltage", "data": "400"},
+                    {"code": "a", "data": "3"},
+                    {"code": "batSysTemp", "data": "24"},
                 ],
             }
         ]
@@ -1111,7 +1462,46 @@ class TestSemsApi:
             "soc": 85.0,
             "power": 1.2,
             "voltage": 400.0,
+            "current": 3.0,
+            "temperature": 24.0,
         }
+        mock_api_call.assert_called_once_with(
+            "/sems-plant/api/equipments/BAT1/telemetry?deviceType=BAT_SYS&pwId=station",
+            method="GET",
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="getBatterySystemTelemetry API call",
+            is_web=True,
+            token_type="web",
+        )
+
+    @patch.object(SemsApi, "getBatterySystemTelemetry")
+    def test_get_web_batteries_maps_existing_entity_shape(self, mock_telemetry):
+        """Test related BAT_SYS values map to the existing battery sensors."""
+        mock_telemetry.return_value = {
+            "soc": 85,
+            "soh": 98,
+            "power": -1.2,
+            "voltage": 400,
+            "current": -3,
+            "temperature": 24,
+        }
+
+        assert self.api._get_web_batteries(
+            "station",
+            [{"sn": "BAT1", "deviceType": "BAT_SYS"}],
+        ) == [
+            {
+                "sn": "BAT1",
+                "soc": 85,
+                "soh": 98,
+                "pbattery": -1200,
+                "vbattery": 400,
+                "ibattery": -3,
+                "bms_temperature": 24,
+            }
+        ]
+        mock_telemetry.assert_called_once_with("station", "BAT1")
 
     @patch.object(SemsApi, "_make_api_call")
     def test_get_battery_system_devices(self, mock_api_call):
@@ -1131,159 +1521,35 @@ class TestSemsApi:
             is_web=True,
         )
 
-    def test_get_power_station_ids_success_real_structure(self, requests_mock):
-        """Test successful power station IDs retrieval with realistic response structure."""
-        self.api._preferred_login_mode = "legacy"
-        login_response = {
-            "code": 0,
-            "data": {"uid": "test-uid", "token": "test-token"},
-            "api": "https://eu.semsportal.com/api/",
-        }
-        requests_mock.post(OLD_LOGIN_URL, json=login_response)
-
-        station_response = {
-            "code": 0,
-            "data": MOCK_POWER_STATION_ID,
-            "msg": SUCCESS_MESSAGE,
-        }
-        requests_mock.post(
-            "https://eu.semsportal.com/api//PowerStation/GetPowerStationIdByOwner",
-            json=station_response,
-        )
-
-        result = self.api.getPowerStationIds()
-
-        assert result == MOCK_POWER_STATION_ID
-
     @patch.object(SemsApi, "_make_api_call")
-    def test_get_data(self, mock_api_call):
-        """Test getData method."""
-        mock_api_call.return_value = {"power": 1500, "energy": 25.5}
+    def test_get_power_station_ids_uses_web_station_list(self, mock_api_call):
+        """Test station discovery uses the SEMS+ Web station list."""
+        mock_api_call.return_value = {
+            "dataList": [{"id": "station-1"}, {"id": "station-2"}]
+        }
 
-        result = self.api.getData("station123")
-
-        assert result == {"power": 1500, "energy": 25.5}
+        assert self.api.getPowerStationIds() == ["station-1", "station-2"]
         mock_api_call.assert_called_once_with(
-            "/v3/PowerStation/GetMonitorDetailByPowerstationId",
-            data='{"powerStationId":"station123"}',
+            "/sems-plant/api/portal/stations/page",
+            data='{"current": 1, "size": 100}',
             renewToken=False,
             maxTokenRetries=2,
-            operation_name="getData API call",
+            operation_name="getPowerStationIds API call",
+            is_web=True,
+            token_type="web",
         )
 
-    def test_get_data_success_real_structure(self, requests_mock):
-        """Test successful data retrieval with real SEMS API response structure."""
-        self.api._preferred_login_mode = "legacy"
-        login_response = {
-            "code": 0,
-            "data": {"uid": "test-uid", "token": "test-token"},
-            "api": "https://eu.semsportal.com/api/",
-        }
-        requests_mock.post(OLD_LOGIN_URL, json=login_response)
-
-        data_response = {
-            "language": "en",
-            "function": [
-                "ADD",
-                "VIEW",
-                "EDIT",
-                "DELETE",
-                "INVERTER_A",
-                "INVERTER_E",
-                "INVERTER_D",
-            ],
-            "hasError": False,
-            "msg": SUCCESS_MESSAGE,
-            "code": "0",
-            "data": {
-                "info": {
-                    "powerstation_id": MOCK_POWER_STATION_ID,
-                    "time": "09/08/2025 16:48:27",
-                    "stationname": "Impala",
-                    "address": "Utrecht, Netherlands",
-                    "capacity": 3.2,
-                    "status": 1,
-                },
-                "kpi": {
-                    "month_generation": 85.7,
-                    "pac": 589.0,
-                    "power": 8.9,
-                    "total_power": 18843.2,
-                    "day_income": 1.96,
-                    "total_income": 4145.5,
-                    "currency": "EUR",
-                },
-                "inverter": [
-                    {
-                        "sn": MOCK_INVERTER_SN,
-                        "name": "Zolder",
-                        "in_pac": 1.8,
-                        "out_pac": 589.0,
-                        "eday": 8.9,
-                        "emonth": 76.8,
-                        "etotal": 18843.2,
-                        "status": 1,
-                        "type": "GW3000-NS",
-                        "capacity": 3.0,
-                        "tempperature": 32.0,
-                    }
-                ],
-            },
-        }
-        endpoint = "https://eu.semsportal.com/api//v3/PowerStation/GetMonitorDetailByPowerstationId"
-        requests_mock.post(endpoint, json=data_response)
-
-        result = self.api.getData(MOCK_POWER_STATION_ID)
-
-        assert result["info"]["powerstation_id"] == MOCK_POWER_STATION_ID
-        assert result["info"]["stationname"] == "Impala"
-        assert result["kpi"]["pac"] == 589.0
-        assert result["kpi"]["total_power"] == 18843.2
-        assert len(result["inverter"]) == 1
-        assert result["inverter"][0]["sn"] == MOCK_INVERTER_SN
-        assert result["inverter"][0]["out_pac"] == 589.0
-        assert result["inverter"][0]["eday"] == 8.9
-
     @patch.object(SemsApi, "getWebData")
-    @patch.object(SemsApi, "_make_api_call")
-    def test_get_data_uses_web_fallback_on_none(self, mock_api_call, mock_web_data):
-        """Test a failed legacy monitor call uses the SEMS+ Web fallback."""
-        mock_api_call.return_value = None
+    def test_get_data_uses_web_api(self, mock_web_data):
+        """Test getData uses the SEMS+ Web API."""
         mock_web_data.return_value = {"inverter": [{"invert_full": {"sn": "SN1"}}]}
 
-        result = self.api.getData("station123")
+        result = self.api.getData("station123", renewToken=True, maxTokenRetries=1)
 
         assert result == mock_web_data.return_value
-        mock_web_data.assert_called_once_with("station123")
-
-    @patch.object(SemsApi, "getWebData")
-    @patch.object(SemsApi, "_make_api_call")
-    def test_get_data_uses_web_fallback_for_empty_inverters(
-        self, mock_api_call, mock_web_data
-    ):
-        """Test empty legacy monitor data uses the SEMS+ Web fallback."""
-        mock_api_call.return_value = {"inverter": []}
-        mock_web_data.return_value = {"inverter": [{"invert_full": {"sn": "SN1"}}]}
-
-        result = self.api.getData("station123")
-
-        assert result == mock_web_data.return_value
-        mock_web_data.assert_called_once_with("station123")
-
-    def test_get_data_returns_empty_on_failure(self, requests_mock):
-        """Test getData returns empty dict on login failure."""
-        legacy_response = {"code": 1001, "msg": "Invalid credentials", "data": None}
-        new_response = {
-            "code": "C0602",
-            "description": "account_login_abnormal",
-            "data": None,
-        }
-        requests_mock.post(OLD_LOGIN_URL, json=legacy_response)
-        requests_mock.post(NEW_LOGIN_URL, json=new_response)
-
-        result = self.api.getData("station123")
-
-        assert result == {}
+        mock_web_data.assert_called_once_with(
+            "station123", True, 1, include_last_month=False
+        )
 
     @patch.object(SemsApi, "_make_api_call")
     def test_get_energy_storage_integrated_cabinets(self, mock_api_call):

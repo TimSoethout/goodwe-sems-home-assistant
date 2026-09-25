@@ -163,6 +163,14 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         if not data_result.get("info", {}).get("is_stored", False):
             return {}
 
+        prefetched = data_result.get("_energy_storage_cabinets")
+        if isinstance(prefetched, dict):
+            return {
+                serial_number: cabinets
+                for serial_number, cabinets in prefetched.items()
+                if isinstance(serial_number, str) and isinstance(cabinets, list)
+            }
+
         _LOGGER.debug("Getting energy storage integrated cabinets")
         return {
             inverter.get("invert_full", {}).get(
@@ -354,7 +362,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
                 homekit_data = data_result.get(GOODWE_SPELLING.homeKit)
                 if not isinstance(homekit_data, dict):
-                    homekit_data = {}
+                    homekit_data = powerflow
                 powerflow["sn"] = homekit_data.get("sn")
 
                 # Goodwe 'Power Meter' (not HomeKit) doesn't have a sn

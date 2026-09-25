@@ -1,0 +1,68 @@
+{
+  "code": "00000",
+  "description": "success",
+  "traceId": "<trace_id>",
+  "data": [
+    {
+      "code": "runtime",
+      "factors": [
+        {
+          "code": "soh",
+          "data": "100",
+          "dataType": "NUMERIC",
+          "unit": "%",
+          "alias": "soh"
+        },
+        {
+          "code": "soc",
+          "data": "99",
+          "dataType": "NUMERIC",
+          "unit": "%",
+          "alias": "soc"
+        },
+        {
+          "code": "pBat",
+          "data": "0.79608",
+          "dataType": "NUMERIC",
+          "unit": "kW",
+          "alias": "power"
+        },
+        {
+          "code": "voltage",
+          "data": "331.7",
+          "dataType": "NUMERIC",
+          "unit": "V",
+          "alias": "volt"
+        },
+        {
+          "code": "a",
+          "data": "2.4",
+          "dataType": "NUMERIC",
+          "unit": "A",
+          "alias": "cur"
+        },
+        {
+          "code": "batSysTemp",
+          "data": "23.9",
+          "dataType": "NUMERIC",
+          "unit": "℃",
+          "alias": "batt_temp"
+        },
+        {
+          "code": "aMaxChar",
+          "data": "0",
+          "dataType": "NUMERIC",
+          "unit": "A",
+          "alias": "chargecur_limit"
+        },
+        {
+          "code": "aMaxDischar",
+          "data": "50",
+          "dataType": "NUMERIC",
+          "unit": "A",
+          "alias": "discharge_current_limit"
+        }
+      ]
+    }
+  ]
+}
