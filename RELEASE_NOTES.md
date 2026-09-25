@@ -1,5 +1,22 @@
 # Release notes
 
+## 11.10.0-beta - 2026-09-25
+
+## Restore SEMS+ battery and dongle entities
+
+This beta restores battery-rack and dongle devices discovered through the
+SEMS+ Web API as Home Assistant entities.
+
+### Changes
+
+- Preserve discovered battery-rack and dongle devices in the integration.
+- Map battery-rack BMS telemetry to the existing battery entity fields.
+- Skip unsupported telemetry and counter requests for dongles.
+
+### Contributor
+
+- [@TimSoethout](https://github.com/TimSoethout) - implementation and testing.
+
 ## 11.9.0-beta - 2026-09-25
 
 ## SEMS+ Web inverter controls
