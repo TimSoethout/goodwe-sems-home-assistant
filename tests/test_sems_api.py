@@ -40,6 +40,34 @@ class TestSemsApi:
         assert self.api._password == self.password
         assert self.api._token is None
 
+    @patch.object(SemsApi, "getLoginToken")
+    @patch.object(SemsApi, "_get_web_login_token")
+    def test_authentication_reuses_web_token(
+        self, mock_web_login, mock_get_login_token
+    ):
+        """Test Web authentication is reused for station discovery."""
+        web_token = {"client": "semsPlusWeb", "api": "https://api.test.com"}
+        mock_web_login.return_value = web_token
+
+        assert self.api.test_authentication() is True
+
+        assert self.api._web_token == web_token
+        mock_web_login.assert_called_once_with(self.username, self.password)
+        mock_get_login_token.assert_not_called()
+
+    @patch.object(SemsApi, "getLoginToken")
+    @patch.object(SemsApi, "_get_web_login_token")
+    def test_authentication_falls_back_when_web_login_fails(
+        self, mock_web_login, mock_get_login_token
+    ):
+        """Test legacy authentication remains available as a fallback."""
+        mock_web_login.return_value = None
+        mock_get_login_token.return_value = {"token": "legacy-token"}
+
+        assert self.api.test_authentication() is True
+
+        mock_get_login_token.assert_called_once_with(self.username, self.password)
+
     def test_web_station_statistics_parses_only_finite_values(self):
         """Test station statistics parsing ignores malformed values."""
         with patch.object(
@@ -398,7 +426,8 @@ class TestSemsApi:
 
         assert result is None
 
-    def test_test_authentication_success(self):
+    @patch.object(SemsApi, "_get_web_login_token", return_value=None)
+    def test_test_authentication_success(self, mock_web_login):
         """Test successful authentication test."""
         with patch.object(self.api, "getLoginToken") as mock_login:
             mock_login.return_value = {"token": "test-token"}
@@ -407,8 +436,10 @@ class TestSemsApi:
 
             assert result is True
             assert self.api._token == {"token": "test-token"}
+            mock_web_login.assert_called_once()
 
-    def test_test_authentication_failure(self):
+    @patch.object(SemsApi, "_get_web_login_token", return_value=None)
+    def test_test_authentication_failure(self, mock_web_login):
         """Test failed authentication test."""
         with patch.object(self.api, "getLoginToken") as mock_login:
             mock_login.return_value = None
@@ -416,8 +447,10 @@ class TestSemsApi:
             result = self.api.test_authentication()
 
             assert result is False
+            mock_web_login.assert_called_once()
 
-    def test_test_authentication_exception(self):
+    @patch.object(SemsApi, "_get_web_login_token", return_value=None)
+    def test_test_authentication_exception(self, mock_web_login):
         """Test authentication test with exception."""
         with patch.object(self.api, "getLoginToken") as mock_login:
             mock_login.side_effect = TypeError("Test error")
@@ -425,6 +458,7 @@ class TestSemsApi:
             result = self.api.test_authentication()
 
             assert result is False
+            mock_web_login.assert_called_once()
 
     def test_successful_login_real_structure(self, requests_mock):
         """Test successful login token retrieval with real SEMS API response structure."""

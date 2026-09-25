@@ -142,6 +142,22 @@ class SemsApi:
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
         try:
+            self._web_token = self._get_web_login_token(
+                self._username, self._password
+            )
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            ValueError,
+            requests.RequestException,
+        ) as exception:
+            _LOGGER.warning("SEMS+ Web authentication failed: %s", exception)
+        else:
+            if self._web_token is not None:
+                return True
+
+        try:
             self._token = self.getLoginToken(self._username, self._password)
         except (AttributeError, KeyError, TypeError, ValueError) as exception:
             _LOGGER.exception("SEMS Authentication exception: %s", exception)
