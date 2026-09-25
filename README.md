@@ -117,7 +117,11 @@ station details or personal information before sharing logs.
 
 * Sometimes the SEMS API is a bit slow, so time-out messages may occur in the log as `[ERROR]`. The component should continue to work normally and try fetch again the next minute.
 
-## Development setup
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on how to contribute to this project.
+
+### Quick Development Setup
 
 - Setup HA development environment using https://developers.home-assistant.io/docs/development_environment
 - clone this repo in config directory:
@@ -127,7 +131,7 @@ station details or personal information before sharing logs.
 - `cd core/config/custom_components`
 - `ln -s ../goodwe-sems-home-assistant/custom_components/sems sems`
 
-## Linting
+### Linting
 
 Run the same lint checks as the CI workflow:
 
@@ -143,6 +147,8 @@ To fix lint issues locally:
 ruff check --fix custom_components/
 ruff format custom_components/
 ```
+
+For more information, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Credits
 
