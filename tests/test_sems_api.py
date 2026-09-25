@@ -1855,6 +1855,70 @@ class TestSemsApi:
             is_web=True,
         )
 
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_battery_rack_telemetry_maps_existing_battery_entities(
+        self, mock_api_call
+    ):
+        """Test BATTERY_RACK BMS fields use the existing battery entity shape."""
+        mock_api_call.return_value = [
+            {
+                "code": "runtime",
+                "factors": [
+                    {"code": "soc", "data": "81"},
+                    {"code": "soh", "data": "97"},
+                    {"code": "pBat", "data": "1.25"},
+                    {"code": "voltage", "data": "51.2"},
+                    {"code": "a", "data": "24.4"},
+                    {"code": "tempMaxCell", "data": "31.5"},
+                    {"code": "aMaxChar", "data": "40"},
+                    {"code": "aMaxDischar", "data": "50"},
+                ],
+            }
+        ]
+
+        assert self.api.getWebInverterTelemetry(
+            "station", "BAT1", device_type="BATTERY_RACK"
+        ) == {
+            "soc": 81.0,
+            "soh": 97.0,
+            "pbattery": 1250.0,
+            "vbattery": 51.2,
+            "ibattery": 24.4,
+            "bms_temperature": 31.5,
+            "bms_charge_i_max": 40.0,
+            "bms_discharge_i_max": 50.0,
+        }
+
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
+    @patch.object(SemsApi, "getWebStationFlow", return_value={})
+    @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
+    @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
+    @patch.object(SemsApi, "getWebInverterDevices")
+    def test_get_web_data_preserves_battery_rack_and_dongle(
+        self,
+        mock_devices,
+        mock_telemetry,
+        mock_telecounting,
+        mock_flow,
+        mock_statistics,
+    ):
+        """Test non-inverter SEMS+ device groups remain available as entities."""
+        mock_devices.return_value = [
+            {"sn": "INV1", "name": "Inverter", "deviceType": "INVERTER"},
+            {"sn": "BAT1", "name": "Battery", "deviceType": "BATTERY_RACK"},
+            {"sn": "DONGLE1", "name": "Dongle", "deviceType": "DONGLE"},
+        ]
+
+        result = self.api.getWebData("station")
+
+        assert [item["invert_full"]["deviceType"] for item in result["inverter"]] == [
+            "INVERTER",
+            "BATTERY_RACK",
+            "DONGLE",
+        ]
+        assert mock_telemetry.call_count == 2
+        assert mock_telecounting.call_count == 2
+
 
 class TestOutOfRetries:
     """Test OutOfRetries exception."""

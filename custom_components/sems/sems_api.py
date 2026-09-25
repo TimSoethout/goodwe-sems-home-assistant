@@ -29,7 +29,12 @@ _SUPPORTED_WEB_DEVICE_TYPES = {
     "BATTERY_RACK",
     "DONGLE",
 }
-_WEB_INVERTER_ENTITY_TYPES = {"INVERTER", "ENERGY_STORAGE_INTEGRATED_CABINET"}
+_WEB_INVERTER_ENTITY_TYPES = {
+    "INVERTER",
+    "ENERGY_STORAGE_INTEGRATED_CABINET",
+    "BATTERY_RACK",
+    "DONGLE",
+}
 _WEB_STATISTICS_KEY_MAP = {
     "proSystemTotalStats": "sum",
     "proPurchaseStats": "buy",
@@ -998,23 +1003,46 @@ class SemsApi:
             device_type = device.get("deviceType", "INVERTER")
             if not isinstance(device_type, str):
                 device_type = "INVERTER"
-            device_data = {
-                **device,
-                **self.getWebInverterTelemetry(
-                    powerStationId,
-                    serial_number,
-                    renewToken,
-                    maxTokenRetries,
-                    device_type=device_type,
-                ),
-                **self.getWebInverterTelecounting(
-                    powerStationId,
-                    serial_number,
-                    renewToken,
-                    maxTokenRetries,
-                    device_type=device_type,
-                ),
-            }
+            device_data = dict(device)
+            # Dongles have status, but no useful telemetry or counters. Avoid
+            # making unsupported requests for them while preserving their
+            # device/entity entry.
+            if device_type != "DONGLE":
+                device_data.update(
+                    self.getWebInverterTelemetry(
+                        powerStationId,
+                        serial_number,
+                        renewToken,
+                        maxTokenRetries,
+                        device_type=device_type,
+                    )
+                )
+                device_data.update(
+                    self.getWebInverterTelecounting(
+                        powerStationId,
+                        serial_number,
+                        renewToken,
+                        maxTokenRetries,
+                        device_type=device_type,
+                    )
+                )
+            if device_type == "BATTERY_RACK":
+                battery_data = {
+                    key: device_data.pop(key)
+                    for key in (
+                        "pbattery",
+                        "vbattery",
+                        "ibattery",
+                        "soc",
+                        "soh",
+                        "bms_temperature",
+                        "bms_charge_i_max",
+                        "bms_discharge_i_max",
+                    )
+                    if key in device_data
+                }
+                device_data["battery_count"] = 1
+                device_data["more_batterys"] = [battery_data]
             device_data.setdefault("powerstation_id", powerStationId)
             if device_type == "SMART_METER":
                 smart_meters.append(device_data)
@@ -1323,6 +1351,20 @@ class SemsApi:
                 value := self._numeric_web_factor(factors, f"MPPT-{index}:Ppv")
             ) is not None:
                 telemetry[f"ppv{index}"] = value * 1000
+        if device_type == "BATTERY_RACK":
+            battery_fields = {
+                "pBat": ("pbattery", 1000),
+                "voltage": ("vbattery", 1),
+                "a": ("ibattery", 1),
+                "soc": ("soc", 1),
+                "soh": ("soh", 1),
+                "tempMaxCell": ("bms_temperature", 1),
+                "aMaxChar": ("bms_charge_i_max", 1),
+                "aMaxDischar": ("bms_discharge_i_max", 1),
+            }
+            for source, (target, multiplier) in battery_fields.items():
+                if (value := self._numeric_web_factor(factors, source)) is not None:
+                    telemetry[target] = value * multiplier
         return telemetry
 
     def getWebInverterTelecounting(
