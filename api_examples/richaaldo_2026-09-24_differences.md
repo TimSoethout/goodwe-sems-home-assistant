@@ -79,8 +79,9 @@ Sources:
 - [thisisgeoffsemail's HomeKit report](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/219#issuecomment-5822353300)
 - [davcolh's AU HomeKit report](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/219#issuecomment-5828321846)
 
-The sanitized response files prefixed `richaaldo_hybrid_` are real captures
-unless their name or README says otherwise. They contain no live identifiers.
+The sanitized response files in [`semsplus_hybrid/`](./semsplus_hybrid/) are
+real captures unless the capture README says otherwise. They contain no live
+identifiers; the month fixture is explicitly synthetic.
 
 ### Statistics request contract
 
