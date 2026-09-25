@@ -29,6 +29,8 @@ This beta contains the follow-up changes since stable `11.6.0`.
 
 - [@Richaaldo](https://github.com/Richaaldo) - sanitized hybrid SEMS+ Web
   captures and compatibility findings.
+- [@kieranlee1970](https://github.com/kieranlee1970) - community battery
+  restoration and station-statistics work that informed these follow-up fixes.
 
 ## 11.6.0 - 2026-09-25
 
