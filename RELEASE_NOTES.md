@@ -1,5 +1,26 @@
 # Release notes
 
+## 11.11.0-beta - 2026-09-25
+
+## Keep devices available when SEMS+ telemetry is restricted
+
+This beta keeps a discovered inverter available when SEMS+ returns an access
+rights error for device telemetry, while using station flow values for a
+single-inverter installation.
+
+### Changes
+
+- Preserve discovered devices when telemetry or counter requests exhaust their
+  token retries.
+- Use station-level `pAc` and `pGrid` for the single-inverter fallback.
+- Add regression coverage for restricted telemetry access.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - implementation and testing.
+- [@GoodnessJSON](https://github.com/GoodnessJSON) - diagnostic report and
+  troubleshooting data.
+
 ## 11.10.0-beta - 2026-09-25
 
 ## Restore SEMS+ battery and dongle entities
