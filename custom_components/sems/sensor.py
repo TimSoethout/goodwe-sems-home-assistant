@@ -1124,6 +1124,11 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
         if data is None:
             return value
 
+        # The gridStatus gate only applies to legacy SEMS powerflow data; SEMS+
+        # flow data uses a different status convention and a plain load value.
+        if data.get("isSemsPlusFlow"):
+            return value
+
         grid_status = data.get("gridStatus")
         if grid_status is None:
             return value

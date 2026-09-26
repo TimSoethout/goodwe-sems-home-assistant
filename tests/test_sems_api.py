@@ -3,6 +3,7 @@
 import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -23,6 +24,7 @@ from custom_components.sems.sems_api import (
 MOCK_INVERTER_SN = "GW0000SN000TEST1"
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
 SUCCESS_MESSAGE = "操作成功"
+API_EXAMPLES_DIR = Path(__file__).parent.parent / "api_examples"
 
 
 class TestSemsApi:
@@ -151,6 +153,63 @@ class TestSemsApi:
             )
             for call_args in mock_statistics.call_args_list
         )
+
+    @patch.object(
+        SemsApi,
+        "_get_web_statistics",
+        return_value={"proSystemTotalStats": [1.0, 2.0]},
+    )
+    @patch.object(SemsApi, "_get_web_production", return_value=None)
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_skips_missing_series(
+        self, mock_now, mock_production, mock_statistics
+    ):
+        """Test series missing from station statistics are not reported as 0."""
+        mock_now.return_value = datetime(2026, 9, 25)
+
+        result = self.api._get_web_energy_statistics("station", [])
+
+        assert result is not None
+        charts, _totals, _currency, _last_month = result
+        assert charts == {"sum": 3.0}
+
+    @patch.object(
+        SemsApi,
+        "_get_web_energy_statistics",
+        return_value=({"sum": 5.0, "buy": 0, "sell": 0}, {"sum": 100.0}, None, None),
+    )
+    def test_get_web_data_prefers_smart_meter_counters(self, mock_statistics):
+        """Test captured smart-meter counters override station statistics."""
+
+        def load(name):
+            with open(API_EXAMPLES_DIR / name, encoding="utf-8") as file:
+                return json.load(file)["data"]
+
+        def fake_api_call(url_part, *args, **kwargs):
+            if "all-status" in url_part:
+                return load("smart_meter_all_status.json")
+            if "stations/flow" in url_part:
+                return load("station_flow_import.json")
+            if "SMART_METER" in url_part and "telecounting" in url_part:
+                return load("smart_meter_telecounting.json")
+            if "SMART_METER" in url_part and "telemetry" in url_part:
+                return load("smart_meter_telemetry.json")
+            return []
+
+        with patch.object(SemsApi, "_make_api_call", side_effect=fake_api_call):
+            result = self.api.getWebData("station")
+
+        assert result["hasEnergeStatisticsCharts"] is True
+        assert result["energeStatisticsCharts"] == {
+            "sum": 5.0,
+            "buy": 12.84,
+            "sell": 36.77,
+        }
+        assert result["energeStatisticsTotals"] == {
+            "sum": 100.0,
+            "buy": 20314.77,
+            "sell": 38846.49,
+        }
 
     @patch.object(SemsApi, "_make_api_call")
     def test_web_station_production_uses_web_request_contract(self, mock_api_call):
@@ -1252,6 +1311,7 @@ class TestSemsApi:
             "sn": "METER1",
             "gridStatus": 1,
             "loadStatus": 1,
+            "isSemsPlusFlow": True,
             "pv": 0,
             "grid": -1351,
             "load": 1351,
@@ -1263,6 +1323,16 @@ class TestSemsApi:
             "Totals_sell": 3.5,
             "hasEnergeStatisticsCharts": True,
         }
+
+    def test_normalize_web_homekit_data_load_is_never_negative(self):
+        """Test a negative pConsum while exporting maps to positive consumption."""
+        result = SemsApi._normalize_web_homekit_data(
+            {"pSystem": 3.03, "pGrid": 2.53, "pConsum": -0.5}
+        )
+
+        assert result["load"] == 500
+        assert result["grid"] == 2530
+        assert result["gridStatus"] == -1
 
     def test_normalize_web_homekit_data_maps_station_flow_without_meter(self):
         """Test station flow remains usable when no smart meter is discovered."""
@@ -1281,6 +1351,7 @@ class TestSemsApi:
             "sn": None,
             "gridStatus": 1,
             "loadStatus": 1,
+            "isSemsPlusFlow": True,
             "pv": 2400,
             "grid": -500,
             "load": 1800,

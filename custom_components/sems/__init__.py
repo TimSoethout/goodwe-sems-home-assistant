@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -33,6 +34,17 @@ _IMMEDIATE_CHARGING_FUNCTION_KEYS = {
     "end_charge_soc",
     "bat_immediate_charge_power",
 }
+
+# Unique ID suffixes only used by HomeKit/powerflow sensors (not inverter sensors).
+_HOMEKIT_UNIQUE_ID_SUFFIXES = (
+    "-import-energy-total",
+    "-export-energy-total",
+    "-import-energy",
+    "-export-energy",
+    "-load-status",
+    "-homekit",
+    "-grid",
+)
 
 _ENERGY_STATISTICS_CHART_KEYS = {
     "sum",
@@ -155,6 +167,38 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             name=DOMAIN,
             update_interval=update_interval,
         )
+
+    def _registered_homekit_sn(self, current_sn: str | None) -> str | None:
+        """Return the serial of earlier registered HomeKit sensors, if any.
+
+        Serials other than `current_sn` win, so long-lived entities are kept
+        over ones created after the SEMS+ migration changed the serial.
+        """
+        if self.config_entry is None:
+            return None
+        serials: dict[str, bool] = {}
+        for entity in er.async_entries_for_config_entry(
+            er.async_get(self.hass), self.config_entry.entry_id
+        ):
+            if entity.domain != "sensor":
+                continue
+            for suffix in _HOMEKIT_UNIQUE_ID_SUFFIXES:
+                if not entity.unique_id.endswith(suffix):
+                    continue
+                serial = entity.unique_id.removesuffix(suffix)
+                # 8.0.0 "powerflow-*" IDs are migrated by the sensor platform.
+                if serial and serial != "powerflow":
+                    serials[serial] = serials.get(serial, False) or (
+                        suffix == "-import-energy-total"
+                    )
+                break
+        earlier = {
+            sn: has_total for sn, has_total in serials.items() if sn != current_sn
+        }
+        if not earlier:
+            return None
+        # Prefer the serial that carries the lifetime import counter.
+        return max(earlier, key=lambda sn: earlier[sn])
 
     async def _async_get_energy_storage_cabinets(
         self, data_result: dict[str, Any]
@@ -364,6 +408,13 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 if not isinstance(homekit_data, dict):
                     homekit_data = powerflow
                 powerflow["sn"] = homekit_data.get("sn")
+                if GOODWE_SPELLING.homeKit not in data_result:
+                    # SEMS+ Web data has no HomeKit serial; keep the serial of
+                    # previously registered HomeKit entities so their unique IDs
+                    # (and Energy dashboard history) keep receiving data.
+                    powerflow["sn"] = (
+                        self._registered_homekit_sn(powerflow["sn"]) or powerflow["sn"]
+                    )
 
                 # Goodwe 'Power Meter' (not HomeKit) doesn't have a sn
                 # Let's put something in, otherwise we can't see the data.
