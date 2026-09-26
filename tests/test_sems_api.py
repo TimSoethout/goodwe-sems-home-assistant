@@ -1419,6 +1419,52 @@ class TestSemsApi:
         }
 
     @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_ignores_zeroed_pv_counters(
+        self, mock_api_call
+    ):
+        """Test a zeroed lifetime total drops PV counters instead of a reset (#230)."""
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_today",
+                "factors": [{"code": "proPvStatsToday", "data": "0"}],
+            },
+            {
+                "code": "telecounting_week",
+                "factors": [{"code": "proPvStatsWeek", "data": "0"}],
+            },
+            {
+                "code": "telecounting_lifetime",
+                "factors": [
+                    {"code": "proPvStatsTotal", "data": "0"},
+                    {"code": "ratedPower", "data": "3"},
+                ],
+            },
+        ]
+
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "capacity": 3.0,
+        }
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_keeps_zero_day_counter(self, mock_api_call):
+        """Test a zero daily counter is kept while the lifetime total is valid."""
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_today",
+                "factors": [{"code": "proPvStatsToday", "data": "0"}],
+            },
+            {
+                "code": "telecounting_lifetime",
+                "factors": [{"code": "proPvStatsTotal", "data": "1500.2"}],
+            },
+        ]
+
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 0.0,
+            "etotal": 1500.2,
+        }
+
+    @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telecounting_maps_battery_counters(self, mock_api_call):
         """Test SEMS+ battery charge and discharge counter normalization."""
         mock_api_call.return_value = [

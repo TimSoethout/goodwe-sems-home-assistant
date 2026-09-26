@@ -1428,6 +1428,18 @@ class SemsApi:
         ):
             if (value := self._numeric_web_factor(factors, source)) is not None:
                 counters[target] = value
+        # SEMS+ occasionally answers with all PV counters zeroed (seen around
+        # gateway read timeouts). A zero lifetime total is never valid for an
+        # existing inverter, and publishing it makes Home Assistant book the
+        # next real value as a meter reset (#230), so drop the PV counters.
+        if counters.get("etotal", 1) <= 0:
+            _LOGGER.debug(
+                "Ignoring zeroed SEMS+ PV counters for %s: %s",
+                serialNumber,
+                counters,
+            )
+            for key in ("eday", "eweek", "thismonthetotle", "eyear", "etotal"):
+                counters.pop(key, None)
         if device_type == "SMART_METER":
             for period in ("Today", "Week", "Month", "Year", "Total"):
                 for source, target in (
