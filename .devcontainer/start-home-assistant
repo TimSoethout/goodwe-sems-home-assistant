@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+core_dir="${HA_CORE_DIR:-"$repo_root/.ha-core"}"
+python="/home/vscode/.local/ha-venv/bin/python"
+pid_file="/tmp/home-assistant.pid"
+log_file="/tmp/home-assistant.log"
+
+if [[ ! -x "$python" ]]; then
+  echo "Home Assistant is not set up. Run .devcontainer/setup.sh first." >&2
+  exit 1
+fi
+
+if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+  exit 0
+fi
+
+(
+  cd "$core_dir"
+  nohup "$python" -m homeassistant -c config >"$log_file" 2>&1 &
+  echo $! >"$pid_file"
+)
+
+echo "Home Assistant is starting at http://localhost:8123"
+echo "Logs: $log_file"

@@ -1,0 +1,9 @@
+{
+  "features": {
+    "ghcr.io/awf-project/devcontainer-features/rtk:1": {
+      "version": "1.0.0",
+      "resolved": "ghcr.io/awf-project/devcontainer-features/rtk@sha256:d7c26cd9cf9e9d13cb748f5a0f75a111937aca075b638b770d1f03bea37c8630",
+      "integrity": "sha256:d7c26cd9cf9e9d13cb748f5a0f75a111937aca075b638b770d1f03bea37c8630"
+    }
+  }
+}
