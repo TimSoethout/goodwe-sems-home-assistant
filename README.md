@@ -134,7 +134,7 @@ Run the same lint checks as the CI workflow:
 ```bash
 ruff check custom_components/
 ruff format --check custom_components/
-mypy custom_components/ --ignore-missing-imports --python-version 3.13
+mypy custom_components/ --ignore-missing-imports --python-version 3.14
 ```
 
 To fix lint issues locally:
