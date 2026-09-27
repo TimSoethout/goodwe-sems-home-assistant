@@ -46,6 +46,7 @@ from .const import (
     redact_for_log,
 )
 from .device import device_info_for_inverter
+from .ev_charger import ev_charger_sensors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -905,6 +906,7 @@ async def async_setup_entry(
                 sensor_option.entity_registry_enabled_default,
             )
         )
+    sensors.extend(ev_charger_sensors(coordinator))
     async_add_entities(sensors)
 
 

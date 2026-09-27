@@ -105,6 +105,7 @@ class SemsData:
     immediate_charging: dict[str, dict[str, Any]] | None = None
     homekit: dict[str, Any] | None = None
     currency: str | None = None
+    ev_chargers: dict[str, dict[str, Any]] | None = None
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -432,6 +433,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 batteries=batteries,
                 homekit=homekit,
                 currency=currency,
+                ev_chargers=data_result.get("ev_chargers") or None,
                 immediate_charging=immediate_charging,
             )
             _LOGGER.debug(

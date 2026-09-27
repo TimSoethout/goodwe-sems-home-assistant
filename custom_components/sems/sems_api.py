@@ -28,6 +28,7 @@ _SUPPORTED_WEB_DEVICE_TYPES = {
     "ENERGY_STORAGE_INTEGRATED_CABINET",
     "BATTERY_RACK",
     "DONGLE",
+    "EV_CHARGER",
 }
 _WEB_INVERTER_ENTITY_TYPES = {
     "INVERTER",
@@ -118,6 +119,15 @@ _WEB_STATION_STATISTICS_ENDPOINT = ApiEndpoint(
 _WEB_STATION_PRODUCTION_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/stations/production", "web"
 )
+# EV chargers (e.g. HCA wallboxes) are read and controlled through the same
+# SEMS+ Web endpoints the Web UI uses on the charger device page.
+_WEB_EV_CHARGER_MODE_INFO_ENDPOINT = ApiEndpoint(
+    "/sems-remote/api/ev-charger/control-item-content-list/{serial_number}", "web"
+)
+_WEB_EV_CHARGER_LAST_CHARGE_ENDPOINT = ApiEndpoint(
+    "/sems-plant/api/v1/chargePile/getLastCharge", "web"
+)
+_WEB_EV_CHARGER_COMMAND_URL_PART = "/sems-remote/api/ev-charger/{command}"
 _WEB_STATISTICS_ITEMS = [
     "proConsumStats",
     "proGridStats",
@@ -997,6 +1007,7 @@ class SemsApi:
         """Build the legacy coordinator shape from SEMS+ Web responses."""
         inverters: list[dict[str, Any]] = []
         smart_meters: list[dict[str, Any]] = []
+        ev_chargers: dict[str, dict[str, Any]] = {}
         for device in self.getWebInverterDevices(
             powerStationId, renewToken, maxTokenRetries
         ):
@@ -1007,6 +1018,11 @@ class SemsApi:
             if not isinstance(device_type, str):
                 device_type = "INVERTER"
             device_data = dict(device)
+            if device_type == "EV_CHARGER":
+                ev_chargers[serial_number] = self.getWebEvCharger(
+                    powerStationId, device_data, renewToken, maxTokenRetries
+                )
+                continue
             # Dongles have status, but no useful telemetry or counters. Avoid
             # making unsupported requests for them while preserving their
             # device/entity entry.
@@ -1077,6 +1093,8 @@ class SemsApi:
             inverters.append({"invert_full": device_data})
 
         result: dict[str, Any] = {"inverter": inverters}
+        if ev_chargers:
+            result["ev_chargers"] = ev_chargers
         try:
             flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
         except (OutOfRetries, SemsRateLimitedError) as err:
@@ -1187,6 +1205,180 @@ class SemsApi:
         if currency is not None:
             result["kpi"] = {"currency": currency}
         return result
+
+    def getWebEvCharger(
+        self,
+        powerStationId: str,
+        device: dict[str, Any],
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get EV charger telemetry, counters, mode settings, and charge state.
+
+        Each request is optional so one failing charger endpoint does not hide
+        the others or the station's inverter data.
+        """
+        serial_number = device["sn"]
+        charger: dict[str, Any] = {
+            **device,
+            "powerstation_id": powerStationId,
+            "factors": {},
+            "mode_info": {},
+            "charge_log": {},
+        }
+        for endpoint, name in (
+            (_WEB_TELEMETRY_ENDPOINT, "telemetry"),
+            (_WEB_TELECOUNTING_ENDPOINT, "telecounting"),
+        ):
+            try:
+                result = self._make_api_call(
+                    f"{endpoint.url_part.format(serial_number=serial_number)}"
+                    f"?deviceType=EV_CHARGER&pwId={powerStationId}",
+                    method="GET",
+                    renewToken=renewToken,
+                    maxTokenRetries=maxTokenRetries,
+                    operation_name=f"getWebEvCharger {name} API call",
+                    is_web=True,
+                    token_type=endpoint.token_type,
+                )
+            except (OutOfRetries, SemsRateLimitedError) as err:
+                _LOGGER.debug("SEMS EV charger %s unavailable: %s", name, err)
+                continue
+            charger["factors"].update(
+                self._web_factors_with_units(
+                    result if isinstance(result, list) else None
+                )
+            )
+
+        for key, url_part, operation_name in (
+            (
+                "mode_info",
+                _WEB_EV_CHARGER_MODE_INFO_ENDPOINT.url_part.format(
+                    serial_number=serial_number
+                ),
+                "getWebEvChargerModeInfo API call",
+            ),
+            (
+                "last_charge",
+                f"{_WEB_EV_CHARGER_LAST_CHARGE_ENDPOINT.url_part}"
+                f"?chargeSn={serial_number}&pwId={powerStationId}",
+                "getWebEvChargerLastCharge API call",
+            ),
+        ):
+            try:
+                result = self._make_api_call(
+                    url_part,
+                    method="GET",
+                    renewToken=renewToken,
+                    maxTokenRetries=maxTokenRetries,
+                    operation_name=operation_name,
+                    is_web=True,
+                    token_type="web",
+                )
+            except (OutOfRetries, SemsRateLimitedError) as err:
+                _LOGGER.debug("SEMS EV charger %s unavailable: %s", key, err)
+                continue
+            if not isinstance(result, dict):
+                continue
+            if key == "last_charge":
+                charge_log = result.get("chargeLog")
+                charger["charge_log"] = (
+                    charge_log if isinstance(charge_log, dict) else {}
+                )
+            else:
+                charger[key] = result
+        return charger
+
+    @staticmethod
+    def _web_factors_with_units(
+        response: list[dict[str, Any]] | None,
+    ) -> dict[str, dict[str, Any]]:
+        """Return numeric SEMS+ factors with their unit and alias by code."""
+        factors: dict[str, dict[str, Any]] = {}
+        for group in response or []:
+            if not isinstance(group, dict):
+                continue
+            for factor in group.get("factors", []):
+                if not isinstance(factor, dict):
+                    continue
+                code = factor.get("code")
+                try:
+                    value = float(factor.get("data"))
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(code, str):
+                    continue
+                factors[code] = {
+                    "value": value,
+                    "unit": factor.get("unit") or None,
+                    "alias": factor.get("alias") or code,
+                }
+        return factors
+
+    def _send_ev_charger_command(self, command: str, payload: dict[str, Any]) -> bool:
+        """Send an EV charger control command through SEMS+ Web."""
+        return (
+            self._make_api_call(
+                _WEB_EV_CHARGER_COMMAND_URL_PART.format(command=command),
+                method="POST",
+                data=json.dumps(payload),
+                operation_name=f"EV charger {command} API call",
+                is_web=True,
+                token_type="web",
+            )
+            is not None
+        )
+
+    def startEvCharging(
+        self, plant_id: str, serial_number: str, product_model: str, mode: int
+    ) -> bool:
+        """Start charging on an EV charger."""
+        return self._send_ev_charger_command(
+            "startCharge",
+            {
+                "sn": serial_number,
+                "plantId": plant_id,
+                "productModel": product_model,
+                "mode": mode,
+            },
+        )
+
+    def stopEvCharging(
+        self, plant_id: str, serial_number: str, product_model: str, mode: int
+    ) -> bool:
+        """Stop charging on an EV charger."""
+        return self._send_ev_charger_command(
+            "stopCharge",
+            {
+                "sn": serial_number,
+                "plantId": plant_id,
+                "productModel": product_model,
+                "mode": mode,
+            },
+        )
+
+    def setEvChargeMode(
+        self,
+        plant_id: str,
+        serial_number: str,
+        product_model: str,
+        mode: int,
+        mode_info: dict[str, Any] | None = None,
+    ) -> bool:
+        """Set the EV charge mode (0 fast, 1 PV, 2 PV and battery).
+
+        Like the Web UI, fast mode resends the configured maximum power.
+        """
+        payload: dict[str, Any] = {
+            "mode": mode,
+            "sn": serial_number,
+            "plantId": plant_id,
+            "productModel": product_model,
+        }
+        if mode == 0 and mode_info and mode_info.get("chargeMaxPower") is not None:
+            payload["chargeMaxPower"] = mode_info["chargeMaxPower"]
+            payload["chargePowerSetted"] = mode_info.get("chargePowerSetted") or 0
+        return self._send_ev_charger_command("set-mode", payload)
 
     def getWebStationFlow(
         self,

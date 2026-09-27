@@ -143,3 +143,20 @@ body selects the corresponding battery function address and value.
 Do not add live API responses to this directory. Remove credentials, tokens,
 station identifiers, serial numbers, trace IDs, and personal names before
 adding or updating an example.
+
+## EV charger (HCA wallbox) endpoints
+
+Derived from the SEMS+ Web UI charger page; no live captures yet. Chargers are
+discovered as `EV_CHARGER` devices in `all-status`.
+
+| Purpose | Request |
+| --- | --- |
+| Live values / counters | `GET /web/sems/sems-plant/api/equipments/<sn>/telemetry` and `.../telecounting` with `deviceType=EV_CHARGER&pwId=<station_id>` |
+| Mode settings | `GET /web/sems/sems-remote/api/ev-charger/control-item-content-list/<sn>` (`productModel`, `chargeMode`, `chargeMaxPower`) |
+| Charge state | `GET /web/sems/sems-plant/api/v1/chargePile/getLastCharge?chargeSn=<sn>&pwId=<station_id>`; `chargeLog.workStu`: 0 offline, 2 fault, 6 charging, 8/10 available, 9 maintenance; `chargeLog.status` = plug status |
+| Start / stop | `POST /web/sems/sems-remote/api/ev-charger/startCharge` or `stopCharge` with `{sn, plantId, productModel, mode}` |
+| Charge mode | `POST /web/sems/sems-remote/api/ev-charger/set-mode` with `{mode, sn, plantId, productModel}`; mode 0 fast (also sends `chargeMaxPower`, `chargePowerSetted`), 1 PV, 2 PV + battery |
+
+Also present in the UI but not implemented: `set-config` (plug and charge,
+settings), `set-scheduled` / `cancel-charge` (scheduled charging), RFID
+`card/*`, and `chargePile/queryChargeLogList` (session history).
