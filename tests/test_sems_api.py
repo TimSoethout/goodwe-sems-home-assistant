@@ -176,7 +176,7 @@ class TestSemsApi:
     @patch.object(
         SemsApi,
         "_get_web_energy_statistics",
-        return_value=({"sum": 5.0, "buy": 0, "sell": 0}, {"sum": 100.0}, None, None),
+        return_value=({"sum": 5.0, "buy": 0, "sell": 0}, {"sum": 100.0}, "EUR", 42.0),
     )
     def test_get_web_data_prefers_smart_meter_counters(self, mock_statistics):
         """Test captured smart-meter counters override station statistics."""
@@ -210,6 +210,12 @@ class TestSemsApi:
             "buy": 20314.77,
             "sell": 38846.49,
         }
+        assert result["kpi"] == {"currency": "EUR"}
+        # Last month's PV is set when the station has a single real inverter.
+        assert [
+            inverter["invert_full"].get("lastmonthetotle")
+            for inverter in result["inverter"]
+        ] == [42.0]
 
     @patch.object(
         SemsApi,
