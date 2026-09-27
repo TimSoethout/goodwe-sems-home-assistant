@@ -228,13 +228,13 @@ class EvChargerFactorSensor(_EvChargerEntity, SensorEntity):
 
 
 class EvChargerChargingSwitch(_EvChargerEntity, SwitchEntity):
-    """Start or stop charging."""
+    """Start or stop charging (SEMS+ "Start charging" toggle)."""
 
     _attr_icon = "mdi:ev-station"
 
     def __init__(self, coordinator: SemsCoordinator, serial_number: str) -> None:
         super().__init__(coordinator, serial_number, "charging")
-        self._attr_name = "Charging"
+        self._attr_name = "Start Charging"
 
     @property
     def is_on(self) -> bool | None:

@@ -228,6 +228,9 @@ async def test_ev_charger_entities(
         energy = state(Platform.SENSOR, "sessionEnergy")
         assert energy.attributes["device_class"] == "energy"
         assert state(Platform.SWITCH, "charging").state == "on"
+        assert state(Platform.SWITCH, "charging").attributes["friendly_name"] == (
+            "EV Charger Wallbox Start Charging"
+        )
         mode = state(Platform.SELECT, "charge-mode")
         assert mode.state == "pv"
         assert mode.attributes["options"] == ["fast", "pv", "pv_battery"]
