@@ -12,6 +12,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
     - name: Checkout code
@@ -27,22 +30,19 @@ jobs:
     - name: Install dependencies
       run: python -m pip install -r requirements.test.txt
 
-    - name: Run tests
-      if: github.event_name == 'pull_request'
-      run: pytest tests/ -v
-
     - name: Run tests with coverage
-      if: github.event_name != 'pull_request'
       run: |
         pytest tests/ --cov=custom_components.sems \
-          --cov-report=xml --cov-report=term-missing -v
+          --cov-report=xml --cov-report=term-missing \
+          --cov-fail-under=80 -v
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
-      if: github.event_name != 'pull_request'
+      if: always()
       with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+        files: ./coverage.xml
+        fail_ci_if_error: true
+        use_oidc: true
         verbose: true
 
   lint:
