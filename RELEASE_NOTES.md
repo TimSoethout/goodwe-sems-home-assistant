@@ -1,5 +1,33 @@
 # Release notes
 
+## 11.12.0-beta.3 - 2026-09-27
+
+## Improve SEMS+ counter and telemetry reliability
+
+- Hold cached energy counters from 23:58 through 00:19 local time to avoid
+  SEMS+ replaying the previous day's readings at midnight. If no cached
+  readings exist when Home Assistant starts during this window, counters are
+  withheld until it ends.
+- Publish counter increases immediately, while retaining prior values for
+  transient zeros or decreases within the same reporting period.
+- Preserve valid lifetime counters and smart-meter telemetry across temporary
+  API glitches or inverter refresh failures.
+- Keep discovered inverters available when SEMS+ denies telemetry access, and
+  avoid treating battery racks or dongles as inverters.
+- Avoid empty battery entities and keep PV string entities stable when
+  telemetry is temporarily missing.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - integration maintenance and
+  validation.
+- [@GertJanH](https://github.com/GertJanH) - reported the counter replay and
+  implemented the rollover fix.
+- [@davidsonimagerygmailcom](https://github.com/davidsonimagerygmailcom) -
+  reported the midnight counter replay.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - SEMS+ reliability
+  fixes and regression tests.
+
 ## 11.12.0-beta.2 - 2026-09-27
 
 ## SEMS+ counter and telemetry reliability
