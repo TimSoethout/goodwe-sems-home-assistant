@@ -110,7 +110,7 @@ def _web_api() -> SemsApi:
 
 
 @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
-@patch.object(SemsApi, "getWebStationFlow", return_value={})
+@patch.object(SemsApi, "getWebStationFlow", return_value={"pEvChar": 7.2})
 def test_get_web_data_collects_ev_charger(mock_flow, mock_statistics):
     """Test an EV_CHARGER device is read separately from inverters."""
     with patch.object(SemsApi, "_make_api_call", side_effect=_fake_api_call):
@@ -121,6 +121,7 @@ def test_get_web_data_collects_ev_charger(mock_flow, mock_statistics):
     assert charger["name"] == "Wallbox"
     assert charger["mode_info"] == MODE_INFO
     assert charger["detail"] == DETAIL
+    assert charger["charging_power"] == 7200
     assert charger["charge_log"] == {"workStu": 6, "status": 1}
     assert charger["factors"] == {
         "Charging_Power": {"value": 7.2, "unit": "kW", "alias": "charging_power"},
@@ -197,7 +198,15 @@ async def test_ev_charger_entities(
                 },
                 "mode_info": MODE_INFO,
                 "detail": DETAIL,
-                "charge_log": {"workStu": 6, "status": 1},
+                "charging_power": 7200.0,
+                "charge_log": {
+                    "workStu": 6,
+                    "status": 1,
+                    "currentChargeQuantity": 3.5,
+                    "greenElec": 2.0,
+                    "chargeTimeLength": 95,
+                    "chargeEndCauseDetail": "user_stop",
+                },
             }
         },
     }
@@ -221,6 +230,26 @@ async def test_ev_charger_entities(
             return hass.states.get(entity_id)
 
         assert state(Platform.SENSOR, "status").state == "Charging"
+        assert (
+            state(Platform.SENSOR, "status").attributes["last_session_end_reason"]
+            == "user_stop"
+        )
+        assert state(Platform.SENSOR, "plug").state == "Connected"
+        charging_power = state(Platform.SENSOR, "charging-power")
+        assert float(charging_power.state) == 7200
+        assert charging_power.attributes["unit_of_measurement"] == "W"
+        assert (
+            float(state(Platform.SENSOR, "session-currentChargeQuantity").state) == 3.5
+        )
+        assert float(state(Platform.SENSOR, "session-greenElec").state) == 2.0
+        duration = state(Platform.SENSOR, "session-chargeTimeLength")
+        assert duration.attributes["unit_of_measurement"] == "min"
+        assert (
+            ent_reg.async_get_entity_id(
+                Platform.SENSOR, DOMAIN, f"{CHARGER_SN}-ev-session-purElec"
+            )
+            is None
+        )
         power = state(Platform.SENSOR, "Charging_Power")
         assert float(power.state) == 7.2
         assert power.attributes["unit_of_measurement"] == "kW"

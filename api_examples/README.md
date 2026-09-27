@@ -156,6 +156,8 @@ discovered as `EV_CHARGER` devices in `all-status`.
 | Charge state | `GET /web/sems/sems-plant/api/v1/chargePile/getLastCharge?chargeSn=<sn>&pwId=<station_id>`; `chargeLog.workStu`: 0 offline, 2 fault, 6 charging, 8/10 available, 9 maintenance; `chargeLog.status` = plug status |
 | Current mode and settings | `POST /web/sems/sems-remote/api/ev-charger/detail` with `{sn, productModel}`: `chargeMode`, `chargeMaxPower`, `ratedMaxiChargePower`, `buyPwrLimit`, `ensureMinimumChargingPower`, `gridControlLimitSwitch`/`gridControlLimitValue`, `dynamicLoad`/`currentLimit`, `phaseSwitch`, `lockChargingPlug`, `chargedNow` (plug and charge) |
 | Change a setting | `POST /web/sems/sems-remote/api/ev-charger/set-config` with `{sn, plantId, productModel, <field>: value}`; toggles are sent as 0/1; ranges come from the mode settings' `controlItemRanges` |
+| Live charging power | `stations/flow` field `pEvChar` (kW, station total) |
+| Last session | `getLastCharge` `chargeLog`: `currentChargeQuantity`, `greenElec`, `purElec` (kWh), `averCharP`, `maxCharP` (kW), `chargeTimeLength` (min), `chargeStartTime`, `chargeEndTime`, `chargeEndCauseDetail`, `mileage` |
 | Start / stop | `POST /web/sems/sems-remote/api/ev-charger/startCharge` or `stopCharge` with `{sn, plantId, productModel, mode}` |
 | Charge mode | `POST /web/sems/sems-remote/api/ev-charger/set-mode` with `{mode, sn, plantId, productModel}`; mode 0 fast (also sends `chargeMaxPower`, `chargePowerSetted`), 1 PV, 2 PV + battery |
 

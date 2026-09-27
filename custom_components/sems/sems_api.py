@@ -1100,6 +1100,15 @@ class SemsApi:
         except (OutOfRetries, SemsRateLimitedError) as err:
             _LOGGER.debug("SEMS station flow unavailable: %s", err)
             flow = {}
+        if len(ev_chargers) == 1 and flow.get("pEvChar") is not None:
+            # Station flow reports the (total) EV charging power in kW; it can
+            # only be attributed to a charger when the station has one.
+            try:
+                next(iter(ev_chargers.values()))["charging_power"] = (
+                    abs(float(flow["pEvChar"])) * 1000
+                )
+            except (TypeError, ValueError):
+                _LOGGER.debug("SEMS station flow has an invalid pEvChar value")
         if flow:
             if (
                 not smart_meters
