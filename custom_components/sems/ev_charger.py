@@ -46,7 +46,7 @@ EV_CHARGER_STATUS_LABELS = {
 _EV_CHARGER_CHARGING_STATUS = 6
 
 # SEMS+ charge modes, as listed by the Web UI mode selector.
-EV_CHARGE_MODES = {0: "fast", 1: "pv", 2: "pv_battery"}
+EV_CHARGE_MODES = {0: "Fast", 1: "PV", 2: "PV + battery"}
 
 # Unit -> (device class, HA unit, state class) for dynamic factor sensors.
 _UNIT_MAP: dict[str, tuple[SensorDeviceClass | None, str, SensorStateClass]] = {
@@ -428,7 +428,7 @@ EV_CHARGER_CONFIG_NUMBERS: dict[str, tuple[str, str, str | None, float]] = {
 class EvChargerConfigSwitch(_EvChargerEntity, SwitchEntity):
     """Toggle one EV charger "More Control" setting."""
 
-    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_category: EntityCategory | None = EntityCategory.CONFIG
 
     def __init__(
         self, coordinator: SemsCoordinator, serial_number: str, field: str

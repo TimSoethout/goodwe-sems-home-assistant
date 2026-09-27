@@ -900,8 +900,7 @@ async def async_setup_entry(
                 sensor_option.entity_registry_enabled_default,
             )
         )
-    sensors.extend(ev_charger_sensors(coordinator))
-    async_add_entities(sensors)
+    async_add_entities([*sensors, *ev_charger_sensors(coordinator)])
 
 
 def _migrate_unique_ids(hass: HomeAssistant, migrations: dict[str, str]) -> None:

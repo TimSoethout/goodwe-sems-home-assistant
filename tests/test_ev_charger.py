@@ -261,8 +261,8 @@ async def test_ev_charger_entities(
             "EV Charger Wallbox Start Charging"
         )
         mode = state(Platform.SELECT, "charge-mode")
-        assert mode.state == "pv"
-        assert mode.attributes["options"] == ["fast", "pv", "pv_battery"]
+        assert mode.state == "PV"
+        assert mode.attributes["options"] == ["Fast", "PV", "PV + battery"]
 
         with patch.object(SemsApi, "stopEvCharging", return_value=True) as stop:
             await hass.services.async_call(
@@ -277,7 +277,7 @@ async def test_ev_charger_entities(
             await hass.services.async_call(
                 "select",
                 "select_option",
-                {"entity_id": mode.entity_id, "option": "fast"},
+                {"entity_id": mode.entity_id, "option": "Fast"},
                 blocking=True,
             )
         set_mode.assert_called_once_with(

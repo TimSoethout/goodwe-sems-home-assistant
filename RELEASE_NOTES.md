@@ -11,8 +11,8 @@
   battery).
 - Toggle Plug and Charge and adjust the SEMS+ More Control settings, such as
   power limits, dynamic load management, phase switching, and plug lock.
-- Endpoints follow the SEMS+ Web UI and have not yet been verified against a
-  live charger. Please report issues with sanitized debug logs.
+- Controls were verified against a live charger; a full charging session has
+  not been tested yet. Please report issues with sanitized debug logs.
 
 ## 11.12.0-beta.3 - 2026-09-27
 

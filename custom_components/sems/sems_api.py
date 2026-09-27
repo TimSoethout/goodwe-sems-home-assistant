@@ -1389,8 +1389,8 @@ class SemsApi:
                     continue
                 code = factor.get("code")
                 try:
-                    value = float(factor.get("data"))
-                except (TypeError, ValueError):
+                    value = float(factor["data"])
+                except (KeyError, TypeError, ValueError):
                     continue
                 if not isinstance(code, str):
                     continue
