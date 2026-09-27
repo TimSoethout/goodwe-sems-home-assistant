@@ -2042,7 +2042,7 @@ class TestSemsApi:
         }
 
     @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
-    @patch.object(SemsApi, "getWebStationFlow", return_value={})
+    @patch.object(SemsApi, "getWebStationFlow", return_value={"pAc": 2.5, "pGrid": -1})
     @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
     @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
     @patch.object(SemsApi, "getWebInverterDevices")
@@ -2068,6 +2068,10 @@ class TestSemsApi:
             "BATTERY_RACK",
             "DONGLE",
         ]
+        assert result["inverter"][0]["invert_full"]["pac"] == 2500
+        assert result["inverter"][0]["invert_full"]["pmeter"] == -1000
+        assert "battery_count" not in result["inverter"][1]["invert_full"]
+        assert "more_batterys" not in result["inverter"][1]["invert_full"]
         assert mock_telemetry.call_count == 2
         assert mock_telecounting.call_count == 2
 

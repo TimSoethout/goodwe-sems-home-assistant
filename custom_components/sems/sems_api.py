@@ -35,6 +35,10 @@ _WEB_INVERTER_ENTITY_TYPES = {
     "BATTERY_RACK",
     "DONGLE",
 }
+_WEB_REAL_INVERTER_TYPES = {
+    "INVERTER",
+    "ENERGY_STORAGE_INTEGRATED_CABINET",
+}
 _WEB_STATISTICS_KEY_MAP = {
     "proSystemTotalStats": "sum",
     "proPurchaseStats": "buy",
@@ -1089,8 +1093,9 @@ class SemsApi:
                     )
                     if key in device_data
                 }
-                device_data["battery_count"] = 1
-                device_data["more_batterys"] = [battery_data]
+                if battery_data:
+                    device_data["battery_count"] = 1
+                    device_data["more_batterys"] = [battery_data]
             device_data.setdefault("powerstation_id", powerStationId)
             if device_type == "SMART_METER":
                 smart_meters.append(device_data)
@@ -1107,6 +1112,11 @@ class SemsApi:
                 )
             inverters.append({"invert_full": device_data})
 
+        real_inverters = [
+            inverter
+            for inverter in inverters
+            if inverter["invert_full"].get("deviceType") in _WEB_REAL_INVERTER_TYPES
+        ]
         result: dict[str, Any] = {"inverter": inverters}
         try:
             flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
@@ -1116,16 +1126,16 @@ class SemsApi:
         if flow:
             if (
                 not smart_meters
-                and len(inverters) == 1
+                and len(real_inverters) == 1
                 and (grid_power := flow.get("pGrid")) is not None
             ):
                 try:
-                    for inverter in inverters:
+                    for inverter in real_inverters:
                         inverter["invert_full"]["pmeter"] = float(grid_power) * 1000
                 except (TypeError, ValueError):
                     _LOGGER.debug("SEMS station flow has an invalid pGrid value")
-            if len(inverters) == 1:
-                inverter_full = inverters[0]["invert_full"]
+            if len(real_inverters) == 1:
+                inverter_full = real_inverters[0]["invert_full"]
                 if (
                     "pac" not in inverter_full
                     and (solar_power := flow.get("pAc")) is not None
@@ -1194,8 +1204,8 @@ class SemsApi:
                 result["hasEnergeStatisticsCharts"] = True
                 result["energeStatisticsCharts"] = charts
                 result["energeStatisticsTotals"] = totals
-            if last_month_pv is not None and len(inverters) == 1:
-                invert_full = inverters[0].get("invert_full")
+            if last_month_pv is not None and len(real_inverters) == 1:
+                invert_full = real_inverters[0].get("invert_full")
                 if isinstance(invert_full, dict):
                     invert_full["lastmonthetotle"] = last_month_pv
             if currency is not None:
