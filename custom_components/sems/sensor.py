@@ -268,8 +268,6 @@ def sensor_options_for_data(
                 0,
             )
             for idx in range(1, 5)
-            if get_value_from_path(data.inverters, [*path_to_inverter, f"vpv{idx}"])
-            is not None
         ]
         sensors += [
             SemsInverterSensorType(
@@ -283,8 +281,6 @@ def sensor_options_for_data(
                 0,
             )
             for idx in range(1, 5)
-            if get_value_from_path(data.inverters, [*path_to_inverter, f"ipv{idx}"])
-            is not None
         ]
         sensors += [
             SemsInverterSensorType(
@@ -298,8 +294,6 @@ def sensor_options_for_data(
                 0,
             )
             for idx in range(1, 5)
-            if get_value_from_path(data.inverters, [*path_to_inverter, f"ppv{idx}"])
-            is not None
         ]
         sensors += [
             SemsInverterSensorType(
