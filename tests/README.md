@@ -15,7 +15,10 @@ This directory contains comprehensive tests for the SEMS API module.
 
 To run all tests:
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/ \
+  --cov=custom_components.sems \
+  --cov-report=term-missing \
+  --cov-fail-under=80 -v
 ```
 
 If you are running these tests inside the Home Assistant core repository workspace (where `/workspaces/home-assistant/pyproject.toml` exists), pytest may try to load Home Assistant's own `tests/conftest.py` and fail. In that case, run with `--confcutdir`:

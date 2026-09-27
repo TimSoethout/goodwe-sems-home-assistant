@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sems import (
     SemsData,
+    SemsDataUpdateCoordinator,
     _normalize_energy_statistics_charts,
 )
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
@@ -250,6 +251,40 @@ async def test_web_meter_data_keeps_registered_homekit_serial(
         )
         is None
     )
+
+
+async def test_registered_homekit_sn_prefers_earlier_lifetime_serial(
+    hass: HomeAssistant,
+) -> None:
+    """Test the earlier HomeKit serial with a lifetime import counter is kept."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    ent_reg = er.async_get(hass)
+    for platform, unique_id in (
+        (Platform.SWITCH, "SWITCH-SN-import-energy-total"),
+        (Platform.SENSOR, "unrelated-sensor"),
+        (Platform.SENSOR, "powerflow-import-energy-total"),
+        (Platform.SENSOR, "OLD-SN-export-energy"),
+        (Platform.SENSOR, "LIFETIME-SN-import-energy-total"),
+        (Platform.SENSOR, "METER-SN-import-energy-total"),
+    ):
+        ent_reg.async_get_or_create(platform, DOMAIN, unique_id, config_entry=entry)
+
+    coordinator = SemsDataUpdateCoordinator(hass, SemsApi(hass, "user", "pass"), entry)
+
+    assert coordinator._registered_homekit_sn("METER-SN") == "LIFETIME-SN"
+    assert coordinator._registered_homekit_sn("LIFETIME-SN") == "METER-SN"
+
+    coordinator.config_entry = None
+    assert coordinator._registered_homekit_sn("METER-SN") is None
 
 
 async def test_web_flow_load_sensors_report_consumption_while_exporting(
