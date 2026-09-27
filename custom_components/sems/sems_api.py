@@ -1485,15 +1485,9 @@ class SemsApi:
         cache_key = f"counters:{powerStationId}:{serialNumber}:{device_type}"
         cached = self._web_cache.get(cache_key)
         previous = cached[1] if cached and isinstance(cached[1], dict) else {}
-        period_cache_key = (
-            f"counter-periods:{powerStationId}:{serialNumber}:{device_type}"
-        )
-        period_cache = self._web_cache.get(period_cache_key)
-        previous_periods = (
-            period_cache[1]
-            if period_cache and isinstance(period_cache[1], dict)
-            else {}
-        )
+        previous_periods = previous.get("_periods", {})
+        if not isinstance(previous_periods, dict):
+            previous_periods = {}
         now = dt_util.now()
         counter_periods = {
             "eday": now.date().isoformat(),
@@ -1541,10 +1535,13 @@ class SemsApi:
                     if (value := self._numeric_web_factor(factors, source)) is not None:
                         counters[target] = value
         if counters:
-            self._web_cache[cache_key] = (time.monotonic(), {**previous, **counters})
-            self._web_cache[period_cache_key] = (
+            self._web_cache[cache_key] = (
                 time.monotonic(),
-                {**previous_periods, **counter_periods},
+                {
+                    **previous,
+                    **counters,
+                    "_periods": {**previous_periods, **counter_periods},
+                },
             )
         return counters
 
