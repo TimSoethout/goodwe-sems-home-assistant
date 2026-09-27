@@ -336,11 +336,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                     if not isinstance(charts, dict):
                         charts = {}
                     else:
-                        capacities = [
-                            inverter.get("capacity")
-                            for inverter in inverters_by_sn.values()
-                            if isinstance(inverter.get("capacity"), (int, float))
-                        ]
+                        capacities: list[float] = []
+                        for inverter in inverters_by_sn.values():
+                            capacity = inverter.get("capacity")
+                            if isinstance(capacity, (int, float)):
+                                capacities.append(float(capacity))
                         inverter_capacity_kw = sum(capacities) if capacities else None
                         charts = _normalize_energy_statistics_charts(
                             charts, inverter_capacity_kw

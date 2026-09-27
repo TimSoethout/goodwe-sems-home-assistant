@@ -798,6 +798,8 @@ class SemsApi:
                 if not isinstance(statistic, dict):
                     continue
                 value = statistic.get("val")
+                if not isinstance(value, (int, float, str)):
+                    continue
                 try:
                     numeric_value = float(value)
                 except (TypeError, ValueError):
@@ -816,6 +818,8 @@ class SemsApi:
             ("proChar", "proCharStats"),
         ):
             value = response.get(summary_key)
+            if not isinstance(value, (int, float, str)):
+                continue
             try:
                 numeric_value = float(value)
             except (TypeError, ValueError):
@@ -824,6 +828,8 @@ class SemsApi:
                 parsed[item] = [numeric_value]
         for summary_key in _WEB_STATISTICS_RATE_MAP:
             value = response.get(summary_key)
+            if not isinstance(value, (int, float, str)):
+                continue
             try:
                 numeric_value = float(value)
             except (TypeError, ValueError):
@@ -831,13 +837,16 @@ class SemsApi:
             if math.isfinite(numeric_value):
                 parsed[summary_key] = [numeric_value]
 
-        response_dates = [
-            statistic.get("date")
-            for item_data in response.get("dataList", [])
-            if isinstance(item_data, dict)
-            for statistic in item_data.get("statisticsList", [])
-            if isinstance(statistic, dict) and isinstance(statistic.get("date"), str)
-        ]
+        response_dates: list[str] = []
+        for item_data in response.get("dataList", []):
+            if not isinstance(item_data, dict):
+                continue
+            for statistic in item_data.get("statisticsList", []):
+                if not isinstance(statistic, dict):
+                    continue
+                date = statistic.get("date")
+                if isinstance(date, str):
+                    response_dates.append(date)
         _LOGGER.debug(
             "SEMS - getWebStationStatistics response: dimension=%s "
             "requested=%s..%s items=%s points=%s dates=%s..%s",
@@ -916,12 +925,12 @@ class SemsApi:
                     datetime(current_year + 1, 1, 1) - timedelta(seconds=1),
                 )
 
-                production = production_future.result()
+                production_data = production_future.result()
                 statistic_data = [future.result() for future in statistics_futures]
                 historic_statistics = historic_statistics_future.result()
 
-            if production:
-                currency = production.get("currency")
+            if production_data and isinstance(production_data.get("currency"), str):
+                currency = production_data.get("currency")
             for (_dimension, start, _), data in zip(
                 statistic_ranges, statistic_data, strict=True
             ):
@@ -934,12 +943,12 @@ class SemsApi:
                             for source, target in _WEB_STATISTICS_KEY_MAP.items()
                         }
                     )
-                    if production:
+                    if production_data:
                         for source, target in _WEB_STATISTICS_KEY_MAP.items():
                             if target not in charts and isinstance(
-                                production.get(source), (int, float)
+                                production_data.get(source), (int, float)
                             ):
-                                charts[target] = production[source]
+                                charts[target] = production_data[source]
                     charts.update(
                         {
                             target: sum(data.get(source, [])) / 100
@@ -952,16 +961,16 @@ class SemsApi:
 
             if historic_statistics:
                 for item, values in historic_statistics.items():
-                    target = _WEB_STATISTICS_KEY_MAP.get(item)
-                    if target is not None:
-                        totals[target] = sum(values)
+                    mapped_target = _WEB_STATISTICS_KEY_MAP.get(item)
+                    if mapped_target is not None:
+                        totals[mapped_target] = sum(values)
             self_use = totals.get("selfUseOfPv")
             consumption = totals.get("consumptionOfLoad")
-            production = totals.get("sum")
+            production_total = totals.get("sum")
             if self_use is not None and consumption:
                 totals["contributingRate"] = self_use / consumption
-            if self_use is not None and production:
-                totals["selfUseRate"] = self_use / production
+            if self_use is not None and production_total:
+                totals["selfUseRate"] = self_use / production_total
 
             return charts, totals, currency, last_month_pv
         except (OutOfRetries, SemsRateLimitedError) as err:
