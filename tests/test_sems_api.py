@@ -1500,7 +1500,7 @@ class TestSemsApi:
         self: "TestSemsApi", mock_api_call: Mock, mock_now: Mock
     ) -> None:
         """Test one-poll increases are ignored and sustained increases are accepted."""
-        mock_now.return_value = datetime(2026, 9, 27)
+        mock_now.return_value = datetime(2026, 9, 27, 12)
         response = json.loads(
             (
                 Path(__file__).resolve().parent.parent
@@ -1536,6 +1536,54 @@ class TestSemsApi:
         set_counter("proPvStatsWeek", 62.9)
         mock_api_call.return_value = response
         assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 62.9
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_holds_counters_at_midnight(
+        self: "TestSemsApi", mock_api_call: Mock, mock_now: Mock
+    ) -> None:
+        """Test previous-day readings after midnight do not stick (#94)."""
+
+        def poll(now: datetime, today: float, week: float, total: float) -> dict:
+            mock_now.return_value = now
+            mock_api_call.return_value = [
+                {
+                    "code": "telecounting",
+                    "factors": [
+                        {"code": "proPvStatsToday", "data": str(today)},
+                        {"code": "proPvStatsWeek", "data": str(week)},
+                        {"code": "proPvStatsTotal", "data": str(total)},
+                    ],
+                }
+            ]
+            return self.api.getWebInverterTelecounting("station", "SN1")
+
+        poll(datetime(2026, 9, 26, 23, 58), 11.0, 62.7, 1517.2)
+        poll(datetime(2026, 9, 26, 23, 59), 11.0, 62.7, 1517.2)
+        poll(datetime(2026, 9, 27, 0, 0), 0, 62.7, 1517.2)
+        # SEMS replays the previous day's production for several polls.
+        for minute in range(1, 8):
+            held = poll(datetime(2026, 9, 27, 0, minute), 11.0, 73.7, 1528.2)
+            assert (held["eday"], held["eweek"], held["etotal"]) == (
+                11.0,
+                62.7,
+                1517.2,
+            )
+        poll(datetime(2026, 9, 27, 0, 8), 0, 62.7, 1517.2)
+
+        settled = poll(datetime(2026, 9, 27, 0, 15), 0, 62.7, 1517.2)
+        assert (settled["eday"], settled["eweek"], settled["etotal"]) == (
+            0,
+            62.7,
+            1517.2,
+        )
+        poll(datetime(2026, 9, 27, 8, 0), 0.1, 62.8, 1517.3)
+        morning = poll(datetime(2026, 9, 27, 8, 1), 0.2, 62.9, 1517.4)
+        assert (morning["eday"], morning["eweek"], morning["etotal"]) == (
+            0.2,
+            62.9,
+            1517.4,
+        )
 
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telecounting_ignores_invalid_lifetime_reset(
@@ -1592,7 +1640,7 @@ class TestSemsApi:
         self, mock_api_call, mock_now
     ):
         """Test period counters only reset when their period changes."""
-        mock_now.return_value = datetime(2026, 1, 15)
+        mock_now.return_value = datetime(2026, 1, 15, 12)
         response = [
             {
                 "code": "telecounting",
@@ -1630,7 +1678,7 @@ class TestSemsApi:
             "eyear": 40.0,
         }
 
-        mock_now.return_value = datetime(2026, 2, 1)
+        mock_now.return_value = datetime(2026, 2, 1, 12)
         assert self.api.getWebInverterTelecounting("station", "SN1") == {
             "eday": 0.0,
             "eweek": 0.0,
