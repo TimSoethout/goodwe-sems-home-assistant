@@ -152,6 +152,29 @@ class TestSemsApi:
             for call_args in mock_statistics.call_args_list
         )
 
+    @patch.object(
+        SemsApi,
+        "_get_web_statistics",
+        return_value={"proSystemTotalStats": [1.0]},
+    )
+    @patch.object(
+        SemsApi,
+        "_get_web_production",
+        return_value={"currency": 123},
+    )
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_ignores_non_string_currency(
+        self, mock_now, _mock_production, _mock_statistics
+    ):
+        """Test non-string currency values are ignored."""
+        mock_now.return_value = datetime(2026, 9, 25)
+
+        result = self.api._get_web_energy_statistics("station", [])
+
+        assert result is not None
+        _charts, _totals, currency, _last_month_pv = result
+        assert currency is None
+
     @patch.object(SemsApi, "_make_api_call")
     def test_web_station_production_uses_web_request_contract(self, mock_api_call):
         """Test optional station production totals and currency request."""
