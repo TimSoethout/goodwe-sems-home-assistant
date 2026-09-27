@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any
 
+from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -15,6 +16,7 @@ from homeassistant.components.sensor import (
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
@@ -143,10 +145,15 @@ class _EvChargerEntity(CoordinatorEntity[SemsCoordinator]):
 
     @property
     def _mode(self) -> int | None:
-        try:
-            return int(self._charger.get("mode_info", {}).get("chargeMode"))
-        except (TypeError, ValueError):
-            return None
+        # The current mode is reported by ev-charger/detail; fall back to the
+        # mode settings response for older data.
+        for source in ("detail", "mode_info"):
+            value = self._charger.get(source, {}).get("chargeMode")
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+        return None
 
     async def _async_command(self, method: Any, *args: Any) -> None:
         mode_info = self._charger.get("mode_info", {})
@@ -265,8 +272,139 @@ class EvChargeModeSelect(_EvChargerEntity, SelectEntity):
         await self._async_command(
             self.coordinator.sems_api.setEvChargeMode,
             mode,
-            self._charger.get("mode_info", {}),
+            self._charger.get("detail", {}),
         )
+
+
+# "More Control" switches: detail field -> name (sent as 0/1 like the Web UI).
+EV_CHARGER_CONFIG_SWITCHES = {
+    "ensureMinimumChargingPower": "Min Charging Power",
+    "gridControlLimitSwitch": "Grid Compliance Limit",
+    "dynamicLoad": "Dynamic Load Management",
+    "phaseSwitch": "Single/Three-phase Switching",
+    "lockChargingPlug": "Lock Charging Plug",
+}
+
+# "More Control" numbers: detail field -> (name, unit, SEMS range key, step).
+EV_CHARGER_CONFIG_NUMBERS: dict[str, tuple[str, str, str | None, float]] = {
+    "ratedMaxiChargePower": ("Output Power Limit", UnitOfPower.KILO_WATT, None, 0.1),
+    "buyPwrLimit": (
+        "Max Import Power Limit",
+        UnitOfPower.KILO_WATT,
+        "Buy_Pwr_Limit",
+        0.1,
+    ),
+    "gridControlLimitValue": (
+        "Grid Compliance Limit Value",
+        UnitOfPower.KILO_WATT,
+        "Grid_Control_Limit_Value",
+        0.1,
+    ),
+    "currentLimit": (
+        "Dynamic Load Import Current Limit",
+        UnitOfElectricCurrent.AMPERE,
+        "charge_pile_dynamic_load_import_current_limit",
+        1,
+    ),
+}
+
+
+class EvChargerConfigSwitch(_EvChargerEntity, SwitchEntity):
+    """Toggle one EV charger "More Control" setting."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self, coordinator: SemsCoordinator, serial_number: str, field: str
+    ) -> None:
+        super().__init__(coordinator, serial_number, f"config-{field}")
+        self._field = field
+        self._attr_name = EV_CHARGER_CONFIG_SWITCHES[field]
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self._charger.get("detail", {}).get(self._field)
+        return None if value is None else bool(value)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._async_command(
+            self.coordinator.sems_api.setEvChargerConfig, self._field, 1
+        )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._async_command(
+            self.coordinator.sems_api.setEvChargerConfig, self._field, 0
+        )
+
+
+class EvChargerConfigNumber(_EvChargerEntity, NumberEntity):
+    """Set one numeric EV charger "More Control" setting."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_mode = NumberMode.BOX
+
+    def __init__(
+        self, coordinator: SemsCoordinator, serial_number: str, field: str
+    ) -> None:
+        super().__init__(coordinator, serial_number, f"config-{field}")
+        self._field = field
+        name, unit, range_key, step = EV_CHARGER_CONFIG_NUMBERS[field]
+        self._attr_name = name
+        self._attr_native_unit_of_measurement = unit
+        self._attr_native_step = step
+        self._attr_device_class = (
+            NumberDeviceClass.CURRENT
+            if unit == UnitOfElectricCurrent.AMPERE
+            else NumberDeviceClass.POWER
+        )
+        self._attr_native_min_value, self._attr_native_max_value = self._range(
+            range_key, unit
+        )
+
+    def _range(self, range_key: str | None, unit: str) -> tuple[float, float]:
+        """Return the allowed range like the Web UI does."""
+        mode_info = self._charger.get("mode_info", {})
+        try:
+            rated = float(mode_info.get("ratedPower") or 0)
+        except (TypeError, ValueError):
+            rated = 0.0
+        if not rated:
+            rated = 22.0
+        if range_key is None:
+            # Output power: 1.4 kW minimum for single-phase 7 kW chargers,
+            # 4.2 kW for three-phase 11/22 kW ones.
+            return (1.4 if rated == 7 else 4.2 if rated in (11, 22) else 0.0), rated
+        ranges = (mode_info.get("controlItemRanges") or {}).get(range_key) or {}
+        default_max = 63.0 if unit == UnitOfElectricCurrent.AMPERE else max(rated, 22.0)
+        try:
+            return float(ranges.get("min", 0)), float(ranges.get("max", default_max))
+        except (TypeError, ValueError):
+            return 0.0, default_max
+
+    @property
+    def native_value(self) -> float | None:
+        value = self._charger.get("detail", {}).get(self._field)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self._async_command(
+            self.coordinator.sems_api.setEvChargerConfig,
+            self._field,
+            int(value) if self._attr_native_step == 1 else round(value, 1),
+        )
+
+
+def ev_charger_numbers(coordinator: SemsCoordinator) -> list[NumberEntity]:
+    """Return "More Control" numbers reported by each charger."""
+    return [
+        EvChargerConfigNumber(coordinator, serial_number, field)
+        for serial_number, charger in (coordinator.data.ev_chargers or {}).items()
+        for field in EV_CHARGER_CONFIG_NUMBERS
+        if charger.get("detail", {}).get(field) is not None
+    ]
 
 
 def ev_charger_sensors(coordinator: SemsCoordinator) -> list[SensorEntity]:
@@ -283,10 +421,15 @@ def ev_charger_sensors(coordinator: SemsCoordinator) -> list[SensorEntity]:
 
 def ev_charger_switches(coordinator: SemsCoordinator) -> list[SwitchEntity]:
     """Return charging switches for all discovered EV chargers."""
-    return [
-        EvChargerChargingSwitch(coordinator, serial_number)
-        for serial_number in coordinator.data.ev_chargers or {}
-    ]
+    switches: list[SwitchEntity] = []
+    for serial_number, charger in (coordinator.data.ev_chargers or {}).items():
+        switches.append(EvChargerChargingSwitch(coordinator, serial_number))
+        switches.extend(
+            EvChargerConfigSwitch(coordinator, serial_number, field)
+            for field in EV_CHARGER_CONFIG_SWITCHES
+            if charger.get("detail", {}).get(field) is not None
+        )
+    return switches
 
 
 def ev_charger_selects(coordinator: SemsCoordinator) -> list[SelectEntity]:

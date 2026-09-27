@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import SemsConfigEntry, SemsCoordinator
 from .const import CONF_STATION_ID
 from .device import device_info_for_inverter
+from .ev_charger import ev_charger_numbers
 
 type SetBatteryValueMethod = Callable[[str, str, str, int, str, str], None]
 
@@ -118,5 +119,7 @@ async def async_setup_entry(
                             method,
                         )
                     )
+
+    number_entities.extend(ev_charger_numbers(coordinator))
 
     async_add_entities(number_entities)

@@ -64,7 +64,21 @@ TELECOUNTING = [
         ],
     }
 ]
-MODE_INFO = {"productModel": "GW11K-HCA-20", "chargeMode": 1, "chargeMaxPower": 11}
+MODE_INFO = {
+    "productModel": "GW11K-HCA-20",
+    "ratedPower": 11,
+    "controlItemRanges": {"Buy_Pwr_Limit": {"min": 0, "max": 40}},
+}
+DETAIL = {
+    "chargeMode": 1,
+    "chargeMaxPower": 11,
+    "ratedMaxiChargePower": 11,
+    "buyPwrLimit": 0,
+    "ensureMinimumChargingPower": 0,
+    "gridControlLimitSwitch": 0,
+    "dynamicLoad": 0,
+    "phaseSwitch": 1,
+}
 LAST_CHARGE = {"chargeLog": {"workStu": 6, "status": 1}}
 
 
@@ -78,6 +92,12 @@ def _fake_api_call(url_part, *args, **kwargs):
         return TELECOUNTING
     if "control-item-content-list" in url_part:
         return MODE_INFO
+    if url_part == "/sems-remote/api/ev-charger/detail":
+        assert json.loads(kwargs["data"]) == {
+            "sn": CHARGER_SN,
+            "productModel": "GW11K-HCA-20",
+        }
+        return DETAIL
     if "chargePile/getLastCharge" in url_part:
         assert f"chargeSn={CHARGER_SN}" in url_part
         return LAST_CHARGE
@@ -99,6 +119,7 @@ def test_get_web_data_collects_ev_charger(mock_flow, mock_statistics):
     charger = result["ev_chargers"][CHARGER_SN]
     assert charger["name"] == "Wallbox"
     assert charger["mode_info"] == MODE_INFO
+    assert charger["detail"] == DETAIL
     assert charger["charge_log"] == {"workStu": 6, "status": 1}
     assert charger["factors"] == {
         "Charging_Power": {"value": 7.2, "unit": "kW", "alias": "charging_power"},
@@ -113,8 +134,11 @@ def test_ev_charger_commands_use_web_ui_payloads():
     with patch.object(SemsApi, "_make_api_call", return_value={}) as mock_call:
         assert api.startEvCharging("plant", CHARGER_SN, "GW11K-HCA-20", 1)
         assert api.stopEvCharging("plant", CHARGER_SN, "GW11K-HCA-20", 1)
-        assert api.setEvChargeMode("plant", CHARGER_SN, "GW11K-HCA-20", 2, MODE_INFO)
-        assert api.setEvChargeMode("plant", CHARGER_SN, "GW11K-HCA-20", 0, MODE_INFO)
+        assert api.setEvChargeMode("plant", CHARGER_SN, "GW11K-HCA-20", 2, DETAIL)
+        assert api.setEvChargeMode("plant", CHARGER_SN, "GW11K-HCA-20", 0, DETAIL)
+        assert api.setEvChargerConfig(
+            "plant", CHARGER_SN, "GW11K-HCA-20", "buyPwrLimit", 5.5
+        )
 
     calls = [
         (c.args[0], json.loads(c.kwargs["data"])) for c in mock_call.call_args_list
@@ -128,6 +152,7 @@ def test_ev_charger_commands_use_web_ui_payloads():
             "/sems-remote/api/ev-charger/set-mode",
             {**base, "mode": 0, "chargeMaxPower": 11, "chargePowerSetted": 0},
         ),
+        ("/sems-remote/api/ev-charger/set-config", {**base, "buyPwrLimit": 5.5}),
     ]
     assert all(c.kwargs["method"] == "POST" for c in mock_call.call_args_list)
 
@@ -170,6 +195,7 @@ async def test_ev_charger_entities(
                     },
                 },
                 "mode_info": MODE_INFO,
+                "detail": DETAIL,
                 "charge_log": {"workStu": 6, "status": 1},
             }
         },
@@ -222,5 +248,49 @@ async def test_ev_charger_entities(
                 blocking=True,
             )
         set_mode.assert_called_once_with(
-            STATION_ID, CHARGER_SN, "GW11K-HCA-20", 0, MODE_INFO
+            STATION_ID, CHARGER_SN, "GW11K-HCA-20", 0, DETAIL
+        )
+
+        # "More Control" settings reported by ev-charger/detail.
+        assert state(Platform.SWITCH, "config-phaseSwitch").state == "on"
+        assert state(Platform.SWITCH, "config-dynamicLoad").state == "off"
+        assert (
+            ent_reg.async_get_entity_id(
+                Platform.SWITCH, DOMAIN, f"{CHARGER_SN}-ev-config-lockChargingPlug"
+            )
+            is None
+        )
+        output = state(Platform.NUMBER, "config-ratedMaxiChargePower")
+        assert float(output.state) == 11
+        assert output.attributes["min"] == 4.2
+        assert output.attributes["max"] == 11
+        import_limit = state(Platform.NUMBER, "config-buyPwrLimit")
+        assert import_limit.attributes["max"] == 40
+
+        with patch.object(SemsApi, "setEvChargerConfig", return_value=True) as cfg:
+            await hass.services.async_call(
+                "switch",
+                "turn_on",
+                {"entity_id": state(Platform.SWITCH, "config-dynamicLoad").entity_id},
+                blocking=True,
+            )
+            await hass.services.async_call(
+                "number",
+                "set_value",
+                {"entity_id": import_limit.entity_id, "value": 5.5},
+                blocking=True,
+            )
+        assert cfg.call_args_list[0].args == (
+            STATION_ID,
+            CHARGER_SN,
+            "GW11K-HCA-20",
+            "dynamicLoad",
+            1,
+        )
+        assert cfg.call_args_list[1].args == (
+            STATION_ID,
+            CHARGER_SN,
+            "GW11K-HCA-20",
+            "buyPwrLimit",
+            5.5,
         )

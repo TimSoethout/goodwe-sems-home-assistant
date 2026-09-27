@@ -1287,6 +1287,29 @@ class SemsApi:
                 )
             else:
                 charger[key] = result
+
+        # Current charge mode and "More Control" settings (Web UI evChargeInfo).
+        product_model = charger["mode_info"].get("productModel")
+        charger["detail"] = {}
+        if product_model:
+            try:
+                detail = self._make_api_call(
+                    _WEB_EV_CHARGER_COMMAND_URL_PART.format(command="detail"),
+                    data=json.dumps(
+                        {"sn": serial_number, "productModel": product_model}
+                    ),
+                    method="POST",
+                    renewToken=renewToken,
+                    maxTokenRetries=maxTokenRetries,
+                    operation_name="getWebEvChargerDetail API call",
+                    is_web=True,
+                    token_type="web",
+                )
+            except (OutOfRetries, SemsRateLimitedError) as err:
+                _LOGGER.debug("SEMS EV charger detail unavailable: %s", err)
+            else:
+                if isinstance(detail, dict):
+                    charger["detail"] = detail
         return charger
 
     @staticmethod
@@ -1363,7 +1386,7 @@ class SemsApi:
         serial_number: str,
         product_model: str,
         mode: int,
-        mode_info: dict[str, Any] | None = None,
+        detail: dict[str, Any] | None = None,
     ) -> bool:
         """Set the EV charge mode (0 fast, 1 PV, 2 PV and battery).
 
@@ -1375,10 +1398,29 @@ class SemsApi:
             "plantId": plant_id,
             "productModel": product_model,
         }
-        if mode == 0 and mode_info and mode_info.get("chargeMaxPower") is not None:
-            payload["chargeMaxPower"] = mode_info["chargeMaxPower"]
-            payload["chargePowerSetted"] = mode_info.get("chargePowerSetted") or 0
+        if mode == 0 and detail and detail.get("chargeMaxPower") is not None:
+            payload["chargeMaxPower"] = detail["chargeMaxPower"]
+            payload["chargePowerSetted"] = detail.get("chargePowerSetted") or 0
         return self._send_ev_charger_command("set-mode", payload)
+
+    def setEvChargerConfig(
+        self,
+        plant_id: str,
+        serial_number: str,
+        product_model: str,
+        field: str,
+        value: float | int,
+    ) -> bool:
+        """Change one EV charger "More Control" setting (Web UI set-config)."""
+        return self._send_ev_charger_command(
+            "set-config",
+            {
+                "sn": serial_number,
+                "plantId": plant_id,
+                "productModel": product_model,
+                field: value,
+            },
+        )
 
     def getWebStationFlow(
         self,
