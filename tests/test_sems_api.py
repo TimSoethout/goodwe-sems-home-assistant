@@ -1539,6 +1539,58 @@ class TestSemsApi:
             "etotal": 12346.1
         }
 
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_preserves_period_counters(
+        self, mock_api_call, mock_now
+    ):
+        """Test period counters only reset when their period changes."""
+        mock_now.return_value = datetime(2026, 1, 15)
+        response = [
+            {
+                "code": "telecounting",
+                "factors": [
+                    {"code": "proPvStatsToday", "data": "10"},
+                    {"code": "proPvStatsWeek", "data": "20"},
+                    {"code": "proPvStatsMonth", "data": "30"},
+                    {"code": "proPvStatsYear", "data": "40"},
+                ],
+            }
+        ]
+        mock_api_call.return_value = response
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 10.0,
+            "eweek": 20.0,
+            "thismonthetotle": 30.0,
+            "eyear": 40.0,
+        }
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting",
+                "factors": [
+                    {"code": "proPvStatsToday", "data": "0"},
+                    {"code": "proPvStatsWeek", "data": "0"},
+                    {"code": "proPvStatsMonth", "data": "0"},
+                    {"code": "proPvStatsYear", "data": "0"},
+                ],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 10.0,
+            "eweek": 20.0,
+            "thismonthetotle": 30.0,
+            "eyear": 40.0,
+        }
+
+        mock_now.return_value = datetime(2026, 2, 1)
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 0.0,
+            "eweek": 0.0,
+            "thismonthetotle": 0.0,
+            "eyear": 40.0,
+        }
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telecounting_maps_battery_counters(self, mock_api_call):
         """Test SEMS+ battery charge and discharge counter normalization."""

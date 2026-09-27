@@ -1484,20 +1484,45 @@ class SemsApi:
                 counters[target] = value
         cache_key = f"counters:{powerStationId}:{serialNumber}:{device_type}"
         cached = self._web_cache.get(cache_key)
-        previous = cached[1] if cached else {}
-        for key in ("etotal",):
+        previous = cached[1] if cached and isinstance(cached[1], dict) else {}
+        period_cache_key = (
+            f"counter-periods:{powerStationId}:{serialNumber}:{device_type}"
+        )
+        period_cache = self._web_cache.get(period_cache_key)
+        previous_periods = (
+            period_cache[1]
+            if period_cache and isinstance(period_cache[1], dict)
+            else {}
+        )
+        now = dt_util.now()
+        counter_periods = {
+            "eday": now.date().isoformat(),
+            "eweek": f"{now.isocalendar().year}-W{now.isocalendar().week}",
+            "thismonthetotle": f"{now.year}-{now.month}",
+            "eyear": str(now.year),
+            "eChargeDay": now.date().isoformat(),
+            "eDischargeDay": now.date().isoformat(),
+        }
+        for key in (
+            "eday",
+            "eweek",
+            "thismonthetotle",
+            "eyear",
+            "etotal",
+            "eChargeDay",
+            "eDischargeDay",
+        ):
             value = counters.get(key)
             old_value = previous.get(key)
+            same_period = key == "etotal" or (
+                previous_periods.get(key) == counter_periods.get(key)
+            )
             if (
-                value is not None
+                same_period
+                and value is not None
                 and isinstance(old_value, (int, float))
                 and old_value > 0
-                and value <= 0
-            ) or (
-                value is not None
-                and isinstance(old_value, (int, float))
-                and old_value > 0
-                and value < old_value
+                and (value <= 0 or value < old_value)
             ):
                 _LOGGER.warning(
                     "Ignoring invalid SEMS+ %s counter for %s: %s after %s",
@@ -1517,6 +1542,10 @@ class SemsApi:
                         counters[target] = value
         if counters:
             self._web_cache[cache_key] = (time.monotonic(), {**previous, **counters})
+            self._web_cache[period_cache_key] = (
+                time.monotonic(),
+                {**previous_periods, **counter_periods},
+            )
         return counters
 
     def getEnergyStorageIntegratedCabinets(
