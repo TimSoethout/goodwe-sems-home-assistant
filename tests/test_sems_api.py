@@ -1558,20 +1558,26 @@ class TestSemsApi:
             ]
             return self.api.getWebInverterTelecounting("station", "SN1")
 
-        poll(datetime(2026, 9, 26, 23, 58), 11.0, 62.7, 1517.2)
-        poll(datetime(2026, 9, 26, 23, 59), 11.0, 62.7, 1517.2)
-        poll(datetime(2026, 9, 27, 0, 0), 0, 62.7, 1517.2)
-        # SEMS replays the previous day's production for several polls.
-        for minute in range(1, 8):
-            held = poll(datetime(2026, 9, 27, 0, minute), 11.0, 73.7, 1528.2)
+        poll(datetime(2026, 9, 26, 23, 50), 11.0, 62.7, 1517.2)
+        poll(datetime(2026, 9, 26, 23, 55), 11.0, 62.7, 1517.2)
+        # From 23:58 until the portal has settled, nothing new is published:
+        # an early reset, then the previous day's production replayed for
+        # several polls.
+        replay = [(datetime(2026, 9, 26, 23, 58), 0, 62.7, 1517.2)]
+        replay += [
+            (datetime(2026, 9, 27, 0, minute), 11.0, 73.7, 1528.2)
+            for minute in range(1, 8)
+        ]
+        replay += [(datetime(2026, 9, 27, 0, 15), 0, 62.7, 1517.2)]
+        for now, today, week, total in replay:
+            held = poll(now, today, week, total)
             assert (held["eday"], held["eweek"], held["etotal"]) == (
                 11.0,
                 62.7,
                 1517.2,
             )
-        poll(datetime(2026, 9, 27, 0, 8), 0, 62.7, 1517.2)
 
-        settled = poll(datetime(2026, 9, 27, 0, 15), 0, 62.7, 1517.2)
+        settled = poll(datetime(2026, 9, 27, 0, 20), 0, 62.7, 1517.2)
         assert (settled["eday"], settled["eweek"], settled["etotal"]) == (
             0,
             62.7,

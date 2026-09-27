@@ -1494,11 +1494,14 @@ class SemsApi:
         else:
             pending_counters = pending_counters.copy()
         now = dt_util.now()
-        # Right after midnight SEMS can report the previous day's counters for
+        # Around midnight SEMS can report the previous day's counters for
         # several minutes after the reset (#94). The debounce below would then
         # confirm them and the lower values that follow would be rejected, so
         # keep the last published counters until the portal has settled.
-        if previous and now.hour == 0 and now.minute < 15:
+        # 23:58-00:20 is the window users in #94 have relied on for years.
+        if previous and (
+            (now.hour == 23 and now.minute >= 58) or (now.hour == 0 and now.minute < 20)
+        ):
             _LOGGER.debug(
                 "Keeping SEMS+ counters for %s during the midnight rollover",
                 serialNumber,
