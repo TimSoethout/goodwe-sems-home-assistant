@@ -278,6 +278,8 @@ class EvChargeModeSelect(_EvChargerEntity, SelectEntity):
 
 # "More Control" switches: detail field -> name (sent as 0/1 like the Web UI).
 EV_CHARGER_CONFIG_SWITCHES = {
+    # Main dashboard control in the Web UI, not a More Control setting.
+    "chargedNow": "Plug and Charge",
     "ensureMinimumChargingPower": "Min Charging Power",
     "gridControlLimitSwitch": "Grid Compliance Limit",
     "dynamicLoad": "Dynamic Load Management",
@@ -320,6 +322,9 @@ class EvChargerConfigSwitch(_EvChargerEntity, SwitchEntity):
         super().__init__(coordinator, serial_number, f"config-{field}")
         self._field = field
         self._attr_name = EV_CHARGER_CONFIG_SWITCHES[field]
+        if field == "chargedNow":
+            self._attr_entity_category = None
+            self._attr_icon = "mdi:ev-plug-type2"
 
     @property
     def is_on(self) -> bool | None:

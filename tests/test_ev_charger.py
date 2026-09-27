@@ -78,6 +78,7 @@ DETAIL = {
     "gridControlLimitSwitch": 0,
     "dynamicLoad": 0,
     "phaseSwitch": 1,
+    "chargedNow": 0,
 }
 LAST_CHARGE = {"chargeLog": {"workStu": 6, "status": 1}}
 
@@ -254,6 +255,12 @@ async def test_ev_charger_entities(
         # "More Control" settings reported by ev-charger/detail.
         assert state(Platform.SWITCH, "config-phaseSwitch").state == "on"
         assert state(Platform.SWITCH, "config-dynamicLoad").state == "off"
+        plug_and_charge = state(Platform.SWITCH, "config-chargedNow")
+        assert plug_and_charge.state == "off"
+        assert plug_and_charge.attributes["friendly_name"] == (
+            "EV Charger Wallbox Plug and Charge"
+        )
+        assert ent_reg.async_get(plug_and_charge.entity_id).entity_category is None
         assert (
             ent_reg.async_get_entity_id(
                 Platform.SWITCH, DOMAIN, f"{CHARGER_SN}-ev-config-lockChargingPlug"
@@ -275,6 +282,12 @@ async def test_ev_charger_entities(
                 blocking=True,
             )
             await hass.services.async_call(
+                "switch",
+                "turn_on",
+                {"entity_id": plug_and_charge.entity_id},
+                blocking=True,
+            )
+            await hass.services.async_call(
                 "number",
                 "set_value",
                 {"entity_id": import_limit.entity_id, "value": 5.5},
@@ -288,6 +301,13 @@ async def test_ev_charger_entities(
             1,
         )
         assert cfg.call_args_list[1].args == (
+            STATION_ID,
+            CHARGER_SN,
+            "GW11K-HCA-20",
+            "chargedNow",
+            1,
+        )
+        assert cfg.call_args_list[2].args == (
             STATION_ID,
             CHARGER_SN,
             "GW11K-HCA-20",
