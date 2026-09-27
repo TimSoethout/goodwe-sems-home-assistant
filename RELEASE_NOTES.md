@@ -1,5 +1,13 @@
 # Release notes
 
+## 11.12.0-beta.1 - 2026-09-27
+
+## Protect SEMS+ period counters
+
+- Ignore transient zero or decreasing daily, weekly, monthly, and yearly
+  counters while their reporting period is unchanged.
+- Allow legitimate period resets when the day, week, month, or year changes.
+
 ## 11.12.0-beta - 2026-09-27
 
 ## SEMS+ reliability improvements
