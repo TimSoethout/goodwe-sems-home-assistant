@@ -2007,6 +2007,36 @@ class TestSemsApi:
         )
         mock_flow.assert_called_once_with("station", False, 2)
 
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
+    @patch.object(
+        SemsApi, "getWebStationFlow", return_value={"pAc": 0, "pGrid": 0, "pConsum": 0}
+    )
+    @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
+    @patch.object(
+        SemsApi,
+        "getWebInverterTelemetry",
+        side_effect=[{"meter_power": 1234}, OutOfRetries],
+    )
+    @patch.object(SemsApi, "getWebInverterDevices")
+    def test_get_web_data_reuses_cached_smart_meter_telemetry(
+        self,
+        mock_devices,
+        mock_telemetry,
+        mock_telecounting,
+        mock_flow,
+        mock_statistics,
+    ):
+        """Test an offline inverter does not remove the last smart-meter values."""
+        mock_devices.return_value = [
+            {"sn": "METER1", "name": "Meter", "deviceType": "SMART_METER"},
+        ]
+
+        self.api.getWebData("station")
+        result = self.api.getWebData("station")
+
+        assert result["powerflow"]["meter_power"] == 1234
+        assert mock_telemetry.call_count == 2
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_battery_rack_telemetry_maps_existing_battery_entities(
         self, mock_api_call

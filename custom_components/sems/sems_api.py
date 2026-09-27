@@ -1030,20 +1030,28 @@ class SemsApi:
             if not isinstance(device_type, str):
                 device_type = "INVERTER"
             device_data = dict(device)
+            telemetry_cache_key = (
+                f"telemetry:{powerStationId}:{serial_number}:{device_type}"
+            )
+            cached_telemetry = self._web_cache.get(telemetry_cache_key)
             # Dongles have status, but no useful telemetry or counters. Avoid
             # making unsupported requests for them while preserving their
             # device/entity entry.
             if device_type != "DONGLE":
                 try:
-                    device_data.update(
-                        self.getWebInverterTelemetry(
-                            powerStationId,
-                            serial_number,
-                            renewToken,
-                            maxTokenRetries,
-                            device_type=device_type,
-                        )
+                    telemetry = self.getWebInverterTelemetry(
+                        powerStationId,
+                        serial_number,
+                        renewToken,
+                        maxTokenRetries,
+                        device_type=device_type,
                     )
+                    device_data.update(telemetry)
+                    if telemetry:
+                        self._web_cache[telemetry_cache_key] = (
+                            time.monotonic(),
+                            telemetry,
+                        )
                 except (
                     OutOfRetries,
                     SemsPermissionError,
@@ -1055,6 +1063,8 @@ class SemsApi:
                         serial_number,
                         err,
                     )
+                    if cached_telemetry:
+                        device_data.update(cached_telemetry[1])
                 if "pac" not in device_data and device_data.get("status") in (-1, 0):
                     device_data["pac"] = 0
                 try:
@@ -1497,8 +1507,6 @@ class SemsApi:
                     old_value,
                 )
                 counters.pop(key)
-        if counters:
-            self._web_cache[cache_key] = (time.monotonic(), {**previous, **counters})
         if device_type == "SMART_METER":
             for period in ("Today", "Week", "Month", "Year", "Total"):
                 for source, target in (
@@ -1507,6 +1515,8 @@ class SemsApi:
                 ):
                     if (value := self._numeric_web_factor(factors, source)) is not None:
                         counters[target] = value
+        if counters:
+            self._web_cache[cache_key] = (time.monotonic(), {**previous, **counters})
         return counters
 
     def getEnergyStorageIntegratedCabinets(
