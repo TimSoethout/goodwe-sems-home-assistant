@@ -11,11 +11,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Python 3.14
       uses: actions/setup-python@v6
@@ -38,7 +38,7 @@ jobs:
           --cov-report=xml --cov-report=term-missing -v
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       if: github.event_name != 'pull_request'
       with:
         file: ./coverage.xml
@@ -46,11 +46,11 @@ jobs:
         verbose: true
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Python
       uses: actions/setup-python@v6
@@ -74,11 +74,11 @@ jobs:
       run: mypy custom_components/ --ignore-missing-imports --python-version 3.14
 
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Validate with hassfest
       uses: home-assistant/actions/hassfest@master
