@@ -4,27 +4,12 @@
 
 ## SEMS+ reliability improvements
 
-This beta improves recovery from temporary SEMS+ Web outages and keeps
-discovered entities stable when optional device data is delayed or unavailable.
-
-### Changes
-
 - Ignore transient zero or decreasing lifetime energy counters and retain the
   last valid value.
 - Preserve smart-meter telemetry when an inverter refresh temporarily fails.
 - Exclude battery racks and dongles from single-inverter fallback decisions.
 - Avoid creating empty battery entities when no battery fields are available.
 - Create PV string entities consistently before MPPT telemetry appears.
-- Add regression coverage for the new SEMS+ recovery behavior.
-
-### Limitations
-
-- Hybrid inverter PV, grid, and battery sign mappings remain unchanged until
-  paired SEMS+ responses and portal readings confirm the conversion contract.
-
-### Contributors
-
-- [@TimSoethout](https://github.com/TimSoethout) - implementation and testing.
 
 ## 11.11.0 - 2026-09-25
 
