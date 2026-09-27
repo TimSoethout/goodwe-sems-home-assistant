@@ -1051,6 +1051,8 @@ class SemsApi:
                         serial_number,
                         err,
                     )
+                if "pac" not in device_data and device_data.get("status") in (-1, 0):
+                    device_data["pac"] = 0
                 try:
                     device_data.update(
                         self.getWebInverterTelecounting(
@@ -1224,10 +1226,6 @@ class SemsApi:
     ) -> dict[str, Any]:
         """Map SEMS+ flow and smart-meter counters to HomeKit fields."""
         grid_status = -1 if float(flow.get("pGrid", 0)) > 0 else 1
-        battery_power = flow.get("pBat")
-        battery_status = (
-            -1 if battery_power is not None and float(battery_power) > 0 else 1
-        )
         homekit: dict[str, Any] = {
             "sn": smart_meter.get("sn") if smart_meter else None,
             "gridStatus": grid_status,
@@ -1244,8 +1242,12 @@ class SemsApi:
         if (soc := flow.get("soc")) is not None:
             homekit["soc"] = soc
         if "battery" in homekit:
+            battery_value = homekit["battery"]
+            battery_status = -1 if battery_value > 0 else 1
+            battery_magnitude = abs(battery_value)
+            homekit["battery"] = battery_magnitude
             homekit["batteryStatus"] = battery_status
-            homekit["bettery"] = homekit["battery"]
+            homekit["bettery"] = battery_magnitude
             homekit["betteryStatus"] = battery_status
         if smart_meter:
             homekit.update(
@@ -1460,6 +1462,33 @@ class SemsApi:
         ):
             if (value := self._numeric_web_factor(factors, source)) is not None:
                 counters[target] = value
+        cache_key = f"counters:{powerStationId}:{serialNumber}:{device_type}"
+        cached = self._web_cache.get(cache_key)
+        previous = cached[1] if cached else {}
+        for key in ("etotal",):
+            value = counters.get(key)
+            old_value = previous.get(key)
+            if (
+                value is not None
+                and isinstance(old_value, (int, float))
+                and old_value > 0
+                and value <= 0
+            ) or (
+                value is not None
+                and isinstance(old_value, (int, float))
+                and old_value > 0
+                and value < old_value
+            ):
+                _LOGGER.warning(
+                    "Ignoring invalid SEMS+ %s counter for %s: %s after %s",
+                    key,
+                    serialNumber,
+                    value,
+                    old_value,
+                )
+                counters.pop(key)
+        if counters:
+            self._web_cache[cache_key] = (time.monotonic(), {**previous, **counters})
         if device_type == "SMART_METER":
             for period in ("Today", "Week", "Month", "Year", "Total"):
                 for source, target in (

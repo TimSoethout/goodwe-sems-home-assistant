@@ -1307,9 +1307,9 @@ class TestSemsApi:
             "pv": 2400,
             "grid": -500,
             "load": 1800,
-            "battery": -1100,
+            "battery": 1100,
             "batteryStatus": 1,
-            "bettery": -1100,
+            "bettery": 1100,
             "betteryStatus": 1,
             "soc": 62,
             "hasEnergeStatisticsCharts": False,
@@ -1360,6 +1360,7 @@ class TestSemsApi:
             "status": 0,
             "powerstation_id": "station",
             "model_type": "Zolder (grid)",
+            "pac": 0,
             "capacity": 3.0,
             "eday": 8.8,
             "eweek": 23.4,
@@ -1367,7 +1368,6 @@ class TestSemsApi:
             "eyear": 2613.6,
             "etotal": 21841.1,
         }
-        assert "pac" not in inverter
         assert "tempperature" not in inverter
         mock_telemetry.assert_called_once_with(
             "station", "SN1", False, 2, device_type="INVERTER"
@@ -1491,6 +1491,48 @@ class TestSemsApi:
             "thismonthetotle": 123.45,
             "eyear": 2345.67,
             "etotal": 12345.67,
+        }
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_ignores_invalid_lifetime_reset(
+        self, mock_api_call
+    ):
+        """Test a transient zero lifetime counter is not published."""
+        response = [
+            {
+                "code": "telecounting_lifetime",
+                "factors": [{"code": "proPvStatsTotal", "data": "12345.67"}],
+            }
+        ]
+        mock_api_call.return_value = response
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "etotal": 12345.67
+        }
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_lifetime",
+                "factors": [{"code": "proPvStatsTotal", "data": "0"}],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {}
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_lifetime",
+                "factors": [{"code": "proPvStatsTotal", "data": "12345"}],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {}
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_lifetime",
+                "factors": [{"code": "proPvStatsTotal", "data": "12346.1"}],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "etotal": 12346.1
         }
 
     @patch.object(SemsApi, "_make_api_call")
