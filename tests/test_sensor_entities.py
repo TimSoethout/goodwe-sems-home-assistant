@@ -445,6 +445,10 @@ async def test_exact_unique_ids_single_inverter_fixture(
         f"{sn}-vpv2",
         f"{sn}-vpv3",
         f"{sn}-vpv4",
+        f"{sn}-ppv1",
+        f"{sn}-ppv2",
+        f"{sn}-ppv3",
+        f"{sn}-ppv4",
         # Per-inverter meter and energy data
         f"{sn}-pmeter",
         f"{sn}-eChargeDay",
@@ -522,6 +526,10 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
         f"{sn}-vpv2",
         f"{sn}-vpv3",
         f"{sn}-vpv4",
+        f"{sn}-ppv1",
+        f"{sn}-ppv2",
+        f"{sn}-ppv3",
+        f"{sn}-ppv4",
         # HomeKit/powerflow sensors
         f"{homekit_sn}-homekit",
         f"{homekit_sn}-load",
