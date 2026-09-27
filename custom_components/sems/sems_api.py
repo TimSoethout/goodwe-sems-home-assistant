@@ -1488,12 +1488,25 @@ class SemsApi:
         previous_periods = previous.get("_periods", {})
         if not isinstance(previous_periods, dict):
             previous_periods = {}
-        pending_counters = previous.get("_pending_counters", {})
-        if not isinstance(pending_counters, dict):
-            pending_counters = {}
-        else:
-            pending_counters = pending_counters.copy()
         now = dt_util.now()
+        # Around midnight SEMS can report the previous day's counters for
+        # several minutes after the reset (#94). Don't publish or cache them
+        # before the portal has settled.
+        # 23:58-00:20 is the window users in #94 have relied on for years.
+        if (now.hour == 23 and now.minute >= 58) or (now.hour == 0 and now.minute < 20):
+            _LOGGER.debug(
+                "Keeping SEMS+ counters for %s during the midnight rollover",
+                serialNumber,
+            )
+            return (
+                {
+                    key: value
+                    for key, value in previous.items()
+                    if not key.startswith("_")
+                }
+                if previous
+                else {}
+            )
         counter_periods = {
             "eday": now.date().isoformat(),
             "eweek": f"{now.isocalendar().year}-W{now.isocalendar().week}",
@@ -1532,22 +1545,6 @@ class SemsApi:
                     old_value,
                 )
                 counters[key] = old_value
-                pending_counters.pop(key, None)
-            elif (
-                same_period
-                and isinstance(old_value, (int, float))
-                and value > old_value
-            ):
-                pending_value = pending_counters.get(key)
-                if isinstance(pending_value, (int, float)) and value >= pending_value:
-                    pending_counters.pop(key, None)
-                else:
-                    pending_counters[key] = value
-                    counters[key] = old_value
-            elif same_period and value == old_value:
-                pending_counters.pop(key, None)
-            else:
-                pending_counters.pop(key, None)
         if device_type == "SMART_METER":
             for period in ("Today", "Week", "Month", "Year", "Total"):
                 for source, target in (
@@ -1563,7 +1560,6 @@ class SemsApi:
                     **previous,
                     **counters,
                     "_periods": {**previous_periods, **counter_periods},
-                    "_pending_counters": pending_counters,
                 },
             )
         return counters
