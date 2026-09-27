@@ -16,6 +16,7 @@ from custom_components.sems.sems_api import (
     OLD_LOGIN_URL,
     OutOfRetries,
     SemsApi,
+    SemsPermissionError,
     SemsRateLimitedError,
 )
 
@@ -209,6 +210,29 @@ class TestSemsApi:
             "buy": 20314.77,
             "sell": 38846.49,
         }
+
+    @patch.object(
+        SemsApi,
+        "_get_web_statistics",
+        return_value={"proSystemTotalStats": [1.0]},
+    )
+    @patch.object(
+        SemsApi,
+        "_get_web_production",
+        return_value={"currency": 123},
+    )
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_ignores_non_string_currency(
+        self, mock_now, _mock_production, _mock_statistics
+    ):
+        """Test non-string currency values are ignored."""
+        mock_now.return_value = datetime(2026, 9, 25)
+
+        result = self.api._get_web_energy_statistics("station", [])
+
+        assert result is not None
+        _charts, _totals, currency, _last_month_pv = result
+        assert currency is None
 
     @patch.object(SemsApi, "_make_api_call")
     def test_web_station_production_uses_web_request_contract(self, mock_api_call):
@@ -799,6 +823,57 @@ class TestSemsApi:
         assert result is None
         assert "code: 100004, message: parameter error." in caplog.text
 
+    def test_response_summary_logs_nested_api(self, requests_mock, caplog):
+        """Test login response summaries include the nested gateway API."""
+        requests_mock.post(
+            "https://example.test/api",
+            json={
+                "code": "00000",
+                "description": "success",
+                "data": {"api": "https://eu-gateway.semsportal.com/web/sems"},
+            },
+        )
+
+        with caplog.at_level(logging.DEBUG):
+            self.api._make_http_request(
+                "https://example.test/api",
+                {},
+                operation_name="SEMS+ login API call",
+            )
+
+        assert "api=https://eu-gateway.semsportal.com/web/sems" in caplog.text
+
+    def test_permission_error_is_not_retried(self):
+        """Test permission failures propagate without fetching another token."""
+        self.api._web_token = {
+            "uid": "uid",
+            "token": "token",
+            "api": "https://example.test",
+            "client": "semsPlusWeb",
+        }
+
+        with (
+            patch.object(
+                self.api,
+                "_make_http_request",
+                side_effect=SemsPermissionError(
+                    "getWebInverterTelemetry API call",
+                    "You do not have access or operation rights",
+                ),
+            ) as mock_http_request,
+            patch.object(self.api, "_get_web_login_token") as mock_login,
+        ):
+            with pytest.raises(SemsPermissionError):
+                self.api._make_api_call(
+                    "/telemetry",
+                    operation_name="getWebInverterTelemetry API call",
+                    is_web=True,
+                    token_type="web",
+                )
+
+        mock_http_request.assert_called_once()
+        mock_login.assert_not_called()
+
     def test_telecounting_token_error_is_error_logged(self, requests_mock, caplog):
         """Test telecounting token errors remain visible in the logs."""
         requests_mock.post(
@@ -1303,9 +1378,9 @@ class TestSemsApi:
             "pv": 2400,
             "grid": -500,
             "load": 1800,
-            "battery": -1100,
+            "battery": 1100,
             "batteryStatus": 1,
-            "bettery": -1100,
+            "bettery": 1100,
             "betteryStatus": 1,
             "soc": 62,
             "hasEnergeStatisticsCharts": False,
@@ -1356,6 +1431,7 @@ class TestSemsApi:
             "status": 0,
             "powerstation_id": "station",
             "model_type": "Zolder (grid)",
+            "pac": 0,
             "capacity": 3.0,
             "eday": 8.8,
             "eweek": 23.4,
@@ -1363,7 +1439,6 @@ class TestSemsApi:
             "eyear": 2613.6,
             "etotal": 21841.1,
         }
-        assert "pac" not in inverter
         assert "tempperature" not in inverter
         mock_telemetry.assert_called_once_with(
             "station", "SN1", False, 2, device_type="INVERTER"
@@ -1487,6 +1562,201 @@ class TestSemsApi:
             "thismonthetotle": 123.45,
             "eyear": 2345.67,
             "etotal": 12345.67,
+        }
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_holds_counters_at_midnight(
+        self: "TestSemsApi", mock_api_call: Mock, mock_now: Mock
+    ) -> None:
+        """Test previous-day readings after midnight do not stick (#94)."""
+
+        def poll(now: datetime, today: float, week: float, total: float) -> dict:
+            mock_now.return_value = now
+            mock_api_call.return_value = [
+                {
+                    "code": "telecounting",
+                    "factors": [
+                        {"code": "proPvStatsToday", "data": str(today)},
+                        {"code": "proPvStatsWeek", "data": str(week)},
+                        {"code": "proPvStatsTotal", "data": str(total)},
+                    ],
+                }
+            ]
+            return self.api.getWebInverterTelecounting("station", "SN1")
+
+        poll(datetime(2026, 9, 26, 23, 50), 11.0, 62.7, 1517.2)
+        poll(datetime(2026, 9, 26, 23, 55), 11.0, 62.7, 1517.2)
+        # From 23:58 until the portal has settled, nothing new is published:
+        # an early reset, then the previous day's production replayed for
+        # several polls.
+        replay = [(datetime(2026, 9, 26, 23, 58), 0, 62.7, 1517.2)]
+        replay += [
+            (datetime(2026, 9, 27, 0, minute), 11.0, 73.7, 1528.2)
+            for minute in range(1, 8)
+        ]
+        replay += [(datetime(2026, 9, 27, 0, 15), 0, 62.7, 1517.2)]
+        for now, today, week, total in replay:
+            held = poll(now, today, week, total)
+            assert (held["eday"], held["eweek"], held["etotal"]) == (
+                11.0,
+                62.7,
+                1517.2,
+            )
+
+        settled = poll(datetime(2026, 9, 27, 0, 20), 0, 62.7, 1517.2)
+        assert (settled["eday"], settled["eweek"], settled["etotal"]) == (
+            0,
+            62.7,
+            1517.2,
+        )
+        poll(datetime(2026, 9, 27, 8, 0), 0.1, 62.8, 1517.3)
+        morning = poll(datetime(2026, 9, 27, 8, 1), 0.2, 62.9, 1517.4)
+        assert (morning["eday"], morning["eweek"], morning["etotal"]) == (
+            0.2,
+            62.9,
+            1517.4,
+        )
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_does_not_cache_midnight_cold_start(
+        self: "TestSemsApi", mock_api_call: Mock, mock_now: Mock
+    ) -> None:
+        """Test stale rollover readings on startup are not cached as current."""
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting",
+                "factors": [
+                    {"code": "proPvStatsToday", "data": "11.0"},
+                    {"code": "proPvStatsWeek", "data": "73.7"},
+                    {"code": "proPvStatsTotal", "data": "1528.2"},
+                ],
+            }
+        ]
+        mock_now.return_value = datetime(2026, 9, 27, 0, 1)
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {}
+
+        mock_now.return_value = datetime(2026, 9, 27, 0, 14)
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {}
+
+        mock_now.return_value = datetime(2026, 9, 27, 0, 15)
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {}
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting",
+                "factors": [
+                    {"code": "proPvStatsToday", "data": "0"},
+                    {"code": "proPvStatsWeek", "data": "62.7"},
+                    {"code": "proPvStatsTotal", "data": "1517.2"},
+                ],
+            }
+        ]
+        mock_now.return_value = datetime(2026, 9, 27, 0, 20)
+        counters = self.api.getWebInverterTelecounting("station", "SN1")
+        assert (counters["eday"], counters["eweek"], counters["etotal"]) == (
+            0,
+            62.7,
+            1517.2,
+        )
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_ignores_invalid_lifetime_reset(
+        self, mock_api_call
+    ):
+        """Test a transient zero lifetime counter is not published."""
+        response = [
+            {
+                "code": "telecounting_lifetime",
+                "factors": [{"code": "proPvStatsTotal", "data": "12345.67"}],
+            }
+        ]
+        mock_api_call.return_value = response
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "etotal": 12345.67
+        }
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_lifetime",
+                "factors": [{"code": "proPvStatsTotal", "data": "0"}],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "etotal": 12345.67
+        }
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_lifetime",
+                "factors": [{"code": "proPvStatsTotal", "data": "12345"}],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "etotal": 12345.67
+        }
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting_lifetime",
+                "factors": [{"code": "proPvStatsTotal", "data": "12346.1"}],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "etotal": 12346.1
+        }
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_preserves_period_counters(
+        self, mock_api_call, mock_now
+    ):
+        """Test period counters only reset when their period changes."""
+        mock_now.return_value = datetime(2026, 1, 15, 12)
+        response = [
+            {
+                "code": "telecounting",
+                "factors": [
+                    {"code": "proPvStatsToday", "data": "10"},
+                    {"code": "proPvStatsWeek", "data": "20"},
+                    {"code": "proPvStatsMonth", "data": "30"},
+                    {"code": "proPvStatsYear", "data": "40"},
+                ],
+            }
+        ]
+        mock_api_call.return_value = response
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 10.0,
+            "eweek": 20.0,
+            "thismonthetotle": 30.0,
+            "eyear": 40.0,
+        }
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting",
+                "factors": [
+                    {"code": "proPvStatsToday", "data": "0"},
+                    {"code": "proPvStatsWeek", "data": "0"},
+                    {"code": "proPvStatsMonth", "data": "0"},
+                    {"code": "proPvStatsYear", "data": "0"},
+                ],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 10.0,
+            "eweek": 20.0,
+            "thismonthetotle": 30.0,
+            "eyear": 40.0,
+        }
+
+        mock_now.return_value = datetime(2026, 2, 1, 12)
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 0.0,
+            "eweek": 0.0,
+            "thismonthetotle": 0.0,
+            "eyear": 40.0,
         }
 
     @patch.object(SemsApi, "_make_api_call")
@@ -1961,6 +2231,36 @@ class TestSemsApi:
         )
         mock_flow.assert_called_once_with("station", False, 2)
 
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
+    @patch.object(
+        SemsApi, "getWebStationFlow", return_value={"pAc": 0, "pGrid": 0, "pConsum": 0}
+    )
+    @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
+    @patch.object(
+        SemsApi,
+        "getWebInverterTelemetry",
+        side_effect=[{"meter_power": 1234}, OutOfRetries],
+    )
+    @patch.object(SemsApi, "getWebInverterDevices")
+    def test_get_web_data_reuses_cached_smart_meter_telemetry(
+        self,
+        mock_devices,
+        mock_telemetry,
+        mock_telecounting,
+        mock_flow,
+        mock_statistics,
+    ):
+        """Test an offline inverter does not remove the last smart-meter values."""
+        mock_devices.return_value = [
+            {"sn": "METER1", "name": "Meter", "deviceType": "SMART_METER"},
+        ]
+
+        self.api.getWebData("station")
+        result = self.api.getWebData("station")
+
+        assert result["powerflow"]["meter_power"] == 1234
+        assert mock_telemetry.call_count == 2
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_battery_rack_telemetry_maps_existing_battery_entities(
         self, mock_api_call
@@ -1996,7 +2296,7 @@ class TestSemsApi:
         }
 
     @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
-    @patch.object(SemsApi, "getWebStationFlow", return_value={})
+    @patch.object(SemsApi, "getWebStationFlow", return_value={"pAc": 2.5, "pGrid": -1})
     @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
     @patch.object(SemsApi, "getWebInverterTelemetry", return_value={})
     @patch.object(SemsApi, "getWebInverterDevices")
@@ -2022,6 +2322,10 @@ class TestSemsApi:
             "BATTERY_RACK",
             "DONGLE",
         ]
+        assert result["inverter"][0]["invert_full"]["pac"] == 2500
+        assert result["inverter"][0]["invert_full"]["pmeter"] == -1000
+        assert "battery_count" not in result["inverter"][1]["invert_full"]
+        assert "more_batterys" not in result["inverter"][1]["invert_full"]
         assert mock_telemetry.call_count == 2
         assert mock_telecounting.call_count == 2
 

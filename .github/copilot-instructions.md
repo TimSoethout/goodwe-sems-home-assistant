@@ -76,7 +76,8 @@ These rules apply before all other instructions in this file:
 - Before ending a copilot session, ask the user whether the work is finished or whether they want to continue with feedback. Use a short prompt so the user can choose to stop or iterate.
 
 ## Release Workflow
-- Use the [release-workflow skill](.github/skills/release-workflow/SKILL.md) when preparing HACS releases, including version bumps, tags, beta/pre-release publishing, and release notes.
+- Use the [release skill](skills/release/SKILL.md) when preparing HACS releases. Follow SemVer from the latest stable version: patch for fixes, minor for backward-compatible features, and major for breaking changes. Beta versions must use the intended stable version with a numbered suffix (for example, `11.12.0-beta.1` → `11.12.0`); a beta containing a breaking change must target the next major (for example, `12.0.0-beta.1` → `12.0.0`). Mark GitHub beta releases as pre-releases.
+- Write commit messages using Conventional Commits, especially PR titles when changes are squash-merged: `<type>(<optional scope>): <summary>`. Use `fix:` for bug fixes, `feat:` for backward-compatible features, and `!` or a `BREAKING CHANGE:` footer for breaking changes (for example, `feat(sensor)!: rename power entities`). Use `docs:`, `test:`, and `chore:` for changes that do not affect user-facing behavior. This keeps commit history clear and enables future SemVer release automation.
 
 ## Examples to follow
 - Coordinator data shaping: `SemsDataUpdateCoordinator._async_update_data()` in [custom_components/sems/__init__.py](../custom_components/sems/__init__.py).
