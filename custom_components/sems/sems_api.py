@@ -1506,7 +1506,7 @@ class SemsApi:
                     value,
                     old_value,
                 )
-                counters.pop(key)
+                counters[key] = old_value
         if device_type == "SMART_METER":
             for period in ("Today", "Week", "Month", "Year", "Total"):
                 for source, target in (

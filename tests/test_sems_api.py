@@ -1515,7 +1515,9 @@ class TestSemsApi:
                 "factors": [{"code": "proPvStatsTotal", "data": "0"}],
             }
         ]
-        assert self.api.getWebInverterTelecounting("station", "SN1") == {}
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "etotal": 12345.67
+        }
 
         mock_api_call.return_value = [
             {
@@ -1523,7 +1525,9 @@ class TestSemsApi:
                 "factors": [{"code": "proPvStatsTotal", "data": "12345"}],
             }
         ]
-        assert self.api.getWebInverterTelecounting("station", "SN1") == {}
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "etotal": 12345.67
+        }
 
         mock_api_call.return_value = [
             {
