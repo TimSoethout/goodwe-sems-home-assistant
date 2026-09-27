@@ -82,8 +82,6 @@ jobs:
 
     - name: Validate with hassfest
       uses: home-assistant/actions/hassfest@master
-      with:
-        path: './custom_components'
 
     - name: Validate with HACS
       uses: hacs/action@main
