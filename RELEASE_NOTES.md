@@ -1,5 +1,29 @@
 # Release notes
 
+## 11.12.0-beta.2 - 2026-09-27
+
+## SEMS+ counter and telemetry reliability
+
+- Ignore transient zero or decreasing energy counters while their reporting
+  period is unchanged, and publish increases only after a subsequent poll
+  confirms them.
+- Allow legitimate daily, weekly, monthly, and yearly counter resets when the
+  reporting period changes.
+- Preserve valid lifetime counters and smart-meter telemetry across temporary
+  API glitches or inverter refresh failures.
+- Keep discovered battery racks and dongles out of single-inverter fallbacks,
+  avoid creating empty battery entities, and create PV string entities
+  consistently before telemetry appears.
+- Keep discovered inverters available when SEMS+ denies telemetry access.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - implementation and
+  validation.
+- [@GertJanH](https://github.com/GertJanH) - reported the SEMS+ counter
+  regression.
+- [@Copilot](https://github.com/Copilot) - type-check fixes.
+
 ## 11.12.0-beta.1 - 2026-09-27
 
 ## Protect SEMS+ period counters

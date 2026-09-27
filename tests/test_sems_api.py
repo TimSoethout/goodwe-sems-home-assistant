@@ -3,6 +3,7 @@
 import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -1493,6 +1494,49 @@ class TestSemsApi:
             "etotal": 12345.67,
         }
 
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_debounces_increases(
+        self: "TestSemsApi", mock_api_call: Mock, mock_now: Mock
+    ) -> None:
+        """Test one-poll increases are ignored and sustained increases are accepted."""
+        mock_now.return_value = datetime(2026, 9, 27)
+        response = json.loads(
+            (
+                Path(__file__).resolve().parent.parent
+                / "api_examples/semsplus_hybrid/inverter_telecounting.json"
+            ).read_text(encoding="utf-8")
+        )["data"]
+
+        def set_counter(code: str, value: float) -> None:
+            for group in response:
+                for factor in group["factors"]:
+                    if factor["code"] == code:
+                        factor["data"] = str(value)
+                        return
+            raise AssertionError(f"Counter {code} not found in fixture")
+
+        set_counter("proPvStatsWeek", 62.7)
+        mock_api_call.return_value = response
+        baseline = self.api.getWebInverterTelecounting("station", "SN1")
+        assert baseline["eweek"] == 62.7
+
+        set_counter("proPvStatsWeek", 73.7)
+        mock_api_call.return_value = response
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 62.7
+
+        set_counter("proPvStatsWeek", 62.7)
+        mock_api_call.return_value = response
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 62.7
+
+        set_counter("proPvStatsWeek", 62.8)
+        mock_api_call.return_value = response
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 62.7
+
+        set_counter("proPvStatsWeek", 62.9)
+        mock_api_call.return_value = response
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 62.9
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telecounting_ignores_invalid_lifetime_reset(
         self, mock_api_call
@@ -1535,6 +1579,9 @@ class TestSemsApi:
                 "factors": [{"code": "proPvStatsTotal", "data": "12346.1"}],
             }
         ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "etotal": 12345.67
+        }
         assert self.api.getWebInverterTelecounting("station", "SN1") == {
             "etotal": 12346.1
         }
