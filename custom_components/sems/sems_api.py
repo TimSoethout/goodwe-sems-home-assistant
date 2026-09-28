@@ -150,6 +150,8 @@ _WEB_STATISTICS_REFRESH_SECONDS = 300
 _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS = 86_400
 _WEB_STATISTICS_EARLIEST_YEAR = 2015
 _WEB_RELATED_DEVICES_REFRESH_SECONDS = 3_600
+_WEB_FAILED_REQUEST_RETRY_SECONDS = 300
+_WEB_FUNCTION_MENUS_REFRESH_SECONDS = 21_600
 
 
 class SemsApi:
@@ -955,25 +957,32 @@ class SemsApi:
         cached = self._web_cache.get(cache_key)
         if cached and time.monotonic() - cached[0] < refresh:
             return cached[1]
+        if self._recently_failed(cache_key):
+            return cached[1] if cached else None
 
-        response = self._make_api_call(
-            _WEB_STATION_STATISTICS_ENDPOINT.url_part,
-            data=json.dumps(
-                {
-                    "stationId": power_station_id,
-                    "isReport": False,
-                    "items": _WEB_STATISTICS_ITEMS,
-                    "dimension": dimension,
-                    "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
-                    "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            ),
-            operation_name="getWebStationStatistics API call",
-            is_web=True,
-            token_type=_WEB_STATION_STATISTICS_ENDPOINT.token_type,
-        )
+        try:
+            response = self._make_api_call(
+                _WEB_STATION_STATISTICS_ENDPOINT.url_part,
+                data=json.dumps(
+                    {
+                        "stationId": power_station_id,
+                        "isReport": False,
+                        "items": _WEB_STATISTICS_ITEMS,
+                        "dimension": dimension,
+                        "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+                        "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                ),
+                operation_name="getWebStationStatistics API call",
+                is_web=True,
+                token_type=_WEB_STATION_STATISTICS_ENDPOINT.token_type,
+            )
+        except OutOfRetries as err:
+            _LOGGER.debug("SEMS %s statistics unavailable: %s", dimension, err)
+            response = None
         if not isinstance(response, dict):
-            return None
+            self._remember_failure(cache_key)
+            return cached[1] if cached else None
 
         parsed: dict[str, list[float]] = {}
         for item_data in response.get("dataList", []):
@@ -1049,6 +1058,17 @@ class SemsApi:
         )
         self._web_cache[cache_key] = (time.monotonic(), parsed)
         return parsed
+
+    def _recently_failed(self, cache_key: str) -> bool:
+        """Return whether a request failed too recently to retry it."""
+        failed = self._web_cache.get(f"failed:{cache_key}")
+        return bool(
+            failed and time.monotonic() - failed[0] < _WEB_FAILED_REQUEST_RETRY_SECONDS
+        )
+
+    def _remember_failure(self, cache_key: str) -> None:
+        """Delay the next attempt of a failed optional request."""
+        self._web_cache[f"failed:{cache_key}"] = (time.monotonic(), None)
 
     def _get_web_energy_statistics(
         self,
@@ -1173,30 +1193,45 @@ class SemsApi:
         self, power_station_id: str, start: datetime, end: datetime
     ) -> dict[str, Any] | None:
         """Get optional flat station production totals and currency."""
-        response = self._make_api_call(
-            _WEB_STATION_PRODUCTION_ENDPOINT.url_part,
-            data=json.dumps(
-                {
-                    "stationId": power_station_id,
-                    "items": [
-                        "proConsumStats",
-                        "proGridStats",
-                        "proPurchaseStats",
-                        "profitGridStats",
-                        "profitProStats",
-                        "proSystemTotalStats",
-                    ],
-                    "dimension": "day",
-                    "isReport": False,
-                    "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
-                    "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            ),
-            operation_name="getWebStationProduction API call",
-            is_web=True,
-            token_type=_WEB_STATION_PRODUCTION_ENDPOINT.token_type,
-        )
-        return response if isinstance(response, dict) else None
+        cache_key = f"production:{power_station_id}:{start.date()}:{end.date()}"
+        cached = self._web_cache.get(cache_key)
+        if cached and time.monotonic() - cached[0] < _WEB_STATISTICS_REFRESH_SECONDS:
+            return cached[1]
+        if self._recently_failed(cache_key):
+            return cached[1] if cached else None
+
+        try:
+            response = self._make_api_call(
+                _WEB_STATION_PRODUCTION_ENDPOINT.url_part,
+                data=json.dumps(
+                    {
+                        "stationId": power_station_id,
+                        "items": [
+                            "proConsumStats",
+                            "proGridStats",
+                            "proPurchaseStats",
+                            "profitGridStats",
+                            "profitProStats",
+                            "proSystemTotalStats",
+                        ],
+                        "dimension": "day",
+                        "isReport": False,
+                        "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+                        "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                ),
+                operation_name="getWebStationProduction API call",
+                is_web=True,
+                token_type=_WEB_STATION_PRODUCTION_ENDPOINT.token_type,
+            )
+        except OutOfRetries as err:
+            _LOGGER.debug("SEMS station production unavailable: %s", err)
+            response = None
+        if not isinstance(response, dict):
+            self._remember_failure(cache_key)
+            return cached[1] if cached else None
+        self._web_cache[cache_key] = (time.monotonic(), response)
+        return response
 
     def getWebData(
         self,
@@ -1912,6 +1947,15 @@ class SemsApi:
         maxTokenRetries: int = 2,
     ) -> dict[str, Any]:
         """Get the battery general functions from the SEMS API."""
+        # The function menus (addresses and ids) are static; don't refetch
+        # them on every refresh.
+        cache_key = f"function_menus:{serialNumber}:{batIndex}"
+        cached = self._web_cache.get(cache_key)
+        if (
+            cached
+            and time.monotonic() - cached[0] < _WEB_FUNCTION_MENUS_REFRESH_SECONDS
+        ):
+            return cached[1]
         data = json.dumps(
             {
                 "batIndex": str(batIndex),
@@ -1930,7 +1974,11 @@ class SemsApi:
             is_web=True,
             retry_on_api_error=False,
         )
-        return result if isinstance(result, dict) else {}
+        if not isinstance(result, dict):
+            return {}
+        if result.get("functionMenus"):
+            self._web_cache[cache_key] = (time.monotonic(), result)
+        return result
 
     def getBatteryImmediateChargingStates(
         self, serialNumber: str, renewToken: bool = False, maxTokenRetries: int = 2

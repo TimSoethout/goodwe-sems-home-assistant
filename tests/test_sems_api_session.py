@@ -6,6 +6,7 @@ import json
 import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -22,6 +23,11 @@ from custom_components.sems.sems_api import (
 
 API_BASE = "https://eu-gateway.example.test/web/sems"
 FLOW_URL = f"{API_BASE}/sems-plant/api/stations/flow"
+STATISTICS_URL = f"{API_BASE}/sems-plant/api/stations/statistics"
+PRODUCTION_URL = f"{API_BASE}/sems-plant/api/stations/production"
+FUNCTION_MENUS_URL = (
+    f"{API_BASE}/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus"
+)
 MOCK_USERNAME = "user@example.com"
 MOCK_PASSWORD = "test_password"
 MOCK_INVERTER_SN = "GW0000SN000TEST1"
@@ -415,3 +421,88 @@ def test_at_most_two_requests_in_flight() -> None:
 
     assert results == [{}] * 6
     assert peak == 2
+
+
+# ---------------------------------------------------------------------------
+# Caching of slow or failing optional requests
+# ---------------------------------------------------------------------------
+
+
+def test_station_production_is_cached(requests_mock) -> None:
+    """Station production is fetched once per refresh period."""
+    requests_mock.post(
+        PRODUCTION_URL, json={"code": "00000", "data": {"currency": "EUR"}}
+    )
+    api = SemsApi(Mock(), MOCK_USERNAME, MOCK_PASSWORD)
+    api._web_token = _web_token("valid-token")
+    start = datetime(2026, 1, 1)
+    end = datetime(2026, 1, 1, 23, 59, 59)
+
+    assert api._get_web_production(MOCK_STATION_ID_1, start, end) == {"currency": "EUR"}
+    assert api._get_web_production(MOCK_STATION_ID_1, start, end) == {"currency": "EUR"}
+    assert requests_mock.call_count == 1
+    # Another station of the shared account has its own entry.
+    api._get_web_production(MOCK_STATION_ID_2, start, end)
+    assert requests_mock.call_count == 2
+
+
+def test_failed_statistics_are_not_retried_every_refresh(requests_mock) -> None:
+    """A failed statistics request waits before it is tried again."""
+    requests_mock.post(STATISTICS_URL, json={"code": "E500", "msg": "timeout"})
+    api = SemsApi(Mock(), MOCK_USERNAME, MOCK_PASSWORD)
+    api._web_token = _web_token("valid-token")
+    start = datetime(2026, 1, 1)
+    end = datetime(2026, 12, 31, 23, 59, 59)
+
+    for _ in range(3):
+        assert api._get_web_statistics(MOCK_STATION_ID_1, "year", start, end) is None
+    assert requests_mock.call_count == 1
+
+    # After the retry delay the request is sent again.
+    key = f"failed:{MOCK_STATION_ID_1}:year:{start.date()}:{end.date()}"
+    api._web_cache[key] = (time.monotonic() - 301, None)
+    requests_mock.post(
+        STATISTICS_URL,
+        json={
+            "code": "00000",
+            "data": {
+                "dataList": [
+                    {
+                        "item": "proSystemTotalStats",
+                        "statisticsList": [{"date": "2026", "val": "5.5"}],
+                    }
+                ]
+            },
+        },
+    )
+    assert api._get_web_statistics(MOCK_STATION_ID_1, "year", start, end) == {
+        "proSystemTotalStats": [5.5]
+    }
+    assert requests_mock.call_count == 2
+
+
+def test_failed_statistics_refresh_keeps_last_value(requests_mock) -> None:
+    """An expired but successful result is kept when the refresh fails."""
+    requests_mock.post(STATISTICS_URL, json={"code": "E500", "msg": "timeout"})
+    api = SemsApi(Mock(), MOCK_USERNAME, MOCK_PASSWORD)
+    api._web_token = _web_token("valid-token")
+    start = datetime(2026, 1, 1)
+    end = datetime(2026, 1, 1, 23, 59, 59)
+    key = f"{MOCK_STATION_ID_1}:day:{start.date()}:{end.date()}"
+    api._web_cache[key] = (time.monotonic() - 1_000, {"proSystemTotalStats": [1.0]})
+
+    assert api._get_web_statistics(MOCK_STATION_ID_1, "day", start, end) == {
+        "proSystemTotalStats": [1.0]
+    }
+
+
+def test_battery_function_menus_are_cached(requests_mock) -> None:
+    """Static battery function menus are not refetched on every refresh."""
+    menus = {"functionMenus": {"children": [{"functions": []}]}}
+    requests_mock.post(FUNCTION_MENUS_URL, json={"code": "00000", "data": menus})
+    api = SemsApi(Mock(), MOCK_USERNAME, MOCK_PASSWORD)
+    api._web_token = _web_token("valid-token")
+
+    assert api.getBatteryGeneralFunctions(MOCK_INVERTER_SN, 1) == menus
+    assert api.getBatteryGeneralFunctions(MOCK_INVERTER_SN, 1) == menus
+    assert requests_mock.call_count == 1
