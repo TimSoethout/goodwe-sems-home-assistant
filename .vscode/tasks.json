@@ -22,7 +22,7 @@
     {
       "label": "SEMS: start Home Assistant",
       "type": "shell",
-      "command": "bash .devcontainer/start-home-assistant",
+      "command": "bash .devcontainer/start-home-assistant && tail -f /tmp/home-assistant.log",
       "problemMatcher": []
     }
   ]

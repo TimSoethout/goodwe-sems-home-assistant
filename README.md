@@ -127,7 +127,17 @@ Open this repository in VS Code with the Dev Containers extension and choose
 - Clones Home Assistant Core into the workspace's `.ha-core` directory.
 - Runs the Home Assistant development setup.
 - Links this integration into `.ha-core/config/custom_components/sems`.
+- Enables SEMS debug logging in `.ha-core/config/configuration.yaml`.
+- Installs HACS if it is not already installed.
 - Starts Home Assistant at http://localhost:8123.
+
+On a fresh Home Assistant config, the first start creates a disposable owner
+account and completes the onboarding wizard. The generated password is stored
+in `.ha-core/.dev-owner-credentials.json` with owner-only file permissions.
+Read that file to log in to the local instance.
+HACS files are installed automatically, but HACS still requires its one-time
+GitHub device authorization in the Home Assistant UI. Adding the SEMS
+integration and entering GoodWe credentials also remain UI steps.
 
 The Home Assistant Core branch is controlled by
 `.devcontainer/ha-core.ref`. The default is `dev`; change it before creating

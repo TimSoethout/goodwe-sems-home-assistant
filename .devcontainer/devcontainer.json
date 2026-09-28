@@ -10,7 +10,8 @@
     }
   },
   "mounts": [
-    "type=bind,source=${localEnv:HOME}/.copilot,target=/home/vscode/.copilot"
+    "type=bind,source=${localEnv:HOME}/.copilot,target=/home/vscode/.copilot",
+    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,readonly"
   ],
   "containerEnv": {
     "GIT_EDITOR": "code --wait"
