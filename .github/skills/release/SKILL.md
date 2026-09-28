@@ -19,7 +19,7 @@ Use this skill when preparing a HACS release for the SEMS integration.
    - If a beta includes a breaking change, target the next major instead: `12.0.0-beta.1`, then stable `12.0.0`.
    - Do not use spaces or append `RC` to the version. If a release candidate is needed, use a valid suffix such as `-rc.1`; otherwise keep using `-beta.N`.
 4. Create a git tag matching the manifest version, for example `11.12.0-beta.1` or `11.12.0`. Do not reuse published version tags.
-5. Publish a GitHub Release for that tag. Mark beta releases as **pre-release** so HACS users who opt into pre-releases can receive them. Publish the final version as a regular release. Tags alone are not enough for HACS; the latest release tag is what remote version checks use.
+5. Publish a GitHub Release for that tag. Mark beta releases as **pre-release** so HACS users who opt into pre-releases can receive them; publish the final version as a regular release. This triggers `.github/workflows/release.yml`, which uploads the integration ZIP. Tags alone are not enough for HACS.
 6. Identify the previous **non-beta** release tag first. Update
    [RELEASE_NOTES.md](../../../RELEASE_NOTES.md) with every user-visible change
    since that stable tag, including changes introduced by intermediate beta
@@ -40,7 +40,7 @@ Use this skill when preparing a HACS release for the SEMS integration.
 
 - Run the narrowest relevant tests before releasing.
 - Run `ruff check` and `ruff format --check` for the touched area if code changed.
-- Confirm the manifest version matches the tag and release metadata.
+- Confirm the manifest and GitHub release tag match, the pre-release setting is correct, and the release ZIP was uploaded.
 
 ## Notes
 
