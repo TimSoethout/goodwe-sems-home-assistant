@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import math
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -56,9 +57,23 @@ _WEB_STATISTICS_RATE_MAP = {
 # Web token plus X-Signature headers.
 _RequestTimeout = 30  # seconds
 _RateLimitRetryAfterSeconds = 300
+# One client is shared by all stations of an account; keep its load bounded.
+_MaxConcurrentRequests = 2
+# Client-wide cool-down after rate limiting or a rejected login. It doubles on
+# each consecutive failure; Retry-After is honoured up to its own cap.
+_CooldownBaseSeconds = 60
+_CooldownMaxSeconds = 900
+_RetryAfterMaxSeconds = 3_600
 
 _SuccessCodes = {0, "0", "00000"}
 _RateLimitCode = "GY0429"
+# Codes for a token the server no longer accepts (expired or replaced session).
+# Only these trigger a re-login.
+_AuthExpiredCodes = {"100002", "C0602"}
+# Login rejections that say nothing about the credentials themselves.
+_TransientLoginCodes = {"C0602", _RateLimitCode}
+# Consecutive credential rejections before the entry asks for reauthentication.
+_AuthRejectionsBeforeReauth = 3
 _BrowserUserAgent = "Home Assistant GoodWe SEMS API Integration"
 _SemsPlusWebUserAgent = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -150,6 +165,38 @@ class SemsApi:
         self._web_token: dict[str, Any] | None = None  # Used for SEMS+ web APIs
         self._preferred_login_mode: TokenType | None = None
         self._web_cache: dict[str, tuple[float, Any]] = {}
+        self._session = requests.Session()
+        self._request_slots = threading.BoundedSemaphore(_MaxConcurrentRequests)
+        # Logins are serialized. Each successful login bumps the generation of
+        # its token type, so a request that was rejected with an older token
+        # reuses a token another thread already fetched instead of logging in.
+        self._auth_lock = threading.Lock()
+        self._token_generation: dict[TokenType, int] = {
+            "legacy": 0,
+            "new": 0,
+            "web": 0,
+        }
+        self._last_login_rejection_code: str | None = None
+        self._auth_rejections = 0
+        self._session_failure_logged = False
+        self._cooldown_lock = threading.Lock()
+        self._cooldown_until = 0.0
+        self._cooldown_strikes = 0
+
+    def close(self) -> None:
+        """Close the HTTP session."""
+        self._session.close()
+
+    def update_credentials(self, password: str) -> None:
+        """Use a new password, dropping tokens obtained with the old one."""
+        with self._auth_lock:
+            if password == self._password:
+                return
+            self._password = password
+            self._token = None
+            self._new_token = None
+            self._web_token = None
+            self._auth_rejections = 0
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
@@ -186,19 +233,35 @@ class SemsApi:
         method: str = "POST",
     ) -> dict[str, Any] | None:
         """Make a generic HTTP request with error handling and optional code validation."""
+        self._raise_if_cooling_down(operation_name)
         try:
             _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
-            response = requests.request(
-                method.upper(),
-                url,
-                headers={"User-Agent": _BrowserUserAgent, **headers},
-                data=data,
-                json=json_data,
-                timeout=_RequestTimeout,
-            )
+            with self._request_slots:
+                response = self._session.request(
+                    method.upper(),
+                    url,
+                    headers={"User-Agent": _BrowserUserAgent, **headers},
+                    data=data,
+                    json=json_data,
+                    timeout=_RequestTimeout,
+                )
 
             _LOGGER.debug("%s Response: %s", operation_name, response)
             # _LOGGER.debug("%s Response text: %s", operation_name, response.text)
+
+            if response.status_code == 429:
+                retry_after = self._start_cooldown(
+                    self._parse_retry_after(response.headers.get("Retry-After"))
+                )
+                _LOGGER.warning(
+                    "SEMS rate limited %s (HTTP 429); pausing requests for %ss",
+                    operation_name,
+                    retry_after,
+                )
+                raise SemsRateLimitedError(
+                    retry_after=retry_after,
+                    message=f"{operation_name} returned HTTP 429",
+                )
 
             response.raise_for_status()
             json_response: dict[str, Any] = response.json()
@@ -227,8 +290,15 @@ class SemsApi:
             )
 
             if str(response_code) == _RateLimitCode:
+                retry_after = self._start_cooldown(_RateLimitRetryAfterSeconds)
+                _LOGGER.warning(
+                    "SEMS rate limited %s (code %s); pausing requests for %ss",
+                    operation_name,
+                    _RateLimitCode,
+                    retry_after,
+                )
                 raise SemsRateLimitedError(
-                    retry_after=_RateLimitRetryAfterSeconds,
+                    retry_after=retry_after,
                     message=(
                         f"{operation_name} returned rate-limit code {_RateLimitCode}"
                     ),
@@ -240,10 +310,26 @@ class SemsApi:
                     self._response_error_message(json_response),
                 )
 
+            # Login responses are classified by _extract_login_token instead.
+            is_login = self._is_sensitive_operation(operation_name)
+            if str(response_code) in _AuthExpiredCodes and not is_login:
+                _LOGGER.debug(
+                    "%s rejected the token with code %s: %s",
+                    operation_name,
+                    response_code,
+                    self._response_error_message(json_response),
+                )
+                raise SemsAuthExpiredError(
+                    f"{operation_name} rejected the token with code {response_code}"
+                )
+
+            if response_code in _SuccessCodes:
+                self._reset_cooldown()
+
             # Validate response code if requested
             if validate_code:
                 if response_code not in _SuccessCodes:
-                    _LOGGER.error(
+                    _LOGGER.warning(
                         "%s failed with code: %s, message: %s",
                         operation_name,
                         response_code,
@@ -274,8 +360,51 @@ class SemsApi:
                 _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
             raise
         except (requests.RequestException, ValueError, KeyError) as exception:
-            _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
+            _LOGGER.warning("Unable to complete %s: %s", operation_name, exception)
             raise
+
+    @staticmethod
+    def _parse_retry_after(value: str | None) -> int | None:
+        """Return a Retry-After header in seconds, if given as a number."""
+        try:
+            return max(0, int(value)) if value is not None else None
+        except ValueError:
+            return None
+
+    def _start_cooldown(self, retry_after: int | None = None) -> int:
+        """Pause all requests of this client and return the pause in seconds."""
+        with self._cooldown_lock:
+            now = time.monotonic()
+            if self._cooldown_until > now:
+                # Parallel requests hitting the same limit extend nothing.
+                return math.ceil(self._cooldown_until - now)
+            self._cooldown_strikes += 1
+            delay = min(
+                _CooldownBaseSeconds * 2 ** (self._cooldown_strikes - 1),
+                _CooldownMaxSeconds,
+            )
+            if retry_after:
+                delay = max(delay, min(retry_after, _RetryAfterMaxSeconds))
+            self._cooldown_until = now + delay
+            return delay
+
+    def _reset_cooldown(self) -> None:
+        """Forget earlier failures after a successful response."""
+        if self._cooldown_strikes:
+            with self._cooldown_lock:
+                self._cooldown_strikes = 0
+
+    def _raise_if_cooling_down(self, operation_name: str) -> None:
+        """Skip requests while the client is cooling down."""
+        remaining = self._cooldown_until - time.monotonic()
+        if remaining > 0:
+            raise SemsRateLimitedError(
+                retry_after=math.ceil(remaining),
+                message=(
+                    f"{operation_name} skipped; SEMS requests are paused for "
+                    f"{math.ceil(remaining)}s"
+                ),
+            )
 
     def _is_sensitive_operation(self, operation_name: str) -> bool:
         """Return True if the operation name indicates it handles sensitive credentials."""
@@ -354,45 +483,17 @@ class SemsApi:
         renewToken: bool,
         operation_name: str,
         token_type: TokenType = "legacy",
-    ) -> tuple[str, dict[str, str]] | None:
-        """Return the request URL and headers for an authenticated call."""
-        if token_type == "web":
-            token = self._web_token
-        elif token_type == "new":
-            token = self._new_token
-        else:
-            token = self._token
+        stale_generation: int | None = None,
+    ) -> tuple[str, dict[str, str], int]:
+        """Return the request URL, headers and token generation for a call.
 
-        if token is None or renewToken:
-            _LOGGER.debug(
-                "API token not set (%s) or new token requested (%s), fetching",
-                redact_for_log(token),
-                renewToken,
-            )
-            if token_type == "web":
-                self._web_token = self._get_new_login_token(
-                    self._username, self._password, is_web=True
-                )
-                token = self._web_token
-            elif token_type == "new":
-                self._new_token = self._get_new_login_token(
-                    self._username, self._password
-                )
-                token = self._new_token
-            else:
-                self._token = self.getLoginToken(self._username, self._password)
-                # A legacy re-login invalidates the SEMS+ Web session server-side.
-                self._web_token = None
-                token = self._token
-
-        if token is None:
-            _LOGGER.error(
-                "Failed to obtain %s token for %s; endpoint %s cannot be called",
-                token_type,
-                operation_name,
-                url_part,
-            )
-            return None
+        `stale_generation` is the generation of a token the server rejected.
+        """
+        if renewToken and stale_generation is None:
+            stale_generation = self._token_generation[token_type]
+        token, generation = self._get_token(
+            token_type, operation_name, stale_generation
+        )
 
         api_base = self._normalize_powerstation_api_base(token["api"], url_part)
         api_url = api_base + url_part
@@ -406,7 +507,79 @@ class SemsApi:
             url_part,
             redact_for_log(token),
         )
-        return api_url, headers
+        return api_url, headers, generation
+
+    def _stored_token(self, token_type: TokenType) -> dict[str, Any] | None:
+        """Return the current token of a type."""
+        if token_type == "web":
+            return self._web_token
+        if token_type == "new":
+            return self._new_token
+        return self._token
+
+    def _get_token(
+        self,
+        token_type: TokenType,
+        operation_name: str,
+        stale_generation: int | None = None,
+    ) -> tuple[dict[str, Any], int]:
+        """Return a usable token and its generation, logging in only if needed.
+
+        Raises SemsRateLimitedError while logins are paused and SemsAuthError
+        once the credentials were rejected repeatedly.
+        """
+        with self._auth_lock:
+            token = self._stored_token(token_type)
+            generation = self._token_generation[token_type]
+            if token is not None and stale_generation != generation:
+                return token, generation
+
+            # No login attempts while rate limited or after a failed login.
+            self._raise_if_cooling_down(operation_name)
+            _LOGGER.debug(
+                "SEMS %s token missing or rejected, logging in for %s",
+                token_type,
+                operation_name,
+            )
+            self._last_login_rejection_code = None
+            if token_type == "web":
+                token = self._get_new_login_token(
+                    self._username, self._password, is_web=True
+                )
+                self._web_token = token
+            elif token_type == "new":
+                token = self._get_new_login_token(self._username, self._password)
+                self._new_token = token
+            else:
+                token = self.getLoginToken(self._username, self._password)
+                self._token = token
+                # A legacy re-login invalidates the SEMS+ Web session server-side.
+                self._web_token = None
+
+            if token is not None:
+                self._auth_rejections = 0
+                self._token_generation[token_type] += 1
+                return token, self._token_generation[token_type]
+
+            code = self._last_login_rejection_code
+            if code is not None and code not in _TransientLoginCodes:
+                self._auth_rejections += 1
+            if self._auth_rejections >= _AuthRejectionsBeforeReauth:
+                raise SemsAuthError(
+                    f"SEMS rejected the credentials {self._auth_rejections} "
+                    f"times in a row (code {code})"
+                )
+            retry_after = self._start_cooldown()
+            _LOGGER.warning(
+                "SEMS %s login failed (code %s); pausing requests for %ss",
+                token_type,
+                code,
+                retry_after,
+            )
+            raise SemsRateLimitedError(
+                retry_after=retry_after,
+                message=f"SEMS {token_type} login failed for {operation_name}",
+            )
 
     def _build_authenticated_headers(
         self,
@@ -498,6 +671,7 @@ class SemsApi:
 
         code = json_response.get("code")
         if code not in _SuccessCodes:
+            self._last_login_rejection_code = str(code)
             _LOGGER.debug(
                 "SEMS %s login failed during %s with code %s, msg=%s, description=%s, api=%s, data_type=%s",
                 login_mode,
@@ -627,7 +801,7 @@ class SemsApi:
                 self._preferred_login_mode = login_mode
                 return token
 
-        _LOGGER.error(
+        _LOGGER.warning(
             "Unable to authenticate with SEMS API; tried authentication methods: %s",
             ", ".join(tried_login_modes),
         )
@@ -645,56 +819,68 @@ class SemsApi:
         retry_on_api_error: bool = True,
         token_type: TokenType | None = None,
     ) -> Any | None:
-        """Make a generic API call with token management and retry logic."""
+        """Make an API call, re-authenticating at most once for a rejected token.
+
+        Only codes for an expired or replaced session trigger the re-login.
+        Other API error codes raise OutOfRetries without logging in again.
+        """
         _LOGGER.debug("SEMS - Making %s", operation_name)
         if maxTokenRetries <= 0:
-            _LOGGER.info("SEMS - Maximum token fetch tries reached, aborting for now")
+            _LOGGER.debug("SEMS - Maximum token fetch tries reached, aborting for now")
             raise OutOfRetries
 
         if token_type is None:
             token_type = "web" if is_web else "legacy"
 
-        context = self._get_authenticated_request_context(
-            url_part,
-            renewToken,
-            operation_name,
-            token_type=token_type,
-        )
-        if context is None:
-            return None
-
-        api_url, headers = context
-
-        try:
-            json_response: dict[str, Any] | None = self._make_http_request(
-                api_url,
-                headers,
-                data=data,
-                method=method,
-                operation_name=operation_name,
-                validate_code=retry_on_api_error,
+        may_reauthenticate = maxTokenRetries > 1
+        stale_generation: int | None = None
+        while True:
+            api_url, headers, generation = self._get_authenticated_request_context(
+                url_part,
+                renewToken,
+                operation_name,
+                token_type=token_type,
+                stale_generation=stale_generation,
             )
 
-            # _make_http_request already validated the response, so if we get here, it's successful
-            if json_response is None:
-                # Response validation failed in _make_http_request
+            try:
+                json_response: dict[str, Any] | None = self._make_http_request(
+                    api_url,
+                    headers,
+                    data=data,
+                    method=method,
+                    operation_name=operation_name,
+                    validate_code=retry_on_api_error,
+                )
+            except SemsAuthExpiredError as exception:
+                if may_reauthenticate:
+                    may_reauthenticate = False
+                    renewToken = False
+                    stale_generation = generation
+                    continue
+                self._log_session_failure(operation_name, exception)
+                raise OutOfRetries(str(exception)) from exception
+            except SemsRateLimitedError as exception:
                 _LOGGER.debug(
-                    "%s not successful, retrying with new token, %s retries remaining",
+                    "SEMS - Propagating rate limit from %s to coordinator: "
+                    "retry_after=%s",
                     operation_name,
-                    maxTokenRetries,
+                    exception.retry_after,
                 )
-                return self._make_api_call(
-                    url_part,
-                    data,
-                    True,
-                    maxTokenRetries - 1,
-                    operation_name,
-                    method,
-                    is_web,
-                    retry_on_api_error,
-                    token_type,
-                )
+                raise
+            except SemsPermissionError:
+                raise
+            except (requests.RequestException, ValueError, KeyError) as exception:
+                # _make_http_request already logged the failure.
+                _LOGGER.debug("Unable to complete %s: %s", operation_name, exception)
+                return None
 
+            if json_response is None:
+                # An API error that is not about the token; a new login would
+                # not help.
+                raise OutOfRetries(f"{operation_name} returned an API error")
+
+            self._session_failure_logged = False
             if is_web and not self._is_sensitive_operation(operation_name):
                 _LOGGER.debug(
                     "SEMS - %s response data: %s",
@@ -702,21 +888,20 @@ class SemsApi:
                     redact_for_log(json_response.get("data")),
                 )
 
-            # Response is valid, return the data
             return json_response.get("data", {}) if is_web else json_response["data"]
 
-        except SemsRateLimitedError as exception:
-            _LOGGER.debug(
-                "SEMS - Propagating rate limit from %s to coordinator: retry_after=%s",
-                operation_name,
-                exception.retry_after,
-            )
-            raise
-        except SemsPermissionError:
-            raise
-        except (requests.RequestException, ValueError, KeyError) as exception:
-            _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
-            return None
+    def _log_session_failure(self, operation_name: str, err: Exception) -> None:
+        """Warn once while SEMS keeps rejecting fresh tokens."""
+        if self._session_failure_logged:
+            _LOGGER.debug("%s failed after re-authentication: %s", operation_name, err)
+            return
+        self._session_failure_logged = True
+        _LOGGER.warning(
+            "SEMS rejected the session for %s even after re-authentication: %s. "
+            "Further failures are logged at debug level until a request succeeds.",
+            operation_name,
+            err,
+        )
 
     def getPowerStationIds(
         self, renewToken: bool = False, maxTokenRetries: int = 2
@@ -904,7 +1089,7 @@ class SemsApi:
                     continue
             if install_year is None:
                 install_year = _WEB_STATISTICS_EARLIEST_YEAR
-            with ThreadPoolExecutor(max_workers=5) as executor:
+            with ThreadPoolExecutor(max_workers=_MaxConcurrentRequests) as executor:
                 production_future = executor.submit(
                     self._get_web_production,
                     power_station_id,
@@ -1055,14 +1240,18 @@ class SemsApi:
                             time.monotonic(),
                             telemetry,
                         )
-                except (
-                    OutOfRetries,
-                    SemsPermissionError,
-                    SemsRateLimitedError,
-                ) as err:
+                except SemsPermissionError as err:
                     _LOGGER.warning(
                         "SEMS+ denied telemetry access for inverter %s: %s. "
                         "Check the GoodWe account or plant permissions.",
+                        serial_number,
+                        err,
+                    )
+                    if cached_telemetry:
+                        device_data.update(cached_telemetry[1])
+                except (OutOfRetries, SemsRateLimitedError) as err:
+                    _LOGGER.debug(
+                        "SEMS+ telemetry unavailable for inverter %s: %s",
                         serial_number,
                         err,
                     )
@@ -1080,14 +1269,16 @@ class SemsApi:
                             device_type=device_type,
                         )
                     )
-                except (
-                    OutOfRetries,
-                    SemsPermissionError,
-                    SemsRateLimitedError,
-                ) as err:
+                except SemsPermissionError as err:
                     _LOGGER.warning(
                         "SEMS+ denied counter access for inverter %s: %s. "
                         "Check the GoodWe account or plant permissions.",
+                        serial_number,
+                        err,
+                    )
+                except (OutOfRetries, SemsRateLimitedError) as err:
+                    _LOGGER.debug(
+                        "SEMS+ counters unavailable for inverter %s: %s",
                         serial_number,
                         err,
                     )
@@ -1905,16 +2096,12 @@ class SemsApi:
             _LOGGER.info("SEMS - Maximum token fetch tries reached, aborting for now")
             raise OutOfRetries
 
-        context = self._get_authenticated_request_context(
+        api_url, headers, _generation = self._get_authenticated_request_context(
             _POWER_CONTROL_ENDPOINT.url_part,
             renewToken,
             operation_name,
             token_type=_POWER_CONTROL_ENDPOINT.token_type,
         )
-        if context is None:
-            return False
-
-        api_url, headers = context
 
         try:
             # Control API uses different validation (HTTP status code), so don't validate JSON response code
@@ -1942,6 +2129,10 @@ class SemsApi:
                 )
             _LOGGER.error("Unable to execute %s: %s", operation_name, e)
             return False
+        except SemsAuthExpiredError:
+            return self._make_control_api_call(
+                data, True, maxTokenRetries - 1, operation_name
+            )
         except SemsRateLimitedError as exception:
             _LOGGER.warning("Unable to execute %s: %s", operation_name, exception)
             return False
@@ -2027,6 +2218,14 @@ class SemsRateLimitedError(exceptions.HomeAssistantError):
         """Initialize rate limit exception."""
         super().__init__(message)
         self.retry_after = retry_after
+
+
+class SemsAuthExpiredError(exceptions.HomeAssistantError):
+    """Error to indicate SEMS rejected the token (expired or replaced session)."""
+
+
+class SemsAuthError(exceptions.HomeAssistantError):
+    """Error to indicate SEMS repeatedly rejected the credentials."""
 
 
 class SemsPermissionError(exceptions.HomeAssistantError):
