@@ -8,11 +8,13 @@ import pytest
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sems import async_migrate_entry
 from custom_components.sems.config_flow import _normalize_station_ids
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
+from custom_components.sems.sems_api import SemsRateLimitedError
 
 MOCK_USERNAME = "test@example.com"
 MOCK_PASSWORD = "test_password"
@@ -262,3 +264,49 @@ async def test_migrate_entry_sets_unique_id_from_station_id(
     assert await async_migrate_entry(hass, entry)
     assert entry.version == 2
     assert entry.unique_id == MOCK_STATION_ID_1
+
+
+async def test_rate_limited_shows_retry_after(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """A rate limit during setup is shown as a retryable error with its delay."""
+    del enable_custom_integrations
+
+    result = await _init_flow(hass)
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.test_authentication",
+        side_effect=SemsRateLimitedError(retry_after=90),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"]["base"] == "rate_limited"
+    assert result["description_placeholders"]["retry_after"] == "90"
+
+
+async def test_other_api_error_shows_cannot_connect(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Other API errors during setup are retryable connection errors."""
+    del enable_custom_integrations
+
+    result = await _init_flow(hass)
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.test_authentication",
+        side_effect=HomeAssistantError("gateway unavailable"),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["base"] == "cannot_connect"

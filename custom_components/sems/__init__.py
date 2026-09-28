@@ -169,11 +169,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool
 
     try:
         await coordinator.async_config_entry_first_refresh()
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except BaseException:
-        # A failed setup is not unloaded, so release the client here.
+        # A failed setup is not unloaded, so release the client here. This
+        # covers both the first refresh and forwarding to the platforms.
         await _async_release_api(hass, entry)
         raise
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 

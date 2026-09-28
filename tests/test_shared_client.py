@@ -201,3 +201,51 @@ async def test_reauth_updates_all_entries_of_the_account(
     assert entry_1.data[CONF_PASSWORD] == "new_password"
     assert entry_2.data[CONF_PASSWORD] == "new_password"
     assert other_account.data[CONF_PASSWORD] == MOCK_PASSWORD
+
+
+async def test_failed_platform_forwarding_releases_client(
+    hass: HomeAssistant,
+) -> None:
+    """An entry whose platform setup fails does not keep the client open."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+
+    with (
+        _mock_api(),
+        patch.object(SemsApi, "close") as mock_close,
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            side_effect=RuntimeError("platform setup failed"),
+        ),
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    mock_close.assert_called_once()
+    assert not hass.data[DOMAIN]["clients"]
+
+
+async def test_reauth_shows_rate_limit_with_retry_after(
+    hass: HomeAssistant,
+) -> None:
+    """A rate-limited reauthentication tells the user when to retry."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reauth_flow(hass)
+    with patch.object(
+        SemsApi,
+        "test_authentication",
+        side_effect=SemsRateLimitedError(retry_after=120),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_PASSWORD: "new_password"}
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+    assert result["errors"] == {"base": "rate_limited"}
+    assert result["description_placeholders"]["retry_after"] == "120"
+    assert entry.data[CONF_PASSWORD] == MOCK_PASSWORD

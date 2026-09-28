@@ -7,7 +7,8 @@
             "cannot_connect": "Falha na ligação",
             "invalid_auth": "Autenticação Inválida",
             "unknown": "Erro inesperado",
-            "no_stations_found": "Nenhuma central de energia encontrada para esta conta"
+            "no_stations_found": "Nenhuma central de energia encontrada para esta conta",
+            "rate_limited": "O SEMS está a limitar os pedidos desta conta. Tente novamente dentro de {retry_after} segundos."
         },
         "step": {
             "user": {

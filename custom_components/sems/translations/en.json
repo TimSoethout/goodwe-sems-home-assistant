@@ -8,7 +8,8 @@
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
             "unknown": "Unexpected error",
-            "no_stations_found": "No power stations found for this account"
+            "no_stations_found": "No power stations found for this account",
+            "rate_limited": "SEMS is limiting requests from this account. Try again in {retry_after} seconds."
         },
         "step": {
             "user": {

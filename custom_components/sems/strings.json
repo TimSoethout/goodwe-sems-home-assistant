@@ -21,7 +21,8 @@
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
       "unknown": "[%key:common::config_flow::error::unknown%]",
-      "no_stations_found": "No power stations found for this account"
+      "no_stations_found": "No power stations found for this account",
+      "rate_limited": "SEMS is limiting requests from this account. Try again in {retry_after} seconds."
     },
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",

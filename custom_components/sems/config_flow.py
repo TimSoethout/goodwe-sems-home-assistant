@@ -14,7 +14,7 @@ from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import CONF_STATION_ID, DOMAIN, account_key, redact_for_log
-from .sems_api import SemsApi
+from .sems_api import SemsApi, SemsRateLimitedError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         errors: dict[str, str] = {}
+        placeholders: dict[str, str] = {}
 
         try:
             api = await validate_credentials(self.hass, user_input)
@@ -104,14 +105,22 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "cannot_connect"
         except InvalidAuth:
             errors["base"] = "invalid_auth"
+        except SemsRateLimitedError as err:
+            errors["base"] = "rate_limited"
+            placeholders["retry_after"] = str(err.retry_after)
         except AbortFlow:
             raise
+        except HomeAssistantError:
+            errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
+            description_placeholders=placeholders,
         )
 
     async def async_step_reauth(
@@ -127,6 +136,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         reauth_entry = self._get_reauth_entry()
         username = reauth_entry.data[CONF_USERNAME]
         errors: dict[str, str] = {}
+        placeholders: dict[str, str] = {"username": username}
 
         if user_input is not None:
             password = user_input[CONF_PASSWORD]
@@ -136,6 +146,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
+            except SemsRateLimitedError as err:
+                errors["base"] = "rate_limited"
+                placeholders["retry_after"] = str(err.retry_after)
+            except HomeAssistantError:
+                errors["base"] = "cannot_connect"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -158,7 +173,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reauth_confirm",
             data_schema=STEP_REAUTH_DATA_SCHEMA,
-            description_placeholders={"username": username},
+            description_placeholders=placeholders,
             errors=errors,
         )
 
