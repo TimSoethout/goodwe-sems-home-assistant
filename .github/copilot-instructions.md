@@ -1,72 +1,27 @@
-# Copilot instructions for GoodWe SEMS Home Assistant integration
+# GoodWe SEMS Integration
 
-## Highest-priority rules
+## API changes
+- Check real, sanitized captures in [api_examples/](../api_examples/) before changing parsing, coordinator data, or entities. Verify endpoint, response shape, device/factor names, units, signs, and missing fields.
+- If no capture covers the response, obtain and sanitize one; add it and document the endpoint/fields in [api_examples/README.md](../api_examples/README.md). Never guess payloads from names or mocks.
+- Test captured fixtures through normalization to entity state. Use mocks only for errors, boundaries, missing fields, or cases that cannot be captured. Never call the live API or require credentials in tests.
+- Assert unit/sign conversions against captures. If a capture conflicts with code, stop and investigate; never alter a fixture to fit.
+- Never commit credentials, tokens, cookies, signatures, station IDs, serial numbers, trace IDs, precise locations or personal names.
 
-These rules apply before all other instructions in this file:
+## Architecture and conventions
+- `config_flow.py` validates credentials; `__init__.py` fetches and normalizes data through one `DataUpdateCoordinator`.
+- `SemsApi` uses synchronous `requests`: call it through `hass.async_add_executor_job()`. Keep control payloads intact and use its retry handling.
+- Sensors are defined in `sensor.py` with `value_path`; use `empty_value` when empty API values should disable a sensor.
+- Use `device_info_for_inverter()` for device grouping. Preserve `_migrate_to_new_unique_id()` when changing sensor IDs.
+- SEMS has misspelled keys; use `GOODWE_SPELLING` constants, not corrected inline spellings.
 
-1. **Use actual sanitized API examples as the source of truth.** Before
-   changing API parsing, coordinator data, or entities, inspect the relevant
-   files under [api_examples/](../api_examples/), especially the request
-   endpoint, response nesting, device type, factor names, units, sign
-   conventions, and missing fields.
-2. **Do not infer a payload from a name or from a hand-built mock.** If an
-   implementation needs a response shape that is not represented by an
-   actual sanitized capture, first add or update a sanitized example from a
-   real response and document it in
-   [api_examples/README.md](../api_examples/README.md). Never commit live
-   credentials, tokens, cookies, signatures, station IDs, serial numbers,
-   trace IDs, or personal names.
-3. **Test the complete path with captured data.** Load the relevant sanitized
-   JSON in a fixture-backed regression test and exercise response
-   normalization through entity creation/state where practical. Use
-   hand-built mocks only for isolated errors, missing fields, boundaries, or
-   behavior that cannot be captured safely. Tests must never call the live
-   GoodWe API or require user credentials.
-4. **Validate units and signs explicitly.** Do not silently convert kW/ W,
-   kWh/Wh, import/export, or grid-flow signs. Assert the conversion against
-   the captured example in the test.
-5. **If the capture and existing code disagree, stop and investigate the
-   discrepancy.** Do not “make the fixture fit” or choose an endpoint,
-   token type, field, or default solely because it seems plausible.
+## Development
+- Tests: `python -m pytest tests/ -v`; in HA Core, add `--confcutdir=config/goodwe-sems-home-assistant`.
+- Checks: `ruff check custom_components/`, `ruff format --check custom_components/`, and `mypy custom_components/ --ignore-missing-imports --python-version 3.14`. Run the narrowest relevant tests and checks for each change.
+- Redact sensitive information from logs.
+- Use Conventional Commits: `type(scope): summary`; mark breaking changes with `!` or a `BREAKING CHANGE:` footer.
 
-## Big picture architecture
-- This is a Home Assistant custom integration under custom_components/sems with two platforms: sensors and a switch (see [custom_components/sems/manifest.json](../custom_components/sems/manifest.json)).
-- Config flow validates credentials and optionally fetches the first power station ID via the SEMS API (see [custom_components/sems/config_flow.py](../custom_components/sems/config_flow.py)).
-- Data is pulled by a single DataUpdateCoordinator in [custom_components/sems/__init__.py](../custom_components/sems/__init__.py):
-  - It calls `SemsApi.getData()` in an executor (the API client is synchronous `requests`).
-  - It normalizes the SEMS payload into `SemsData` with `inverters` keyed by serial number and optional `homekit` (powerflow) data.
-- Entities read from the coordinator:
-  - Sensors are defined declaratively in [custom_components/sems/sensor.py](../custom_components/sems/sensor.py) via `SemsSensorType` (value-path lists into the coordinator data).
-  - Switches call `SemsApi.change_status()` to issue a control command (see [custom_components/sems/switch.py](../custom_components/sems/switch.py)).
+## GitHub and session wrap-up
+- Label GitHub comments and replies as AI/Copilot-generated.
 
-## Domain-specific conventions
-- SEMS payload uses misspelled keys; use constants in `GOODWE_SPELLING` (e.g., `homKit`, `tempperature`, `energeStatisticsCharts`) from [custom_components/sems/const.py](../custom_components/sems/const.py) instead of “fixing” them in-line.
-- Add new sensors by extending `sensor_options_for_data()` in [custom_components/sems/sensor.py](../custom_components/sems/sensor.py) with a `value_path` list; this makes the entity data-driven and consistent with existing ones.
-- If a sensor should be hidden by default when the API value is empty, set `empty_value` in `SemsSensorType`. The base `SemsSensor` disables the entity if the initial value is `None` or matches `empty_value`.
-- Device grouping should use `device_info_for_inverter()` in [custom_components/sems/device.py](../custom_components/sems/device.py) to ensure consistent device names and identifiers.
-- When touching entity IDs, keep migration logic in mind: `_migrate_to_new_unique_id()` handles legacy `-power` IDs in [custom_components/sems/sensor.py](../custom_components/sems/sensor.py).
-
-## External integrations
-- The SEMS API client in [custom_components/sems/sems_api.py](../custom_components/sems/sems_api.py) is synchronous `requests` and handles token retry logic internally; all calls should go through `hass.async_add_executor_job()`.
-- Control commands use an undocumented SEMS endpoint (`SaveRemoteControlInverter`), so keep the request format intact and let `_make_control_api_call()` handle retries.
-
-## Developer workflows
-- Linting (from README):
-  - `ruff check custom_components/`
-  - `ruff format --check custom_components/`
-  - `mypy custom_components/ --ignore-missing-imports --python-version 3.14`
-- Tests (from tests/README):
-  - `python -m pytest tests/ -v`
-  - In HA core repo workspaces, add `--confcutdir=config/goodwe-sems-home-assistant`.
-
-- For any code change, run the narrowest relevant validation before wrapping up: format if needed, run `ruff check`, and run the most relevant tests for the touched area. Use the targeted test file(s) first, then expand only if necessary.
-- Make sure all log messages are redacted of sensitive info (e.g., no email addresses, serial numbers, or API tokens in logs).
-
-## GitHub Comments
-- Clearly label comments or replies posted on GitHub as AI/Copilot-generated.
-
-## Session Wrap-Up
-- Before ending a copilot session, ask the user whether the work is finished or whether they want to continue with feedback. Use a short prompt so the user can choose to stop or iterate.
-
-## Release Workflow
-- Follow the [release skill](skills/release/SKILL.md) when preparing HACS releases.
+## Releases
+- Follow the [release skill](skills/release/SKILL.md) for HACS releases.
