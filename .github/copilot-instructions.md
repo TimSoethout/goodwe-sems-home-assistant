@@ -62,6 +62,9 @@ These rules apply before all other instructions in this file:
 - For any code change, run the narrowest relevant validation before wrapping up: format if needed, run `ruff check`, and run the most relevant tests for the touched area. Use the targeted test file(s) first, then expand only if necessary.
 - Make sure all log messages are redacted of sensitive info (e.g., no email addresses, serial numbers, or API tokens in logs).
 
+## GitHub Comments
+- Clearly label comments or replies posted on GitHub as AI/Copilot-generated.
+
 ## Session Wrap-Up
 - Before ending a copilot session, ask the user whether the work is finished or whether they want to continue with feedback. Use a short prompt so the user can choose to stop or iterate.
 
