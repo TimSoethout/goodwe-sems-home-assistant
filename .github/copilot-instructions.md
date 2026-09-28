@@ -58,29 +58,12 @@ These rules apply before all other instructions in this file:
 - Tests (from tests/README):
   - `python -m pytest tests/ -v`
   - In HA core repo workspaces, add `--confcutdir=config/goodwe-sems-home-assistant`.
+
 - For any code change, run the narrowest relevant validation before wrapping up: format if needed, run `ruff check`, and run the most relevant tests for the touched area. Use the targeted test file(s) first, then expand only if necessary.
 - Make sure all log messages are redacted of sensitive info (e.g., no email addresses, serial numbers, or API tokens in logs).
-- When discovering a new SEMS or SEMS+ endpoint or response shape, capture a
-  sanitized response in [api_examples/](../api_examples/), add the endpoint and
-  field mapping to its README, and add a fixture-backed regression test before
-  relying on the response in integration code. Never commit credentials,
-  cookies, authorization headers, signatures, tokens, station IDs, serial
-  numbers, trace IDs, or personal names.
-- Prefer sanitized responses captured from the real API for integration tests (../api_examples/):
-  load them as fixtures and exercise the complete response-normalization and
-  entity-creation path. Use hand-built mocks only for isolated error handling,
-  missing-field, boundary, or otherwise hard-to-capture cases. Automated tests
-  must never call the live GoodWe API or require user credentials.
 
 ## Session Wrap-Up
 - Before ending a copilot session, ask the user whether the work is finished or whether they want to continue with feedback. Use a short prompt so the user can choose to stop or iterate.
 
 ## Release Workflow
-- Use the [release skill](skills/release/SKILL.md) when preparing HACS releases. Follow SemVer from the latest stable version: patch for fixes, minor for backward-compatible features, and major for breaking changes. Beta versions must use the intended stable version with a numbered suffix (for example, `11.12.0-beta.1` → `11.12.0`); a beta containing a breaking change must target the next major (for example, `12.0.0-beta.1` → `12.0.0`). Mark GitHub beta releases as pre-releases.
-- Keep release-note items clear, concise, and focused on user-visible changes. Preserve existing issue and pull request links, include relevant links when available, and never invent links.
-- Write commit messages using Conventional Commits, especially PR titles when changes are squash-merged: `<type>(<optional scope>): <summary>`. Use `fix:` for bug fixes, `feat:` for backward-compatible features, and `!` or a `BREAKING CHANGE:` footer for breaking changes (for example, `feat(sensor)!: rename power entities`). Use `docs:`, `test:`, and `chore:` for changes that do not affect user-facing behavior. This keeps commit history clear and enables future SemVer release automation.
-
-## Examples to follow
-- Coordinator data shaping: `SemsDataUpdateCoordinator._async_update_data()` in [custom_components/sems/__init__.py](../custom_components/sems/__init__.py).
-- Sensor definition patterns: `sensor_options_for_data()` in [custom_components/sems/sensor.py](../custom_components/sems/sensor.py).
-- Switch control flow: `SemsStatusSwitch.async_turn_on/off()` in [custom_components/sems/switch.py](../custom_components/sems/switch.py).
+- Follow the [release skill](skills/release/SKILL.md) when preparing HACS releases.
