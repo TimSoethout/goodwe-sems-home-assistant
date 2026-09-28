@@ -25,8 +25,11 @@ Use this skill when preparing a HACS release for the SEMS integration.
    since that stable tag, including changes introduced by intermediate beta
    tags. Compare the full commit range (for example, `git log
    <previous-stable>..<new-version>`) rather than only the immediately
-   previous beta. Group related changes by capability and include important
-   limitations or compatibility notes.
+   previous beta. Keep each item clear and concise, describing the user-visible
+   change rather than implementation details. Preserve existing issue and pull
+   request links, and include the relevant link when available; never invent one.
+   Group related changes by capability and include important limitations or
+   compatibility notes.
 7. Record every contributor in the release entry using their GitHub handle:
    - Attribute code contributions to the authors of the relevant commits or pull requests.
    - Attribute information, testing, or troubleshooting contributions to the users who provided them in issues, discussions, or pull requests.
@@ -43,5 +46,5 @@ Use this skill when preparing a HACS release for the SEMS integration.
 
 - Keep [RELEASE_NOTES.md](../../../RELEASE_NOTES.md) as the source of truth, with one entry per release and a contributor list under each entry.
 - For a stable release following betas, use the same `MAJOR.MINOR.PATCH` as the beta stream. Preserve the complete beta history in the stable entry and summarize all changes since the previous stable release.
-- Keep release notes concise and focused on user-visible changes.
+- Keep release notes concise and focused on user-visible changes; retain issue and pull request links when carrying items forward or editing notes.
 - HACS users must enable the repository's pre-release switch to receive beta updates; keep stable releases regular so users who have not opted in stay on stable versions.

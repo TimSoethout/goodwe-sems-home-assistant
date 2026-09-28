@@ -77,6 +77,7 @@ These rules apply before all other instructions in this file:
 
 ## Release Workflow
 - Use the [release skill](skills/release/SKILL.md) when preparing HACS releases. Follow SemVer from the latest stable version: patch for fixes, minor for backward-compatible features, and major for breaking changes. Beta versions must use the intended stable version with a numbered suffix (for example, `11.12.0-beta.1` → `11.12.0`); a beta containing a breaking change must target the next major (for example, `12.0.0-beta.1` → `12.0.0`). Mark GitHub beta releases as pre-releases.
+- Keep release-note items clear, concise, and focused on user-visible changes. Preserve existing issue and pull request links, include relevant links when available, and never invent links.
 - Write commit messages using Conventional Commits, especially PR titles when changes are squash-merged: `<type>(<optional scope>): <summary>`. Use `fix:` for bug fixes, `feat:` for backward-compatible features, and `!` or a `BREAKING CHANGE:` footer for breaking changes (for example, `feat(sensor)!: rename power entities`). Use `docs:`, `test:`, and `chore:` for changes that do not affect user-facing behavior. This keeps commit history clear and enables future SemVer release automation.
 
 ## Examples to follow
