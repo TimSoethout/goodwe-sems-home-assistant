@@ -1,5 +1,48 @@
 # Release notes
 
+## 11.12.0-beta.4 - 2026-09-28
+
+## Restore smart-meter import/export and HomeKit load values
+
+- Preserve existing HomeKit entity IDs when SEMS+ identifies the smart meter
+  by its own serial, avoiding duplicates and retaining Energy dashboard history.
+- Prefer smart-meter daily and lifetime import/export counters; missing station
+  statistics no longer overwrite meter values with zero.
+- Keep HomeKit Load positive and updating while exporting.
+- Protect period and lifetime energy counters from transient zero/decreasing
+  readings while allowing legitimate period resets.
+- Hold SEMS+ counters from 23:58 through 00:19 local time to avoid stale
+  previous-day readings after midnight. If no cached values exist, withhold
+  counters until the portal settles.
+- Preserve valid lifetime counters and smart-meter telemetry across temporary
+  API or inverter refresh failures.
+- Keep discovered inverters available when telemetry access is denied, exclude
+  battery racks and dongles from inverter fallbacks, avoid empty battery
+  entities, and keep PV string entities stable.
+
+### Compatibility
+
+- SEMS+ HomeKit `grid` power is signed: negative for import and positive for
+  export. This differs from pre-11.x HomeKit fields; downstream automations may
+  need to be updated.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - integration maintenance and
+  validation.
+- [@mholka](https://github.com/mholka) and [@claude](https://github.com/claude) -
+  smart-meter and HomeKit fixes.
+- [@GertJanH](https://github.com/GertJanH) - reported the counter replay and
+  implemented the rollover fix.
+- [@davidsonimagerygmailcom](https://github.com/davidsonimagerygmailcom) -
+  reported the midnight counter replay.
+- [@kimjamesmaher-dot](https://github.com/kimjamesmaher-dot) - tested with a
+  shared Monitor account and verified the grid sign convention.
+- [@robinhood-code](https://github.com/robinhood-code) - reported the beta.3
+  HomeKit regression.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - SEMS+ reliability
+  fixes and regression tests.
+
 ## 11.12.0-beta.3 - 2026-09-27
 
 ## Improve SEMS+ counter and telemetry reliability

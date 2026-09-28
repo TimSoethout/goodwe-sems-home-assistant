@@ -178,8 +178,12 @@ class TestSemsApi:
         "_get_web_energy_statistics",
         return_value=({"sum": 5.0, "buy": 0, "sell": 0}, {"sum": 100.0}, "EUR", 42.0),
     )
-    def test_get_web_data_prefers_smart_meter_counters(self, mock_statistics):
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_get_web_data_prefers_smart_meter_counters(
+        self, mock_now, mock_statistics
+    ):
         """Test captured smart-meter counters override station statistics."""
+        mock_now.return_value = datetime(2026, 9, 25, 12)
 
         def load(name):
             with open(API_EXAMPLES_DIR / name, encoding="utf-8") as file:
@@ -1533,8 +1537,10 @@ class TestSemsApi:
         )
 
     @patch.object(SemsApi, "_make_api_call")
-    def test_get_web_inverter_telecounting(self, mock_api_call):
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_get_web_inverter_telecounting(self, mock_now, mock_api_call):
         """Test SEMS+ energy counter normalization."""
+        mock_now.return_value = datetime(2026, 1, 15, 12)
         mock_api_call.return_value = [
             {
                 "code": "telecounting_today",
@@ -1668,10 +1674,12 @@ class TestSemsApi:
         )
 
     @patch.object(SemsApi, "_make_api_call")
+    @patch("custom_components.sems.sems_api.dt_util.now")
     def test_get_web_inverter_telecounting_ignores_invalid_lifetime_reset(
-        self, mock_api_call
+        self, mock_now, mock_api_call
     ):
         """Test a transient zero lifetime counter is not published."""
+        mock_now.return_value = datetime(2026, 1, 15, 12)
         response = [
             {
                 "code": "telecounting_lifetime",
@@ -1766,8 +1774,12 @@ class TestSemsApi:
         }
 
     @patch.object(SemsApi, "_make_api_call")
-    def test_get_web_inverter_telecounting_maps_battery_counters(self, mock_api_call):
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_get_web_inverter_telecounting_maps_battery_counters(
+        self, mock_now, mock_api_call
+    ):
         """Test SEMS+ battery charge and discharge counter normalization."""
+        mock_now.return_value = datetime(2026, 1, 15, 12)
         mock_api_call.return_value = [
             {
                 "code": "telecounting_today",
