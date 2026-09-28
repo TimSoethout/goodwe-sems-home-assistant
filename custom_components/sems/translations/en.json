@@ -1,7 +1,8 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Device is already configured"
+            "already_configured": "Device is already configured",
+            "reauth_successful": "Re-authentication was successful"
         },
         "error": {
             "cannot_connect": "Failed to connect",
@@ -15,6 +16,13 @@
                     "password": "Password",
                     "username": "Username",
                     "scan_interval": "Update Interval (seconds)"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Reauthenticate Integration",
+                "description": "SEMS rejected the credentials for {username}. Enter the current password; all stations of this account are updated.",
+                "data": {
+                    "password": "Password"
                 }
             }
         }

@@ -10,6 +10,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -20,9 +21,10 @@ from .const import (
     DOMAIN,
     GOODWE_SPELLING,
     PLATFORMS,
+    account_key,
     redact_for_log,
 )
-from .sems_api import SemsApi, SemsRateLimitedError
+from .sems_api import SemsApi, SemsAuthError, SemsRateLimitedError
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -70,6 +72,53 @@ class SemsRuntimeData:
 type SemsConfigEntry = ConfigEntry[SemsRuntimeData]
 
 
+@dataclass(slots=True)
+class _SharedApi:
+    """An API client shared by the config entries of one account."""
+
+    api: SemsApi
+    entry_ids: set[str]
+
+
+def _shared_clients(hass: HomeAssistant) -> dict[str, _SharedApi]:
+    """Return the shared API clients, keyed by account."""
+    return hass.data.setdefault(DOMAIN, {}).setdefault("clients", {})
+
+
+def _acquire_api(hass: HomeAssistant, entry: ConfigEntry) -> SemsApi:
+    """Return the account's shared API client, creating it if needed.
+
+    SEMS+ keeps one web session per account, so the stations of an account
+    must share one client and token instead of logging in against each other.
+    """
+    clients = _shared_clients(hass)
+    key = account_key(entry.data[CONF_USERNAME])
+    shared = clients.get(key)
+    if shared is None:
+        shared = clients[key] = _SharedApi(
+            api=SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]),
+            entry_ids=set(),
+        )
+    else:
+        # The most recently set up entry carries the newest password.
+        shared.api.update_credentials(entry.data[CONF_PASSWORD])
+    shared.entry_ids.add(entry.entry_id)
+    return shared.api
+
+
+async def _async_release_api(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Release the entry's reference and close the client after the last one."""
+    clients = _shared_clients(hass)
+    key = account_key(entry.data[CONF_USERNAME])
+    shared = clients.get(key)
+    if shared is None:
+        return
+    shared.entry_ids.discard(entry.entry_id)
+    if not shared.entry_ids:
+        del clients[key]
+        await hass.async_add_executor_job(shared.api.close)
+
+
 def _normalize_energy_statistics_charts(
     charts: dict[str, Any], inverter_capacity_kw: float | None
 ) -> dict[str, Any]:
@@ -114,11 +163,16 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Set up sems from a config entry."""
-    sems_api = SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
+    sems_api = _acquire_api(hass, entry)
     coordinator = SemsDataUpdateCoordinator(hass, sems_api, entry)
     entry.runtime_data = SemsRuntimeData(api=sems_api, coordinator=coordinator)
 
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except BaseException:
+        # A failed setup is not unloaded, so release the client here.
+        await _async_release_api(hass, entry)
+        raise
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
@@ -144,7 +198,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        await _async_release_api(hass, entry)
+    return unload_ok
 
 
 class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
@@ -322,9 +379,12 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             batteries = await self._async_get_battery_functions(energy_storage_cabinets)
             immediate_charging = await self._async_get_immediate_charging(batteries)
 
+        except SemsAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
         except SemsRateLimitedError as err:
             raise UpdateFailed(
-                f"SEMS API rate limited (retry after {err.retry_after}s)"
+                f"SEMS API rate limited (retry after {err.retry_after}s)",
+                retry_after=err.retry_after,
             ) from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err

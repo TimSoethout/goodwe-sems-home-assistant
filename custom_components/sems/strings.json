@@ -8,6 +8,13 @@
           "password": "[%key:common::config_flow::data::password%]",
           "scan_interval": "Update Interval (seconds)"
         }
+      },
+      "reauth_confirm": {
+        "title": "[%key:common::config_flow::title::reauth%]",
+        "description": "SEMS rejected the credentials for {username}. Enter the current password; all stations of this account are updated.",
+        "data": {
+          "password": "[%key:common::config_flow::data::password%]"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "no_stations_found": "No power stations found for this account"
     },
     "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]"
     }
   }
 }
