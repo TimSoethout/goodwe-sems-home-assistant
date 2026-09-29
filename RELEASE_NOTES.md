@@ -1,5 +1,29 @@
 # Release notes
 
+## 11.12.0-beta.6 - 2026-09-29
+
+## Mark failed SEMS+ data unavailable
+
+- Mark telemetry and counter sensors unavailable when their API request fails,
+  while preserving successful data from other sources.
+- Stop publishing cached telemetry as current. Successful empty responses
+  still leave missing sensor values unknown.
+
+### Compatibility
+
+- Python 3.14 is now the only supported and tested runtime.
+
+### Related
+
+- [#244](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/244)
+  - request-timeout handling.
+
+### Contributors
+
+- [@GertJanH](https://github.com/GertJanH) - reported and diagnosed #244.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression coverage.
+
 ## 11.12.0-beta.5 - 2026-09-29
 
 ## Reduce SEMS+ login storms and improve recovery

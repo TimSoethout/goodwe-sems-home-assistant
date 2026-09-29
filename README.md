@@ -168,6 +168,8 @@ starting Home Assistant.
 
 ## Linting
 
+Python 3.14 is the only supported and tested runtime for this integration.
+
 Run the same lint checks as the CI workflow:
 
 ```bash

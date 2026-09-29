@@ -112,7 +112,7 @@ def _percentage_handler(value: Any, _data: dict[str, Any]) -> Any:
         return None
     try:
         return Decimal(str(value)) * 100
-    except (TypeError, ValueError, InvalidOperation):
+    except TypeError, ValueError, InvalidOperation:
         return value
 
 
@@ -565,7 +565,7 @@ def sensor_options_for_data(
                     return value
                 try:
                     return Decimal(str(value)) * int(grid_status)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     return value
 
             return value_status_handler
@@ -981,7 +981,7 @@ def get_value_from_path(data: dict[str, Any], path: SemsValuePath) -> Any:
     try:
         for key in path:
             value = value[key]
-    except (KeyError, TypeError):
+    except KeyError, TypeError:
         return None
     return value
 
@@ -1089,7 +1089,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
 
         try:
             return self._data_type_converter(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return value
 
 
@@ -1149,7 +1149,7 @@ class SemsInverterSensor(SemsSensor):
         else:
             try:
                 attributes["statusText"] = STATUS_LABELS.get(int(status), "Unknown")
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 attributes["statusText"] = "Unknown"
 
         return attributes
@@ -1209,7 +1209,7 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
 
         try:
             return Decimal(str(value)) if int(grid_status) == 1 else Decimal("0")
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return value
 
     @staticmethod
@@ -1218,7 +1218,7 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
             return "Unknown"
         try:
             return GRID_STATUS_LABELS[int(status)]
-        except (TypeError, ValueError, KeyError):
+        except TypeError, ValueError, KeyError:
             return "Unknown"
 
     @staticmethod
@@ -1254,7 +1254,7 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
         load_status = data.get("loadStatus")
         try:
             load_status_int = int(load_status) if load_status is not None else None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             load_status_int = None
 
         if load_status_int == -1:

@@ -35,7 +35,7 @@
 - Linting (from README):
   - `ruff check custom_components/`
   - `ruff format --check custom_components/`
-  - `mypy custom_components/ --ignore-missing-imports --python-version 3.13`
+  - `mypy custom_components/ --ignore-missing-imports --python-version 3.14`
 - Tests (from tests/README):
   - `python -m pytest tests/ -v`
   - In HA core repo workspaces, add `--confcutdir=config/goodwe-sems-home-assistant`.

@@ -1000,7 +1000,7 @@ class SemsApi:
                     continue
                 try:
                     numeric_value = float(value)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     continue
                 if math.isfinite(numeric_value):
                     values.append(numeric_value)
@@ -1020,7 +1020,7 @@ class SemsApi:
                 continue
             try:
                 numeric_value = float(value)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             if math.isfinite(numeric_value) and item not in parsed:
                 parsed[item] = [numeric_value]
@@ -1030,7 +1030,7 @@ class SemsApi:
                 continue
             try:
                 numeric_value = float(value)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             if math.isfinite(numeric_value):
                 parsed[summary_key] = [numeric_value]
@@ -1105,7 +1105,7 @@ class SemsApi:
                     install_year = (
                         year if install_year is None else min(install_year, year)
                     )
-                except (TypeError, ValueError, OSError, OverflowError):
+                except TypeError, ValueError, OSError, OverflowError:
                     continue
             if install_year is None:
                 install_year = _WEB_STATISTICS_EARLIEST_YEAR
@@ -1372,7 +1372,7 @@ class SemsApi:
                 try:
                     for inverter in real_inverters:
                         inverter["invert_full"]["pmeter"] = float(grid_power) * 1000
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     _LOGGER.debug("SEMS station flow has an invalid pGrid value")
             if len(real_inverters) == 1:
                 inverter_full = real_inverters[0]["invert_full"]
@@ -1382,7 +1382,7 @@ class SemsApi:
                 ):
                     try:
                         inverter_full["pac"] = float(solar_power) * 1000
-                    except (TypeError, ValueError):
+                    except TypeError, ValueError:
                         _LOGGER.debug("SEMS station flow has an invalid pAc value")
             result.update(
                 {
@@ -1575,7 +1575,7 @@ class SemsApi:
             return None
         try:
             return float(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     def getWebInverterDevices(
