@@ -1454,6 +1454,19 @@ class TestSemsApi:
         assert result["grid"] == 2530
         assert result["gridStatus"] == -1
 
+    def test_normalize_web_homekit_data_skips_null_and_invalid_values(self):
+        """Test null or non-numeric flow values are skipped, not raised."""
+        result = SemsApi._normalize_web_homekit_data(
+            {"pAc": "n/a", "pGrid": None, "pConsum": 1.2, "pBat": "-"}
+        )
+
+        assert result["gridStatus"] == 1
+        assert result["loadStatus"] == 1
+        assert result["load"] == 1200
+        assert "pv" not in result
+        assert "grid" not in result
+        assert "battery" not in result
+
     def test_normalize_web_homekit_data_maps_station_flow_without_meter(self):
         """Test station flow remains usable when no smart meter is discovered."""
         result = SemsApi._normalize_web_homekit_data(

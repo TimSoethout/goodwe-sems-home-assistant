@@ -1786,7 +1786,10 @@ class SemsApi:
         flow: dict[str, Any], smart_meter: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Map SEMS+ flow and smart-meter counters to HomeKit fields."""
-        grid_status = -1 if float(flow.get("pGrid", 0)) > 0 else 1
+        # SEMS+ can report null or non-numeric flow values; skip them instead
+        # of failing the whole refresh.
+        grid_power = SemsApi._numeric_web_factor(flow, "pGrid")
+        grid_status = -1 if grid_power is not None and grid_power > 0 else 1
         homekit: dict[str, Any] = {
             "sn": smart_meter.get("sn") if smart_meter else None,
             "gridStatus": grid_status,
@@ -1800,8 +1803,8 @@ class SemsApi:
             ("pConsum", "load"),
             ("pBat", "battery"),
         ):
-            if (value := flow.get(source)) is not None:
-                homekit[target] = float(value) * 1000
+            if (value := SemsApi._numeric_web_factor(flow, source)) is not None:
+                homekit[target] = value * 1000
         if "load" in homekit:
             # Household consumption is never negative; SEMS+ can report pConsum
             # with a flow-direction sign.
