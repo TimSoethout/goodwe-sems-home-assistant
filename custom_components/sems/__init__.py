@@ -7,10 +7,11 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
+import requests
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -416,7 +417,10 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 f"SEMS API rate limited (retry after {err.retry_after}s)",
                 retry_after=err.retry_after,
             ) from err
-        except Exception as err:
+        except (HomeAssistantError, requests.RequestException) as err:
+            # SEMS API errors are HomeAssistantError subclasses. Anything else
+            # is a bug: let the coordinator log it with a traceback instead of
+            # reporting it as a communication error.
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
             _LOGGER.debug("semsApi.getData result: %s", redact_for_log(data_result))
