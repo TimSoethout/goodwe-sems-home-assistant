@@ -57,7 +57,7 @@
 - Use the [release-workflow skill](.github/skills/release-workflow/SKILL.md) when preparing HACS releases, including version bumps, tags, beta/pre-release publishing, and release notes.
 
 ## GitHub and session wrap-up
-- Label GitHub comments and replies as AI/Copilot-generated.
+- Label GitHub PRs, comments and replies as AI/Copilot-generated.
 
 ## Examples to follow
 - Coordinator data shaping: `SemsDataUpdateCoordinator._async_update_data()` in [custom_components/sems/__init__.py](../custom_components/sems/__init__.py).
