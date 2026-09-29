@@ -1,13 +1,15 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Device is already configured"
+            "already_configured": "Device is already configured",
+            "reauth_successful": "Re-authentication was successful"
         },
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
             "unknown": "Unexpected error",
-            "no_stations_found": "No power stations found for this account"
+            "no_stations_found": "No power stations found for this account",
+            "rate_limited": "SEMS is limiting requests from this account. Try again in {retry_after} seconds."
         },
         "step": {
             "user": {
@@ -15,6 +17,13 @@
                     "password": "Password",
                     "username": "Username",
                     "scan_interval": "Update Interval (seconds)"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Reauthenticate Integration",
+                "description": "SEMS rejected the credentials for {username}. Enter the current password; all stations of this account are updated.",
+                "data": {
+                    "password": "Password"
                 }
             }
         }

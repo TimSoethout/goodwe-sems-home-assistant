@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -12,8 +13,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import CONF_STATION_ID, DOMAIN, redact_for_log
-from .sems_api import SemsApi
+from .const import CONF_STATION_ID, DOMAIN, account_key, redact_for_log
+from .sems_api import SemsApi, SemsRateLimitedError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(CONF_SCAN_INTERVAL, description={"suggested_value": 60}): int,
     }
 )
+STEP_REAUTH_DATA_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
 
 
 def _normalize_station_ids(raw: Any) -> list[str]:
@@ -63,6 +65,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         errors: dict[str, str] = {}
+        placeholders: dict[str, str] = {}
 
         try:
             api = await validate_credentials(self.hass, user_input)
@@ -102,14 +105,76 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "cannot_connect"
         except InvalidAuth:
             errors["base"] = "invalid_auth"
+        except SemsRateLimitedError as err:
+            errors["base"] = "rate_limited"
+            placeholders["retry_after"] = str(err.retry_after)
         except AbortFlow:
             raise
+        except HomeAssistantError:
+            errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
+            description_placeholders=placeholders,
+        )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """Handle rejected credentials."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Ask for the new password of the account."""
+        reauth_entry = self._get_reauth_entry()
+        username = reauth_entry.data[CONF_USERNAME]
+        errors: dict[str, str] = {}
+        placeholders: dict[str, str] = {"username": username}
+
+        if user_input is not None:
+            password = user_input[CONF_PASSWORD]
+            try:
+                await validate_credentials(
+                    self.hass, {CONF_USERNAME: username, CONF_PASSWORD: password}
+                )
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except SemsRateLimitedError as err:
+                errors["base"] = "rate_limited"
+                placeholders["retry_after"] = str(err.retry_after)
+            except HomeAssistantError:
+                errors["base"] = "cannot_connect"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                # All stations of the account share one client, so update them
+                # together.
+                for entry in self.hass.config_entries.async_entries(DOMAIN):
+                    if entry.entry_id == reauth_entry.entry_id or account_key(
+                        entry.data.get(CONF_USERNAME, "")
+                    ) != account_key(username):
+                        continue
+                    self.hass.config_entries.async_update_entry(
+                        entry, data={**entry.data, CONF_PASSWORD: password}
+                    )
+                    self.hass.config_entries.async_schedule_reload(entry.entry_id)
+                return self.async_update_reload_and_abort(
+                    reauth_entry, data_updates={CONF_PASSWORD: password}
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=STEP_REAUTH_DATA_SCHEMA,
+            description_placeholders=placeholders,
+            errors=errors,
         )
 
     async def async_step_import(

@@ -16,6 +16,7 @@ from custom_components.sems.sems_api import (
     OLD_LOGIN_URL,
     OutOfRetries,
     SemsApi,
+    SemsAuthExpiredError,
     SemsPermissionError,
     SemsRateLimitedError,
 )
@@ -266,7 +267,7 @@ class TestSemsApi:
         assert request["startTime"] == "2026-01-01 00:00:00"
         assert request["endTime"] == "2026-01-01 23:59:59"
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_success(self, mock_request):
         """Test successful HTTP request."""
         # Mock successful response
@@ -297,7 +298,7 @@ class TestSemsApi:
             timeout=30,
         )
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_validation_failure(self, mock_request):
         """Test HTTP request with validation failure."""
         # Mock response with error code
@@ -317,7 +318,7 @@ class TestSemsApi:
 
         assert result is None
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_no_validation(self, mock_request):
         """Test HTTP request without validation."""
         # Mock response with error code but validation disabled
@@ -337,7 +338,7 @@ class TestSemsApi:
 
         assert result == {"code": 1001, "msg": "Error"}
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_network_error(self, mock_request):
         """Test HTTP request with network error."""
         mock_request.side_effect = requests.ConnectionError("Network error")
@@ -526,7 +527,7 @@ class TestSemsApi:
 
             mock_legacy.assert_not_called()
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_rate_limit_raises(self, mock_request):
         """Test HTTP request raises SemsRateLimitedError on rate-limit code."""
         mock_response = Mock()
@@ -823,7 +824,7 @@ class TestSemsApi:
             },
         )
 
-        with caplog.at_level(logging.ERROR):
+        with caplog.at_level(logging.WARNING):
             result = self.api._make_http_request(
                 "https://example.test/api",
                 {},
@@ -884,8 +885,8 @@ class TestSemsApi:
         mock_http_request.assert_called_once()
         mock_login.assert_not_called()
 
-    def test_telecounting_token_error_is_error_logged(self, requests_mock, caplog):
-        """Test telecounting token errors remain visible in the logs."""
+    def test_telecounting_token_error_is_not_error_logged(self, requests_mock, caplog):
+        """Test a rejected token is raised for re-login, not logged as an error."""
         requests_mock.post(
             "https://example.test/api",
             json={
@@ -895,20 +896,18 @@ class TestSemsApi:
             },
         )
 
-        with caplog.at_level(logging.DEBUG):
-            result = self.api._make_http_request(
+        with (
+            caplog.at_level(logging.DEBUG),
+            pytest.raises(SemsAuthExpiredError, match="C0602"),
+        ):
+            self.api._make_http_request(
                 "https://example.test/api",
                 {},
                 operation_name="getWebInverterTelecounting API call",
             )
 
-        assert result is None
-        assert "code: C0602, message: account login abnormal" in caplog.text
-        assert any(
-            record.levelno >= logging.ERROR
-            and "getWebInverterTelecounting API call" in record.message
-            for record in caplog.records
-        )
+        assert "code C0602: account login abnormal" in caplog.text
+        assert not any(record.levelno >= logging.WARNING for record in caplog.records)
 
     def test_login_network_error(self, requests_mock):
         """Test login with network error."""
@@ -1112,15 +1111,16 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "getLoginToken")
     def test_make_api_call_login_failure(self, mock_login):
-        """Test API call with login failure."""
+        """Test a failed login pauses the client instead of retrying."""
         self.api._token = None
         mock_login.return_value = None
 
-        result = self.api._make_api_call(
-            "/test/endpoint", operation_name="test API call"
-        )
+        with pytest.raises(SemsRateLimitedError):
+            self.api._make_api_call("/test/endpoint", operation_name="test API call")
+        with pytest.raises(SemsRateLimitedError):
+            self.api._make_api_call("/test/endpoint", operation_name="test API call")
 
-        assert result is None
+        mock_login.assert_called_once()
 
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_make_http_request")
@@ -1129,10 +1129,10 @@ class TestSemsApi:
         # Set up token
         self.api._token = {"token": "test-token", "api": "https://api.test.com"}
 
-        # First call fails validation, second succeeds
+        # First call is rejected for its token, second succeeds
         mock_http_request.side_effect = [
-            None,  # First call fails validation
-            {"code": 0, "data": {"result": "success"}},  # Second call succeeds
+            SemsAuthExpiredError("test API call rejected the token"),
+            {"code": 0, "data": {"result": "success"}},
         ]
 
         mock_login.return_value = {"token": "new-token", "api": "https://api.test.com"}
@@ -1145,7 +1145,22 @@ class TestSemsApi:
         assert mock_http_request.call_count == 2
         mock_login.assert_called_once()
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch.object(SemsApi, "getLoginToken")
+    @patch.object(SemsApi, "_make_http_request")
+    def test_make_api_call_api_error_does_not_log_in(
+        self, mock_http_request, mock_login
+    ):
+        """Test other API errors fail without fetching a new token."""
+        self.api._token = {"token": "test-token", "api": "https://api.test.com"}
+        mock_http_request.return_value = None
+
+        with pytest.raises(OutOfRetries):
+            self.api._make_api_call("/test/endpoint", operation_name="test API call")
+
+        mock_http_request.assert_called_once()
+        mock_login.assert_not_called()
+
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_immediate_charging_states_read_fail_does_not_retry(self, mock_request):
         """Reproduce read_fail responses from the immediate charging endpoint."""
         self.api._web_token = {
