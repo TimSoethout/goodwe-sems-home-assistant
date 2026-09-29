@@ -163,6 +163,13 @@ _WEB_RELATED_DEVICES_REFRESH_SECONDS = 3_600
 _WEB_DEVICE_LIST_CACHE_SECONDS = 3_600
 _WEB_FAILED_REQUEST_RETRY_SECONDS = 300
 _WEB_FUNCTION_MENUS_REFRESH_SECONDS = 21_600
+# Cache entries not refreshed for this long are dropped. Statistics keys
+# contain dates, so without pruning the cache grows every day.
+_WEB_CACHE_MAX_AGE_SECONDS = 2 * _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS
+_WEB_CACHE_PRUNE_INTERVAL_SECONDS = 3_600
+# Counter caches hold the last valid counter values for the plausibility
+# checks; they are not date-keyed and must survive pruning.
+_WEB_CACHE_PERSISTENT_PREFIXES = ("counters:",)
 
 
 class SemsApi:
@@ -178,6 +185,7 @@ class SemsApi:
         self._web_token: dict[str, Any] | None = None  # Used for SEMS+ web APIs
         self._preferred_login_mode: TokenType | None = None
         self._web_cache: dict[str, tuple[float, Any]] = {}
+        self._web_cache_pruned_at = time.monotonic()
         self._session = requests.Session()
         self._request_slots = threading.BoundedSemaphore(_MaxConcurrentRequests)
         # Logins are serialized. Each successful login bumps the generation of
@@ -1070,6 +1078,22 @@ class SemsApi:
         self._web_cache[cache_key] = (time.monotonic(), parsed)
         return parsed
 
+    def _prune_web_cache(self) -> None:
+        """Drop cache entries that have not been refreshed for a long time."""
+        now = time.monotonic()
+        if now - self._web_cache_pruned_at < _WEB_CACHE_PRUNE_INTERVAL_SECONDS:
+            return
+        self._web_cache_pruned_at = now
+        # Snapshot the items: the shared client serves several stations from
+        # executor threads.
+        for key, entry in list(self._web_cache.items()):
+            if (
+                not key.startswith(_WEB_CACHE_PERSISTENT_PREFIXES)
+                and now - entry[0] > _WEB_CACHE_MAX_AGE_SECONDS
+                and self._web_cache.get(key) is entry
+            ):
+                self._web_cache.pop(key, None)
+
     def _recently_failed(self, cache_key: str) -> bool:
         """Return whether a request failed too recently to retry it."""
         failed = self._web_cache.get(f"failed:{cache_key}")
@@ -1252,6 +1276,7 @@ class SemsApi:
         include_last_month: bool = False,
     ) -> dict[str, Any]:
         """Build the legacy coordinator shape from SEMS+ Web responses."""
+        self._prune_web_cache()
         inverters: list[dict[str, Any]] = []
         smart_meters: list[dict[str, Any]] = []
         ev_chargers: dict[str, dict[str, Any]] = {}

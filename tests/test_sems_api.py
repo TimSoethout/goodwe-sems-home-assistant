@@ -1468,6 +1468,51 @@ class TestSemsApi:
         assert "grid" not in result
         assert "battery" not in result
 
+    def test_prune_web_cache_drops_stale_entries(self):
+        """Stale date-keyed entries are evicted; counters and fresh ones stay."""
+        day = 86_400
+        self.api._web_cache = {
+            "station:day:2026-01-01:2026-01-01": (0.0, {"sum": [1.0]}),
+            "failed:production:station:2026-01-01:2026-01-01": (0.0, None),
+            "counters:station:SN1:INVERTER": (0.0, {"etotal": 10.0}),
+            "station:day:2026-01-03:2026-01-03": (2 * day, {"sum": [2.0]}),
+        }
+        self.api._web_cache_pruned_at = 0.0
+
+        with patch(
+            "custom_components.sems.sems_api.time.monotonic",
+            return_value=2 * day + 1,
+        ):
+            self.api._prune_web_cache()
+
+        assert set(self.api._web_cache) == {
+            "counters:station:SN1:INVERTER",
+            "station:day:2026-01-03:2026-01-03",
+        }
+
+    def test_prune_web_cache_runs_at_most_hourly(self):
+        """Pruning is skipped until the prune interval has passed."""
+        self.api._web_cache = {"old": (0.0, None)}
+        self.api._web_cache_pruned_at = 10 * 86_400
+
+        with patch(
+            "custom_components.sems.sems_api.time.monotonic",
+            return_value=10 * 86_400 + 60,
+        ):
+            self.api._prune_web_cache()
+
+        assert "old" in self.api._web_cache
+
+    def test_get_web_data_prunes_web_cache(self):
+        """Every data refresh gives the cache a chance to shrink."""
+        with (
+            patch.object(
+                SemsApi, "_prune_web_cache", side_effect=RuntimeError("pruned")
+            ),
+            pytest.raises(RuntimeError, match="pruned"),
+        ):
+            self.api.getWebData("station")
+
     def test_normalize_web_homekit_data_maps_station_flow_without_meter(self):
         """Test station flow remains usable when no smart meter is discovered."""
         result = SemsApi._normalize_web_homekit_data(
