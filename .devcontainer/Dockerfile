@@ -7,6 +7,7 @@ RUN apt-get update \
         autoconf \
         curl \
         ffmpeg \
+        gh \
         libavcodec-dev \
         libavdevice-dev \
         libavfilter-dev \
