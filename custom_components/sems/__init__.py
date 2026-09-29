@@ -8,10 +8,16 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
+from homeassistant.const import (
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    CONF_USERNAME,
+    Platform,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -20,8 +26,12 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     GOODWE_SPELLING,
+    HOMEKIT_NO_SERIAL,
+    LEGACY_HOMEKIT_DEVICE_ID,
     PLATFORMS,
     account_key,
+    homekit_device_id,
+    homekit_station_serial,
     redact_for_log,
 )
 from .sems_api import SemsApi, SemsAuthError, SemsRateLimitedError
@@ -166,6 +176,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Set up sems from a config entry."""
+    _async_migrate_station_scoped_homekit(hass, entry)
     sems_api = _acquire_api(hass, entry)
     coordinator = SemsDataUpdateCoordinator(hass, sems_api, entry)
     entry.runtime_data = SemsRuntimeData(api=sems_api, coordinator=coordinator)
@@ -180,6 +191,111 @@ async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool
         raise
 
     return True
+
+
+def _migrate_unique_ids(hass: HomeAssistant, migrations: dict[str, str]) -> None:
+    """Migrate unique IDs based on the provided mapping."""
+    ent_reg = er.async_get(hass)
+
+    for old_unique_id, new_unique_id in migrations.items():
+        entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, old_unique_id)
+        _LOGGER.debug("Entity ID: %s", entity_id)
+        if entity_id is None:
+            continue
+        try:
+            ent_reg.async_update_entity(entity_id, new_unique_id=new_unique_id)
+        except ValueError:
+            # Unique IDs contain serials and station IDs, so log the entity ID.
+            _LOGGER.warning(
+                "Skip unique_id migration of %s because the new ID already exists",
+                entity_id,
+            )
+        else:
+            _LOGGER.info("Migrated unique_id of %s", entity_id)
+
+
+def _async_migrate_station_scoped_homekit(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Move HomeKit/powerflow IDs shared by all stations to station-scoped IDs.
+
+    Releases up to 11.12.0-beta.6 gave every station without a HomeKit serial
+    the same `GW-HOMEKIT-NO-SERIAL-*` unique IDs and every station the same
+    `homeKit` device, so only one station of an account kept those entities.
+    The registry entries that belong to this entry move to IDs scoped to its
+    station. Only unique IDs and device identifiers change: entity IDs, and
+    with them the recorder and Energy dashboard history, are kept.
+    """
+    station_id = entry.data.get(CONF_STATION_ID)
+    if not isinstance(station_id, str) or not station_id:
+        return
+
+    ent_reg = er.async_get(hass)
+    legacy_prefix = f"{HOMEKIT_NO_SERIAL}-"
+    station_serial = homekit_station_serial(station_id)
+    _migrate_unique_ids(
+        hass,
+        {
+            entity.unique_id: (
+                f"{station_serial}-{entity.unique_id.removeprefix(legacy_prefix)}"
+            )
+            for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+            if entity.domain == Platform.SENSOR
+            and entity.unique_id.startswith(legacy_prefix)
+        },
+    )
+
+    dev_reg = dr.async_get(hass)
+    legacy_identifier = (DOMAIN, LEGACY_HOMEKIT_DEVICE_ID)
+    station_identifier = (DOMAIN, homekit_device_id(station_id))
+    entry_devices = dr.async_entries_for_config_entry(dev_reg, entry.entry_id)
+    legacy_device = next(
+        (device for device in entry_devices if legacy_identifier in device.identifiers),
+        None,
+    )
+    if legacy_device is None:
+        return
+    owner_entry_ids = {
+        entity.config_entry_id
+        for entity in er.async_entries_for_device(
+            ent_reg, legacy_device.id, include_disabled_entities=True
+        )
+    }
+    if owner_entry_ids - {entry.entry_id} or any(
+        station_identifier in device.identifiers for device in entry_devices
+    ):
+        # Another station still has entities on the shared device and takes it
+        # over when it is set up. This entry's entities move to its station
+        # device when the sensor platform adds them.
+        if entry.entry_id not in owner_entry_ids:
+            _async_detach_device(dev_reg, legacy_device, entry.entry_id)
+        return
+    # Keep the device, with its area and name, for this station.
+    dev_reg.async_update_device(legacy_device.id, new_identifiers={station_identifier})
+    # Older HA versions link one device to several config entries.
+    for other_entry_id in _device_config_entry_ids(legacy_device) - {entry.entry_id}:
+        dev_reg.async_update_device(
+            legacy_device.id, remove_config_entry_id=other_entry_id
+        )
+    _LOGGER.info("Migrated the shared HomeKit device to a station-scoped device")
+
+
+def _device_config_entry_ids(device: dr.DeviceEntry) -> set[str]:
+    """Return the config entries of a device on old and new HA versions."""
+    config_entry_id = getattr(device, "config_entry_id", None)
+    if isinstance(config_entry_id, str):
+        return {config_entry_id}
+    return set(device.config_entries)
+
+
+def _async_detach_device(
+    dev_reg: dr.DeviceRegistry, device: dr.DeviceEntry, entry_id: str
+) -> None:
+    """Remove a config entry from a device, removing the device if it was the last."""
+    if _device_config_entry_ids(device) - {entry_id}:
+        dev_reg.async_update_device(device.id, remove_config_entry_id=entry_id)
+    else:
+        dev_reg.async_remove_device(device.id)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -509,10 +625,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                         self._registered_homekit_sn(powerflow["sn"]) or powerflow["sn"]
                     )
 
-                # Goodwe 'Power Meter' (not HomeKit) doesn't have a sn
-                # Let's put something in, otherwise we can't see the data.
+                # Goodwe 'Power Meter' (not HomeKit) and SEMS+ stations
+                # without a smart meter have no sn. Use a station-scoped one,
+                # otherwise the unique IDs collide across stations.
                 if powerflow["sn"] is None:
-                    powerflow["sn"] = "GW-HOMEKIT-NO-SERIAL"
+                    powerflow["sn"] = homekit_station_serial(self.station_id)
 
                 # _LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
                 # This seems more accurate than the Chart_sum

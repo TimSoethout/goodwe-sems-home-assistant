@@ -23,6 +23,23 @@ def account_key(username: str) -> str:
     return username.strip().casefold()
 
 
+# Serial that releases up to 11.12.0-beta.6 used for every station without a
+# HomeKit/smart meter serial, which made the unique IDs collide across stations.
+HOMEKIT_NO_SERIAL = "GW-HOMEKIT-NO-SERIAL"
+# Device identifier that releases up to 11.12.0-beta.6 shared across stations.
+LEGACY_HOMEKIT_DEVICE_ID = "homeKit"
+
+
+def homekit_station_serial(station_id: str) -> str:
+    """Return the powerflow serial for a station without a HomeKit serial."""
+    return f"{station_id}-powerflow"
+
+
+def homekit_device_id(station_id: str) -> str:
+    """Return the identifier of a station's HomeKit/powerflow device."""
+    return f"{station_id}-homekit"
+
+
 AC_EMPTY = 6553.5
 AC_CURRENT_EMPTY = 6553.5
 AC_FEQ_EMPTY = 655.35
