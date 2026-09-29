@@ -64,7 +64,7 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
                 f"Unable to set value for {self.entity_id}: no coordinator data"
             )
 
-        await self.hass.async_add_executor_job(
+        await self.coordinator.async_control(
             method,
             self.plant_id,
             self.serial_number,

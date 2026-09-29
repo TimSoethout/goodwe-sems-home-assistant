@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
@@ -10,7 +11,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -247,6 +248,22 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             name=DOMAIN,
             update_interval=update_interval,
         )
+
+    async def async_control(self, method: Callable[..., Any], *args: Any) -> None:
+        """Run a blocking control command of the API client.
+
+        When SEMS rejects the credentials, ask for reauthentication right away
+        instead of waiting for the next refresh to fail as well.
+        """
+        try:
+            await self.hass.async_add_executor_job(method, *args)
+        except SemsAuthError as err:
+            if self.config_entry is not None:
+                self.config_entry.async_start_reauth(self.hass)
+            raise HomeAssistantError(
+                "SEMS rejected the account credentials; reauthenticate the "
+                "integration and try again"
+            ) from err
 
     def _registered_homekit_sn(self, current_sn: str | None) -> str | None:
         """Return the serial of earlier registered HomeKit sensors, if any.

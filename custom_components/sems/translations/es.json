@@ -1,7 +1,8 @@
 {
     "config": {
         "abort": {
-            "already_configured": "El dispositivo ya está configurado"
+            "already_configured": "El dispositivo ya está configurado",
+            "reauth_successful": "La reautenticación se realizó correctamente"
         },
         "error": {
             "cannot_connect": "No se pudo conectar",
@@ -16,6 +17,13 @@
                     "password": "Contraseña",
                     "username": "Nombre de usuario",
                     "scan_interval": "Intervalo de actualización (segundos)"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Volver a autenticar la integración",
+                "description": "SEMS rechazó las credenciales de {username}. Introduzca la contraseña actual; se actualizarán todas las plantas de esta cuenta.",
+                "data": {
+                    "password": "Contraseña"
                 }
             }
         }

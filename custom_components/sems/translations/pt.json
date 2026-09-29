@@ -1,7 +1,8 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Dispositivo já configurado"
+            "already_configured": "Dispositivo já configurado",
+            "reauth_successful": "Reautenticação efetuada com sucesso"
         },
         "error": {
             "cannot_connect": "Falha na ligação",
@@ -16,6 +17,13 @@
                     "password": "Password",
                     "username": "Nome de Utilizador",
                     "scan_interval": "Intervalo de Atualização (segundos)"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Reautenticar Integração",
+                "description": "O SEMS rejeitou as credenciais de {username}. Introduza a palavra-passe atual; todas as centrais desta conta serão atualizadas.",
+                "data": {
+                    "password": "Password"
                 }
             }
         }

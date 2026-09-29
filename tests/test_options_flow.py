@@ -1,16 +1,19 @@
-"""Tests for the update interval option."""
+"""Tests for the update interval option and the reauthentication UI."""
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType, InvalidData
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sems import SemsDataUpdateCoordinator
@@ -22,13 +25,15 @@ from custom_components.sems.const import (
     MIN_SCAN_INTERVAL,
     scan_interval_seconds,
 )
-from custom_components.sems.sems_api import SemsApi
+from custom_components.sems.sems_api import SemsApi, SemsAuthError
 
 MOCK_USERNAME = "user@example.com"
 MOCK_PASSWORD = "test_password"
 MOCK_STATION_ID_1 = "12345678-1234-5678-9abc-123456789abc"
 MOCK_STATION_ID_2 = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 MOCK_STATION_ID_3 = "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+COMPONENT_DIR = Path(__file__).parent.parent / "custom_components" / "sems"
 
 
 def _get_data(station_id: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -221,3 +226,70 @@ async def test_user_step_rejects_interval_below_minimum(hass: HomeAssistant) -> 
                 CONF_SCAN_INTERVAL: MIN_SCAN_INTERVAL - 1,
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# Control commands and reauthentication
+# ---------------------------------------------------------------------------
+
+
+async def test_control_command_runs_in_executor(hass: HomeAssistant) -> None:
+    """A successful control command passes its arguments through."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(
+        hass, SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD), entry
+    )
+    method = MagicMock()
+
+    await coordinator.async_control(method, "a", 1)
+
+    method.assert_called_once_with("a", 1)
+    assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+
+
+async def test_control_command_starts_reauth_on_rejected_credentials(
+    hass: HomeAssistant,
+) -> None:
+    """Rejected credentials during a command open the reauthentication flow."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(
+        hass, SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD), entry
+    )
+    method = MagicMock(side_effect=SemsAuthError("rejected"))
+
+    with pytest.raises(HomeAssistantError, match="reauthenticate"):
+        await coordinator.async_control(method)
+    await hass.async_block_till_done()
+
+    flows = hass.config_entries.flow.async_progress_by_handler(
+        DOMAIN, match_context={"source": SOURCE_REAUTH}
+    )
+    assert len(flows) == 1
+    assert flows[0]["context"]["entry_id"] == entry.entry_id
+    assert flows[0]["step_id"] == "reauth_confirm"
+
+
+# ---------------------------------------------------------------------------
+# Translations
+# ---------------------------------------------------------------------------
+
+
+def _keys(node: Any, prefix: str = "") -> set[str]:
+    if not isinstance(node, dict):
+        return {prefix}
+    keys: set[str] = set()
+    for key, value in node.items():
+        keys |= _keys(value, f"{prefix}.{key}" if prefix else key)
+    return keys
+
+
+@pytest.mark.parametrize("language", ["en", "es", "pt"])
+def test_translations_cover_all_strings(language: str) -> None:
+    """Every string in strings.json is translated."""
+    strings = json.loads((COMPONENT_DIR / "strings.json").read_text("utf-8"))
+    translation = json.loads(
+        (COMPONENT_DIR / "translations" / f"{language}.json").read_text("utf-8")
+    )
+    assert _keys(strings) <= _keys(translation)
