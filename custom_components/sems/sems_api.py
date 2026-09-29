@@ -1243,6 +1243,8 @@ class SemsApi:
         """Build the legacy coordinator shape from SEMS+ Web responses."""
         inverters: list[dict[str, Any]] = []
         smart_meters: list[dict[str, Any]] = []
+        unavailable_inverter_sources: dict[str, set[str]] = {}
+        unavailable_homekit_sources: set[str] = set()
         for device in self.getWebInverterDevices(
             powerStationId, renewToken, maxTokenRetries
         ):
@@ -1253,14 +1255,11 @@ class SemsApi:
             if not isinstance(device_type, str):
                 device_type = "INVERTER"
             device_data = dict(device)
-            telemetry_cache_key = (
-                f"telemetry:{powerStationId}:{serial_number}:{device_type}"
-            )
-            cached_telemetry = self._web_cache.get(telemetry_cache_key)
             # Dongles have status, but no useful telemetry or counters. Avoid
             # making unsupported requests for them while preserving their
             # device/entity entry.
             if device_type != "DONGLE":
+                unavailable_sources: set[str] = set()
                 try:
                     telemetry = self.getWebInverterTelemetry(
                         powerStationId,
@@ -1270,11 +1269,6 @@ class SemsApi:
                         device_type=device_type,
                     )
                     device_data.update(telemetry)
-                    if telemetry:
-                        self._web_cache[telemetry_cache_key] = (
-                            time.monotonic(),
-                            telemetry,
-                        )
                 except SemsPermissionError as err:
                     _LOGGER.warning(
                         "SEMS+ denied telemetry access for inverter %s: %s. "
@@ -1282,16 +1276,14 @@ class SemsApi:
                         serial_number,
                         err,
                     )
-                    if cached_telemetry:
-                        device_data.update(cached_telemetry[1])
+                    unavailable_sources.add("telemetry")
                 except (OutOfRetries, SemsRateLimitedError) as err:
                     _LOGGER.debug(
                         "SEMS+ telemetry unavailable for inverter %s: %s",
                         serial_number,
                         err,
                     )
-                    if cached_telemetry:
-                        device_data.update(cached_telemetry[1])
+                    unavailable_sources.add("telemetry")
                 if "pac" not in device_data and device_data.get("status") in (-1, 0):
                     device_data["pac"] = 0
                 try:
@@ -1311,12 +1303,21 @@ class SemsApi:
                         serial_number,
                         err,
                     )
+                    unavailable_sources.add("counters")
                 except (OutOfRetries, SemsRateLimitedError) as err:
                     _LOGGER.debug(
                         "SEMS+ counters unavailable for inverter %s: %s",
                         serial_number,
                         err,
                     )
+                    unavailable_sources.add("counters")
+                if unavailable_sources:
+                    if device_type == "SMART_METER":
+                        unavailable_homekit_sources.update(unavailable_sources)
+                    else:
+                        unavailable_inverter_sources[serial_number] = (
+                            unavailable_sources
+                        )
             if device_type == "BATTERY_RACK":
                 battery_data = {
                     key: device_data.pop(key)
@@ -1466,6 +1467,11 @@ class SemsApi:
                 invert_full["lastmonthetotle"] = last_month_pv
         if currency is not None:
             result["kpi"] = {"currency": currency}
+        if unavailable_inverter_sources or unavailable_homekit_sources:
+            result["unavailable_data_sources"] = {
+                "inverters": unavailable_inverter_sources,
+                "homekit": unavailable_homekit_sources,
+            }
         return result
 
     def getWebStationFlow(
@@ -1633,6 +1639,8 @@ class SemsApi:
             is_web=True,
             token_type=_WEB_TELEMETRY_ENDPOINT.token_type,
         )
+        if result is None:
+            raise OutOfRetries("SEMS+ telemetry request failed")
         factors = self._flatten_web_factors(
             result if isinstance(result, list) else None
         )
@@ -1716,6 +1724,8 @@ class SemsApi:
             is_web=True,
             token_type=_WEB_TELECOUNTING_ENDPOINT.token_type,
         )
+        if result is None:
+            raise OutOfRetries("SEMS+ counter request failed")
         factors = self._flatten_web_factors(
             result if isinstance(result, list) else None
         )

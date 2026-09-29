@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
@@ -154,6 +154,8 @@ class SemsData:
     immediate_charging: dict[str, dict[str, Any]] | None = None
     homekit: dict[str, Any] | None = None
     currency: str | None = None
+    unavailable_inverter_sources: dict[str, set[str]] = field(default_factory=dict)
+    unavailable_homekit_sources: set[str] = field(default_factory=set)
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -399,6 +401,35 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                     "Error communicating with API: invalid or missing inverter data. See debug logs."
                 )
 
+            unavailable_data_sources = data_result.get("unavailable_data_sources", {})
+            if not isinstance(unavailable_data_sources, dict):
+                raise UpdateFailed(
+                    "Error communicating with API: invalid source status."
+                )
+            raw_inverter_sources = unavailable_data_sources.get("inverters", {})
+            raw_homekit_sources = unavailable_data_sources.get("homekit", set())
+            if not isinstance(raw_inverter_sources, dict) or not isinstance(
+                raw_homekit_sources, set
+            ):
+                raise UpdateFailed(
+                    "Error communicating with API: invalid source status."
+                )
+            unavailable_inverter_sources: dict[str, set[str]] = {}
+            for inverter_sn, sources in raw_inverter_sources.items():
+                if (
+                    not isinstance(inverter_sn, str)
+                    or not isinstance(sources, set)
+                    or any(not isinstance(source, str) for source in sources)
+                ):
+                    raise UpdateFailed(
+                        "Error communicating with API: invalid source status."
+                    )
+                unavailable_inverter_sources[inverter_sn] = sources
+            if any(not isinstance(source, str) for source in raw_homekit_sources):
+                raise UpdateFailed(
+                    "Error communicating with API: invalid source status."
+                )
+
             # Get Inverter Data
             for inverter in inverters:
                 inverter_full = inverter.get("invert_full")
@@ -494,6 +525,8 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 homekit=homekit,
                 currency=currency,
                 immediate_charging=immediate_charging,
+                unavailable_inverter_sources=unavailable_inverter_sources,
+                unavailable_homekit_sources=raw_homekit_sources,
             )
             _LOGGER.debug(
                 "Resulting data: %s",

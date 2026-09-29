@@ -165,6 +165,72 @@ async def test_sensor_state_from_coordinator(
     assert "statusText" not in status_state.attributes
 
 
+async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Mark telemetry sensors unavailable without hiding successful counters."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with _mock_no_battery_api(MOCK_GET_DATA_RESULT_MINIMAL):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data.coordinator
+    coordinator.async_set_updated_data(
+        SemsData(
+            inverters={
+                "GW0000SN000TEST1": {
+                    "etotal": 18843.2,
+                }
+            },
+            unavailable_inverter_sources={
+                "GW0000SN000TEST1": {"telemetry"},
+            },
+        )
+    )
+    await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    power_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-power"
+    )
+    energy_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-energy"
+    )
+    assert power_entity_id is not None
+    assert energy_entity_id is not None
+    assert hass.states.get(power_entity_id).state == "unavailable"
+    assert float(hass.states.get(energy_entity_id).state) == 18843.2
+
+    coordinator.async_set_updated_data(
+        SemsData(
+            inverters={
+                "GW0000SN000TEST1": {
+                    "pac": 589,
+                }
+            },
+            unavailable_inverter_sources={
+                "GW0000SN000TEST1": {"counters"},
+            },
+        )
+    )
+    await hass.async_block_till_done()
+
+    assert hass.states.get(power_entity_id).state == "589"
+    assert hass.states.get(energy_entity_id).state == "unavailable"
+
+
 async def test_unique_id_migration_sn_to_sn_power(
     hass: HomeAssistant,
     enable_custom_integrations: None,
@@ -251,6 +317,61 @@ async def test_web_meter_data_keeps_registered_homekit_serial(
         )
         is None
     )
+
+
+async def test_failed_smart_meter_telemetry_marks_only_meter_sensors_unavailable(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Keep station-flow sensors available when smart-meter telemetry fails."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    web_data = {
+        "inverter": MOCK_GET_DATA_RESULT_MINIMAL["inverter"],
+        "hasPowerflow": True,
+        "powerflow": {
+            "sn": "METER-SN-1",
+            "grid": -1351,
+            "load": 1351,
+            "meter_power": 1234,
+        },
+    }
+    with _mock_no_battery_api(web_data):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    inverter = MOCK_GET_DATA_RESULT_MINIMAL["inverter"][0]["invert_full"]
+    coordinator = entry.runtime_data.coordinator
+    coordinator.async_set_updated_data(
+        SemsData(
+            inverters={inverter["sn"]: inverter},
+            homekit={"sn": "METER-SN-1", "load": 1351},
+            unavailable_homekit_sources={"telemetry"},
+        )
+    )
+    await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    meter_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "METER-SN-1-meter_power"
+    )
+    load_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "METER-SN-1-load"
+    )
+    assert meter_entity_id is not None
+    assert load_entity_id is not None
+    assert hass.states.get(meter_entity_id).state == "unavailable"
+    assert hass.states.get(load_entity_id).state == "1351"
 
 
 async def test_registered_homekit_sn_prefers_earlier_lifetime_serial(

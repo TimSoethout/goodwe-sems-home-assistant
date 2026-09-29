@@ -180,9 +180,7 @@ class TestSemsApi:
         return_value=({"sum": 5.0, "buy": 0, "sell": 0}, {"sum": 100.0}, "EUR", 42.0),
     )
     @patch("custom_components.sems.sems_api.dt_util.now")
-    def test_get_web_data_prefers_smart_meter_counters(
-        self, mock_now, mock_statistics
-    ):
+    def test_get_web_data_prefers_smart_meter_counters(self, mock_now, mock_statistics):
         """Test captured smart-meter counters override station statistics."""
         mock_now.return_value = datetime(2026, 9, 25, 12)
 
@@ -1522,6 +1520,30 @@ class TestSemsApi:
             "ppv1": 991.38,
         }
 
+    @pytest.mark.parametrize(
+        "method_name",
+        ("getWebInverterTelemetry", "getWebInverterTelecounting"),
+    )
+    @patch.object(SemsApi, "_make_api_call", return_value=None)
+    def test_web_measurement_request_failure_raises(self, mock_api_call, method_name):
+        """Do not normalize a failed request as a successful empty response."""
+        with pytest.raises(OutOfRetries):
+            getattr(self.api, method_name)("station", "SN1")
+
+    @pytest.mark.parametrize(
+        "method_name",
+        ("getWebInverterTelemetry", "getWebInverterTelecounting"),
+    )
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call", return_value=[])
+    def test_empty_web_measurement_response_is_successful(
+        self, mock_api_call, mock_now, method_name
+    ):
+        """Keep a valid empty response distinct from a failed request."""
+        mock_now.return_value = datetime(2026, 1, 15, 12)
+
+        assert getattr(self.api, method_name)("station", "SN1") == {}
+
     @patch.object(SemsApi, "_make_api_call", return_value=[])
     def test_get_web_data_uses_discovered_device_type(self, mock_api_call):
         """Test cabinet telemetry and telecounting use the discovered type."""
@@ -2252,10 +2274,15 @@ class TestSemsApi:
             }
         ]
 
-        inverter = self.api.getWebData("station")["inverter"][0]["invert_full"]
+        result = self.api.getWebData("station")
+        inverter = result["inverter"][0]["invert_full"]
 
         assert inverter["pac"] == 2500
         assert inverter["pmeter"] == -1000
+        assert result["unavailable_data_sources"] == {
+            "inverters": {"SN1": {"telemetry", "counters"}},
+            "homekit": set(),
+        }
         mock_telemetry.assert_called_once_with(
             "station", "SN1", False, 2, device_type="INVERTER"
         )
@@ -2275,7 +2302,7 @@ class TestSemsApi:
         side_effect=[{"meter_power": 1234}, OutOfRetries],
     )
     @patch.object(SemsApi, "getWebInverterDevices")
-    def test_get_web_data_reuses_cached_smart_meter_telemetry(
+    def test_get_web_data_does_not_reuse_failed_smart_meter_telemetry(
         self,
         mock_devices,
         mock_telemetry,
@@ -2283,7 +2310,7 @@ class TestSemsApi:
         mock_flow,
         mock_statistics,
     ):
-        """Test an offline inverter does not remove the last smart-meter values."""
+        """Mark smart-meter telemetry unavailable instead of publishing cached data."""
         mock_devices.return_value = [
             {"sn": "METER1", "name": "Meter", "deviceType": "SMART_METER"},
         ]
@@ -2291,7 +2318,8 @@ class TestSemsApi:
         self.api.getWebData("station")
         result = self.api.getWebData("station")
 
-        assert result["powerflow"]["meter_power"] == 1234
+        assert "meter_power" not in result["powerflow"]
+        assert result["unavailable_data_sources"]["homekit"] == {"telemetry"}
         assert mock_telemetry.call_count == 2
 
     @patch.object(SemsApi, "_make_api_call")

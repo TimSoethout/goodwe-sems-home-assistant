@@ -51,6 +51,53 @@ _LOGGER = logging.getLogger(__name__)
 
 type SemsValuePath = list[str | int]
 
+_COUNTER_SENSOR_FIELDS = {
+    "capacity",
+    "eday",
+    "eweek",
+    "thismonthetotle",
+    "eyear",
+    "etotal",
+    "eChargeDay",
+    "eDischargeDay",
+    "Charts_buy",
+    "Charts_sell",
+    "Totals_buy",
+    "Totals_sell",
+}
+_TELEMETRY_SENSOR_FIELDS = {
+    "pac",
+    "hour_total",
+    "tempperature",
+    "power_factor",
+    "pbattery",
+    "vbattery",
+    "ibattery",
+    "vbattery1",
+    "ibattery1",
+    "soc",
+    "soh",
+    "bms_temperature",
+    "bms_charge_i_max",
+    "bms_discharge_i_max",
+}
+
+
+def _data_source_for_value_path(path: SemsValuePath) -> str | None:
+    """Return the SEMS+ data source used by a sensor value."""
+    if not path:
+        return None
+    field = path[-1]
+    if not isinstance(field, str):
+        return None
+    if field in _COUNTER_SENSOR_FIELDS:
+        return "counters"
+    if field in _TELEMETRY_SENSOR_FIELDS or field.startswith(
+        ("vpv", "ipv", "ppv", "vac", "iac", "fac", "meter_")
+    ):
+        return "telemetry"
+    return None
+
 
 def convert_status_to_label(status: Any) -> str:
     """Convert numeric status code to human-readable label."""
@@ -965,6 +1012,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
 
         super().__init__(coordinator)
         self._value_path = value_path
+        self._data_source = _data_source_for_value_path(value_path)
         self._data_type_converter = data_type_converter
         self._empty_value = empty_value
 
@@ -1054,6 +1102,24 @@ class SemsInverterSensor(SemsSensor):
         return self.coordinator.data.inverters
 
     @property
+    def available(self) -> bool:
+        """Return whether this inverter sensor's source was available."""
+        if not super().available:
+            return False
+        if (
+            self._data_source is None
+            or self._get_native_value_from_coordinator() is not None
+        ):
+            return True
+        inverter_sn = self._value_path[0]
+        if not isinstance(inverter_sn, str):
+            return True
+        failed_sources = self.coordinator.data.unavailable_inverter_sources.get(
+            inverter_sn, set()
+        )
+        return self._data_source not in failed_sources
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return inverter attributes for backwards compatibility."""
 
@@ -1096,6 +1162,20 @@ class SemsHomekitSensor(SemsSensor):
         """Return HomeKit dict."""
 
         return self.coordinator.data.homekit
+
+    @property
+    def available(self) -> bool:
+        """Return whether this HomeKit sensor's source was available."""
+        if not super().available:
+            return False
+        if (
+            self._data_source is None
+            or self._get_native_value_from_coordinator() is not None
+        ):
+            return True
+        return (
+            self._data_source not in self.coordinator.data.unavailable_homekit_sources
+        )
 
 
 class SemsLegacyPowerflowSensor(SemsHomekitSensor):
