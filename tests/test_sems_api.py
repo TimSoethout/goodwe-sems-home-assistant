@@ -1182,7 +1182,8 @@ class TestSemsApi:
         result = self.api.getBatteryImmediateChargingStates(MOCK_INVERTER_SN)
 
         assert mock_request.call_count == 1
-        assert result == {}
+        # No state, rather than an empty state that reads as "disabled".
+        assert result is None
         assert (
             mock_request.call_args_list[0]
             .args[1]

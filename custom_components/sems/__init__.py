@@ -24,7 +24,13 @@ from .const import (
     account_key,
     redact_for_log,
 )
-from .sems_api import SemsApi, SemsAuthError, SemsRateLimitedError
+from .sems_api import (
+    OutOfRetries,
+    SemsApi,
+    SemsAuthError,
+    SemsPermissionError,
+    SemsRateLimitedError,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -351,10 +357,30 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
         immediate_charging: dict[str, dict[str, Any]] = {}
         for inverter_sn in batteries:
-            immediate_charging_result = await self.hass.async_add_executor_job(
-                self.sems_api.getBatteryImmediateChargingStates, inverter_sn
+            try:
+                immediate_charging_result = await self.hass.async_add_executor_job(
+                    self.sems_api.getBatteryImmediateChargingStates, inverter_sn
+                )
+            except (OutOfRetries, SemsPermissionError) as err:
+                immediate_charging_result = None
+                _LOGGER.debug(
+                    "Immediate-charging state request failed for %s: %s",
+                    redact_for_log(inverter_sn),
+                    err,
+                )
+            state_data = (
+                immediate_charging_result.get("data")
+                if isinstance(immediate_charging_result, dict)
+                else None
             )
-            state_data = (immediate_charging_result or {}).get("data", {})
+            if not isinstance(state_data, dict):
+                # Leave the inverter out so its entities become unavailable
+                # instead of reporting a disabled function.
+                _LOGGER.debug(
+                    "No immediate-charging state for %s",
+                    redact_for_log(inverter_sn),
+                )
+                continue
             immediate_charging[inverter_sn] = {
                 "enabled": bool(state_data.get("47545", 0)),
                 "end_charge_soc": state_data.get("47546", 0),

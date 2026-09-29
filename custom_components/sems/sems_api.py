@@ -2286,8 +2286,12 @@ class SemsApi:
 
     def getBatteryImmediateChargingStates(
         self, serialNumber: str, renewToken: bool = False, maxTokenRetries: int = 2
-    ) -> dict[str, Any]:
-        """Get the battery immediate charging states from the SEMS API."""
+    ) -> dict[str, Any] | None:
+        """Get the battery immediate charging states from the SEMS API.
+
+        Return None when SEMS returned no state, so callers don't mistake a
+        failed read for a disabled function.
+        """
         data = json.dumps(
             {
                 "sn": serialNumber,
@@ -2310,7 +2314,7 @@ class SemsApi:
             is_web=True,
             retry_on_api_error=False,
         )
-        return result if isinstance(result, dict) else {}
+        return result if isinstance(result, dict) else None
 
     def stopImmediateCharging(
         self,

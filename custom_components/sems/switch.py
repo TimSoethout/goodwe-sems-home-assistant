@@ -118,12 +118,18 @@ class SemsBatteryImmediateChargingSwitch(SemsSwitchBase):
         self.functions = functions
 
     @property
-    def is_on(self) -> bool | None:
-        return bool(
-            (self.coordinator.data.immediate_charging or {})
-            .get(self.serial_number, {})
-            .get("enabled", False)
+    def available(self) -> bool:
+        """Return whether the immediate-charging state could be read."""
+        return super().available and self.serial_number in (
+            self.coordinator.data.immediate_charging or {}
         )
+
+    @property
+    def is_on(self) -> bool | None:
+        state = (self.coordinator.data.immediate_charging or {}).get(self.serial_number)
+        if state is None:
+            return None
+        return bool(state.get("enabled", False))
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         function = self.functions["immediate_charge"]
