@@ -6,6 +6,8 @@ from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
 
+SEMS_PLUS_URL = "https://semsplus.goodwe.com/"
+
 
 def device_info_for_inverter(
     serial_number: str, inverter_data: dict[str, Any]
@@ -32,10 +34,6 @@ def device_info_for_inverter(
         manufacturer="GoodWe",
         model=inverter_data.get("model_type", "unknown"),
         sw_version=sw_version,
-        configuration_url=(
-            f"https://semsportal.com/PowerStation/PowerStatusSnMin/"
-            f"{inverter_data.get('powerstation_id')}"
-            if inverter_data.get("powerstation_id")
-            else None
-        ),
+        # The legacy SEMS portal has been shut down.
+        configuration_url=SEMS_PLUS_URL,
     )

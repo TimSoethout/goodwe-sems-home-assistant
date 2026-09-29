@@ -22,3 +22,14 @@ def test_device_info_sw_version_defaults_to_unknown_for_missing_firmware() -> No
     )
 
     assert device_info["sw_version"] == "unknown"
+
+
+def test_device_info_links_to_sems_plus() -> None:
+    """The legacy SEMS portal is closed; link devices to SEMS+."""
+    device_info = device_info_for_inverter(
+        "GW0000SN000TEST1",
+        {"name": "Test Inverter", "powerstation_id": "station"},
+    )
+
+    assert device_info["configuration_url"] == "https://semsplus.goodwe.com/"
+    assert device_info["name"] == "Inverter Test Inverter"
