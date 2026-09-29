@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import dataclasses
 import re
+from collections.abc import Mapping
 from typing import Any
 
-# import voluptuous as vol
-# from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
+from homeassistant.const import CONF_SCAN_INTERVAL
 
 DOMAIN = "sems"
 
@@ -15,7 +15,27 @@ PLATFORMS = ["number", "sensor", "switch"]
 
 CONF_STATION_ID = "powerstation_id"
 
-DEFAULT_SCAN_INTERVAL = 60  # timedelta(seconds=60)
+DEFAULT_SCAN_INTERVAL = 60  # seconds
+# SEMS+ reports station data with a one-minute resolution (see `refreshTime`
+# in api_examples/station_flow.json), so polling faster only repeats data while
+# each refresh costs about 5-11 requests per station on the account's shared
+# session.
+MIN_SCAN_INTERVAL = 60
+MAX_SCAN_INTERVAL = 3600
+
+
+def scan_interval_seconds(data: Mapping[str, Any], options: Mapping[str, Any]) -> int:
+    """Return the configured update interval, limited to the supported range.
+
+    The options flow stores the interval in `options`; entries created before it
+    existed keep the value from the setup form in `data`.
+    """
+    raw = options.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL))
+    try:
+        seconds = int(raw)
+    except TypeError, ValueError:
+        return DEFAULT_SCAN_INTERVAL
+    return min(max(seconds, MIN_SCAN_INTERVAL), MAX_SCAN_INTERVAL)
 
 
 def account_key(username: str) -> str:

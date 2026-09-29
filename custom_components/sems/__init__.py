@@ -8,7 +8,7 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import config_validation as cv
@@ -17,12 +17,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CONF_STATION_ID,
-    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     GOODWE_SPELLING,
     PLATFORMS,
     account_key,
     redact_for_log,
+    scan_interval_seconds,
 )
 from .sems_api import SemsApi, SemsAuthError, SemsRateLimitedError
 
@@ -178,7 +178,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool
         await _async_release_api(hass, entry)
         raise
 
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: SemsConfigEntry) -> None:
+    """Apply a changed update interval without reloading the entry.
+
+    A reload would refetch every station of the account at once; the new
+    interval instead takes effect from the next scheduled refresh.
+    """
+    coordinator = entry.runtime_data.coordinator
+    update_interval = timedelta(
+        seconds=scan_interval_seconds(entry.data, entry.options)
+    )
+    if coordinator.update_interval != update_interval:
+        _LOGGER.debug(
+            "SEMS - Update interval of %s changed to %s",
+            redact_for_log(coordinator.station_id),
+            update_interval,
+        )
+        coordinator.update_interval = update_interval
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -218,7 +238,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         self.station_id = entry.data[CONF_STATION_ID]
 
         update_interval = timedelta(
-            seconds=entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            seconds=scan_interval_seconds(entry.data, entry.options)
         )
         super().__init__(
             hass,

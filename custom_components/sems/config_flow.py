@@ -9,23 +9,50 @@ from typing import Any
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import CONF_STATION_ID, DOMAIN, account_key, redact_for_log
+from .const import (
+    CONF_STATION_ID,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    MAX_SCAN_INTERVAL,
+    MIN_SCAN_INTERVAL,
+    account_key,
+    redact_for_log,
+    scan_interval_seconds,
+)
 from .sems_api import SemsApi, SemsRateLimitedError
 
 _LOGGER = logging.getLogger(__name__)
 
+SCAN_INTERVAL_VALIDATOR = vol.All(
+    vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
+)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
-        vol.Optional(CONF_SCAN_INTERVAL, description={"suggested_value": 60}): int,
+        vol.Optional(
+            CONF_SCAN_INTERVAL, description={"suggested_value": DEFAULT_SCAN_INTERVAL}
+        ): SCAN_INTERVAL_VALIDATOR,
     }
 )
 STEP_REAUTH_DATA_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
+
+
+@callback
+def _account_entries(
+    hass: HomeAssistant, username: str
+) -> list[config_entries.ConfigEntry]:
+    """Return the config entries (stations) of one SEMS account."""
+    key = account_key(username)
+    return [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if account_key(entry.data.get(CONF_USERNAME, "")) == key
+    ]
 
 
 def _normalize_station_ids(raw: Any) -> list[str]:
@@ -157,10 +184,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 # All stations of the account share one client, so update them
                 # together.
-                for entry in self.hass.config_entries.async_entries(DOMAIN):
-                    if entry.entry_id == reauth_entry.entry_id or account_key(
-                        entry.data.get(CONF_USERNAME, "")
-                    ) != account_key(username):
+                for entry in _account_entries(self.hass, username):
+                    if entry.entry_id == reauth_entry.entry_id:
                         continue
                     self.hass.config_entries.async_update_entry(
                         entry, data={**entry.data, CONF_PASSWORD: password}
@@ -176,6 +201,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders=placeholders,
             errors=errors,
         )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> SemsOptionsFlow:
+        """Return the options flow."""
+        return SemsOptionsFlow()
 
     async def async_step_import(
         self, import_data: dict[str, Any]
@@ -200,3 +233,47 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
+
+
+class SemsOptionsFlow(config_entries.OptionsFlow):
+    """Change the update interval of a SEMS account.
+
+    All stations of an account share one client and SEMS+ session, so the
+    request budget belongs to the account. The interval is therefore stored on
+    every entry of the account, not only on the one being edited.
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Manage the update interval."""
+        entry = self.config_entry
+        stations = _account_entries(self.hass, entry.data.get(CONF_USERNAME, ""))
+
+        if user_input is not None:
+            scan_interval = user_input[CONF_SCAN_INTERVAL]
+            for other in stations:
+                if other.entry_id == entry.entry_id:
+                    continue
+                self.hass.config_entries.async_update_entry(
+                    other, options={**other.options, CONF_SCAN_INTERVAL: scan_interval}
+                )
+            return self.async_create_entry(
+                data={**entry.options, CONF_SCAN_INTERVAL: scan_interval}
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_SCAN_INTERVAL,
+                        default=scan_interval_seconds(entry.data, entry.options),
+                    ): SCAN_INTERVAL_VALIDATOR,
+                }
+            ),
+            description_placeholders={
+                "station_count": str(max(len(stations), 1)),
+                "min_interval": str(MIN_SCAN_INTERVAL),
+            },
+        )

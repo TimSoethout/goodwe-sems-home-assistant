@@ -20,5 +20,16 @@
             }
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Intervalo de actualización",
+                "description": "Las {station_count} planta(s) de esta cuenta comparten una sesión de SEMS y todas usan este intervalo. Cada actualización realiza varias solicitudes por planta, así que elija un intervalo más largo para cuentas con muchas plantas. Mínimo: {min_interval} segundos.",
+                "data": {
+                    "scan_interval": "Intervalo de actualización (segundos)"
+                }
+            }
+        }
+    },
     "title": "FV GoodWe SEMS API"
 }

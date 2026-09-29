@@ -20,5 +20,16 @@
             }
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Intervalo de atualização",
+                "description": "As {station_count} central(is) desta conta partilham uma sessão SEMS e usam todas este intervalo. Cada atualização faz vários pedidos por central, por isso escolha um intervalo mais longo para contas com muitas centrais. Mínimo: {min_interval} segundos.",
+                "data": {
+                    "scan_interval": "Intervalo de Atualização (segundos)"
+                }
+            }
+        }
+    },
     "title": "GoodWe SEMS PV API"
 }
