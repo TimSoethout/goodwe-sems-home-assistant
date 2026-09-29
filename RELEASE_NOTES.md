@@ -1,5 +1,40 @@
 # Release notes
 
+## 11.12.0-beta.5 - 2026-09-29
+
+## Reduce SEMS+ login storms and improve recovery
+
+- Share one API client and web session among station entries for the same
+  account, avoiding competing logins.
+- Serialize concurrent logins and reuse a token refreshed by another request.
+  Only known session-expiry responses trigger one re-login.
+- Handle HTTP 429 and `GY0429` with a client-wide cool-down, honoring numeric
+  `Retry-After` values. Setup and reauthentication flows show when to retry.
+- Limit concurrent API requests; cache station production and battery function
+  menus; back off failed production and statistics requests while retaining
+  the last good values.
+- Prompt for reauthentication after repeated non-transient login rejections;
+  updating a password updates all station entries for the account.
+
+### Compatibility
+
+- Entries with the same normalized username share a client and credentials. If
+  their saved passwords differ, the most recently set-up entry's password is
+  used.
+
+### Related
+
+- Addresses the repeated token-expiry and login bursts in
+  [#192](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/192);
+  the C0602 diagnostic trace is in
+  [#232](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/232).
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - review and validation.
+- [@WestLabsAI](https://github.com/WestLabsAI) - implementation and regression
+  tests.
+
 ## 11.12.0-beta.4 - 2026-09-28
 
 ## Restore smart-meter import/export and HomeKit load values
