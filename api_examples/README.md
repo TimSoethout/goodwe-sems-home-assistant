@@ -3,7 +3,10 @@
 These sanitized JSON files document response shapes observed while testing the
 GoodWe SEMS and SEMS+ APIs. Credentials, tokens, trace IDs, station IDs, serial
 numbers, and names are replaced with placeholders or representative values.
-Legacy SEMS response examples are kept in [`legacy/`](./legacy/).
+Legacy SEMS response examples are kept in [`legacy/`](./legacy/). See the
+repository [architecture plan](../ARCHITECTURE_PLAN.md) and
+[follow-up work](../TODO.md) for the current integration design and open
+coverage items.
 
 ## Capturing a new endpoint or response
 
@@ -54,8 +57,17 @@ the relevant JSON response and sanitize it instead.
 | [`semsplus_hybrid/statistics_year_2026.json`](./semsplus_hybrid/statistics_year_2026.json) | `POST /web/sems-plant/api/stations/statistics` with `dimension=year` | SEMS+ Web token and `X-Signature` | Current-year series for lifetime aggregation |
 | [`semsplus_hybrid/statistics_invalid_dimension.json`](./semsplus_hybrid/statistics_invalid_dimension.json) | `POST /web/sems-plant/api/stations/statistics` with `dimension=total` | SEMS+ Web token and `X-Signature` | Rejected `S0327` response; `total` is not supported |
 
-The hybrid capture analysis and proposed follow-up fixes are documented in
-[`richaaldo_2026-09-24_differences.md`](./richaaldo_2026-09-24_differences.md).
+The hybrid capture set and its observed units and device relationships are
+documented in [`semsplus_hybrid/README.md`](./semsplus_hybrid/README.md).
+
+## Endpoint without a response fixture
+
+The integration has an optional request for
+`POST /web/sems-plant/api/stations/production`, but the available sanitized
+evidence contains the request and not its response. Do not treat its response
+fields or currency mapping as verified until a real response is sanitized and
+added as a fixture. Track the capture and validation in
+[`TODO.md`](../TODO.md).
 
 ## `semsplus_hybrid` capture set
 
@@ -65,10 +77,6 @@ discovery, station flow, inverter telemetry and counters, related BAT_SYS
 metadata, and station statistics. The capture-specific README documents the
 synthetic month fixture and the observed units; duplicate top-level copies are
 not maintained.
-
-The production endpoint is also implemented as an optional request, but the
-available capture/log contains only the request and not a response payload.
-No production response fixture is included until one can be sanitized.
 
 ## Token types
 

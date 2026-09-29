@@ -7,10 +7,12 @@
 Integration for Home Assistant that retrieves PV data from the GoodWe SEMS and
 SEMS+ APIs.
 
-The integration uses the SEMS+ Web API for inverter discovery, live telemetry,
-and energy counters. It falls back to the legacy SEMS monitor API when that
-endpoint provides usable data. If the legacy response is empty, the SEMS+ Web
-API is used automatically.
+The integration uses the SEMS+ Web API for station and device discovery, live
+telemetry, and energy counters. The legacy monitor endpoint is not used in the
+live data path. Legacy authentication and control remain compatibility
+fallbacks for accounts and devices that need them. See the
+[architecture plan](./ARCHITECTURE_PLAN.md) for the data flow and
+[follow-up work](./TODO.md) for known coverage gaps.
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/TimSoethout/goodwe-sems-home-assistant)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TimSoethout/goodwe-sems-home-assistant/total)](https://tooomm.github.io/github-release-stats/?username=TimSoethout&repository=goodwe-sems-home-assistant)
