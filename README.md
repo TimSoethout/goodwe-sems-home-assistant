@@ -23,14 +23,15 @@ fallbacks for accounts and devices that need them. See the
 
 ### Easiest install method via HACS
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/custom-components/hacs)
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=TimSoethout&repository=goodwe-sems-home-assistant&category=integration)
 
-The repository folder structure is compatible with [HACS](https://hacs.xyz) and is included by default in HACS.
+Select the button to open this integration in HACS. HACS must already be
+installed in your Home Assistant instance.
 
-Install HACS via: https://hacs.xyz/docs/installation/manual.
-Then search for "SEMS" in the Integrations tab (under Community). Click
-`HACS` > `Integrations` > `Explore and Download Repositories`, search for
-`SEMS`, select the result, and click `Download`.
+If the button does not open HACS, go to `HACS` > `Integrations` >
+`Explore and Download Repositories`, search for `SEMS`, select the integration,
+and click `Download`. For HACS installation instructions, see
+https://hacs.xyz/docs/installation/manual.
 
 ### Manual Setup
 
