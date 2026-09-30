@@ -39,6 +39,7 @@ the relevant JSON response and sanitize it instead.
 | `device_start_stop.json` | `POST /web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus` and `POST /web/sems/sems-remote/api/v1/address/remote/setDeviceFunctionParameters` with address `80017` | SEMS+ Web token and `X-Signature` | Start/stop capability schema, request values, and successful response codes |
 | `station_flow.json` | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `id`, `name`, `status`, `pSystem`, `pAc`, `consumFlag`, `refreshTime` |
 | `station_flow_import.json` | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | Importing example with `pGrid`, `pConsum`, and flow direction |
+| [`station_flow_battery_directions.json`](./station_flow_battery_directions.json) | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | Four hybrid charge/discharge and import/export samples; `pBat` and `pGrid` are in kW |
 | `all_status.json` | `GET /web/sems/sems-plant/api/stations/device/all-status?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `deviceDetailList`, `statusDetailList`, `snList`, `detailMap` |
 | `smart_meter_all_status.json` | `GET /web/sems/sems-plant/api/stations/device/all-status?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `INVERTER` plus `SMART_METER` device discovery |
 | `telemetry.json` | `GET /web/sems/sems-plant/api/equipments/<sn>/telemetry?deviceType=INVERTER&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | `sn`, `hTotal`, `Temperature`, `pAc`, `qAc`, `gridPF`, `Vac`, `Iac`, `Fac`, MPPT fields |
@@ -59,6 +60,12 @@ the relevant JSON response and sanitize it instead.
 
 The hybrid capture set and its observed units and device relationships are
 documented in [`semsplus_hybrid/README.md`](./semsplus_hybrid/README.md).
+The separate [`station_flow_battery_directions.json`](./station_flow_battery_directions.json)
+capture records the EU installation's reported flow signs in all four
+battery/grid operating states. Its portal observations are stored separately
+from the raw flow values. Sample 1 also records the reported local sensor
+values, which do not match the raw flow values converted from kW or the portal
+readings; the regression test uses the raw flow values for conversion checks.
 
 ## Endpoint without a response fixture
 

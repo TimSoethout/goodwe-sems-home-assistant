@@ -1,5 +1,32 @@
 # Release notes
 
+## 11.12.0-beta.7 - 2026-09-30
+
+## Recover SEMS+ devices during discovery failures
+
+- Reuse a recent station device inventory after temporary discovery failures,
+  while marking device status unavailable until fresh status is received.
+- Add regression coverage for hybrid battery/grid flow directions using four
+  sanitized SEMS+ samples.
+
+### Compatibility
+
+- During temporary discovery failures, inverter entities may remain present
+  using inventory up to one hour old; stale device status is not published.
+
+### Related
+
+- [#234](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/234)
+  - SEMS+ hybrid battery/grid flow samples and sign validation.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - device-inventory recovery.
+- [@kaaammill](https://github.com/kaaammill) - paired hybrid flow samples and
+  sign observations.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - regression coverage
+  and sanitized fixture documentation.
+
 ## 11.12.0-beta.6 - 2026-09-29
 
 ## Mark failed SEMS+ data unavailable
