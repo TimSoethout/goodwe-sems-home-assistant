@@ -195,7 +195,7 @@ async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
                 }
             },
             unavailable_inverter_sources={
-                "GW0000SN000TEST1": {"telemetry"},
+                "GW0000SN000TEST1": {"device_status", "telemetry"},
             },
         )
     )
@@ -205,12 +205,17 @@ async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
     power_entity_id = ent_reg.async_get_entity_id(
         Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-power"
     )
+    status_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-status"
+    )
     energy_entity_id = ent_reg.async_get_entity_id(
         Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-energy"
     )
     assert power_entity_id is not None
+    assert status_entity_id is not None
     assert energy_entity_id is not None
     assert hass.states.get(power_entity_id).state == "unavailable"
+    assert hass.states.get(status_entity_id).state == "unavailable"
     assert float(hass.states.get(energy_entity_id).state) == 18843.2
 
     coordinator.async_set_updated_data(
@@ -218,6 +223,7 @@ async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
             inverters={
                 "GW0000SN000TEST1": {
                     "pac": 589,
+                    "status": 1,
                 }
             },
             unavailable_inverter_sources={
@@ -228,6 +234,7 @@ async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
     await hass.async_block_till_done()
 
     assert hass.states.get(power_entity_id).state == "589"
+    assert hass.states.get(status_entity_id).state == "Normal"
     assert hass.states.get(energy_entity_id).state == "unavailable"
 
 

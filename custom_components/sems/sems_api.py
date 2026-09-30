@@ -150,6 +150,7 @@ _WEB_STATISTICS_REFRESH_SECONDS = 300
 _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS = 86_400
 _WEB_STATISTICS_EARLIEST_YEAR = 2015
 _WEB_RELATED_DEVICES_REFRESH_SECONDS = 3_600
+_WEB_DEVICE_LIST_CACHE_SECONDS = 3_600
 _WEB_FAILED_REQUEST_RETRY_SECONDS = 300
 _WEB_FUNCTION_MENUS_REFRESH_SECONDS = 21_600
 
@@ -1245,9 +1246,33 @@ class SemsApi:
         smart_meters: list[dict[str, Any]] = []
         unavailable_inverter_sources: dict[str, set[str]] = {}
         unavailable_homekit_sources: set[str] = set()
-        for device in self.getWebInverterDevices(
-            powerStationId, renewToken, maxTokenRetries
-        ):
+        device_cache_key = f"devices:{powerStationId}"
+        cached_devices = self._web_cache.get(device_cache_key)
+        device_inventory_unavailable = False
+        try:
+            devices = self.getWebInverterDevices(
+                powerStationId, renewToken, maxTokenRetries
+            )
+        except OutOfRetries, SemsRateLimitedError:
+            if (
+                cached_devices is None
+                or time.monotonic() - cached_devices[0]
+                >= _WEB_DEVICE_LIST_CACHE_SECONDS
+                or not isinstance(cached_devices[1], list)
+                or not cached_devices[1]
+            ):
+                raise
+            _LOGGER.debug("SEMS+ device discovery unavailable; using recent inventory")
+            devices = [
+                {key: value for key, value in device.items() if key != "status"}
+                for device in cached_devices[1]
+                if isinstance(device, dict)
+            ]
+            device_inventory_unavailable = True
+        else:
+            self._web_cache[device_cache_key] = (time.monotonic(), devices)
+
+        for device in devices:
             serial_number = device.get("sn")
             if not isinstance(serial_number, str):
                 continue
@@ -1255,6 +1280,13 @@ class SemsApi:
             if not isinstance(device_type, str):
                 device_type = "INVERTER"
             device_data = dict(device)
+            if (
+                device_inventory_unavailable
+                and device_type in _WEB_INVERTER_ENTITY_TYPES
+            ):
+                unavailable_inverter_sources.setdefault(serial_number, set()).add(
+                    "device_status"
+                )
             # Dongles have status, but no useful telemetry or counters. Avoid
             # making unsupported requests for them while preserving their
             # device/entity entry.
@@ -1315,9 +1347,9 @@ class SemsApi:
                     if device_type == "SMART_METER":
                         unavailable_homekit_sources.update(unavailable_sources)
                     else:
-                        unavailable_inverter_sources[serial_number] = (
-                            unavailable_sources
-                        )
+                        unavailable_inverter_sources.setdefault(
+                            serial_number, set()
+                        ).update(unavailable_sources)
             if device_type == "BATTERY_RACK":
                 battery_data = {
                     key: device_data.pop(key)
@@ -1591,6 +1623,8 @@ class SemsApi:
             is_web=True,
             token_type=_WEB_DEVICE_STATUS_ENDPOINT.token_type,
         )
+        if result is None:
+            raise OutOfRetries("SEMS+ device discovery request failed")
         devices: list[dict[str, Any]] = []
         for device_group in (
             result.get("deviceDetailList", []) if isinstance(result, dict) else []

@@ -90,6 +90,8 @@ def _data_source_for_value_path(path: SemsValuePath) -> str | None:
     field = path[-1]
     if not isinstance(field, str):
         return None
+    if field == "status":
+        return "device_status"
     if field in _COUNTER_SENSOR_FIELDS:
         return "counters"
     if field in _TELEMETRY_SENSOR_FIELDS or field.startswith(
