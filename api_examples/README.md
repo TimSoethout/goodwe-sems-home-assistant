@@ -62,10 +62,9 @@ The hybrid capture set and its observed units and device relationships are
 documented in [`semsplus_hybrid/README.md`](./semsplus_hybrid/README.md).
 The separate [`station_flow_battery_directions.json`](./station_flow_battery_directions.json)
 capture records the EU installation's reported flow signs in all four
-battery/grid operating states. Its portal observations are stored separately
-from the raw flow values. Sample 1 also records the reported local sensor
-values, which do not match the raw flow values converted from kW or the portal
-readings; the regression test uses the raw flow values for conversion checks.
+battery/grid operating states. It keeps the 19:31 portal observation, 19:32
+flow response, and the time-aligned 19:33 flow response with local sensor
+readings separate.
 
 ## Endpoint without a response fixture
 

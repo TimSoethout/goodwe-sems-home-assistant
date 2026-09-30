@@ -1,7 +1,7 @@
 {
   "source": "Issue #234 comment 5907153013",
   "request": "GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>",
-  "capture_note": "The issue comment provided station-flow data objects without the API response envelope; values are preserved as reported. Its sample 1 local sensor values do not match either the raw flow values converted from kW or the separately reported portal values.",
+  "capture_note": "The issue comment provided station-flow data objects without the API response envelope; values are preserved as reported. The portal screenshot is from 19:31, the first raw flow is from 19:32, and the reported local sensor values correspond to the separately captured 19:33 raw flow.",
   "device": "GoodWe ET 10 kW hybrid inverter with battery",
   "region": "EU",
   "units": {
@@ -18,15 +18,12 @@
   "samples": [
     {
       "condition": "Battery discharging and exporting to grid",
+      "portal_observation_time": "2026-09-27 19:31",
       "portal_observation": {
         "battery": "1.1 kW, Discharging",
         "load": "1.015 kW",
         "grid": "0.085 kW",
         "solar": "0"
-      },
-      "reported_local_sensor_values_w": {
-        "battery": -1297,
-        "grid": 259
       },
       "flow": {
         "flows": {
@@ -42,6 +39,28 @@
         "soc": 42,
         "pConsum": 1.0303,
         "refreshTime": "2026-09-27T19:32:00"
+      }
+    },
+    {
+      "condition": "Battery discharging and exporting to grid",
+      "reported_local_sensor_values_w": {
+        "battery": -1297,
+        "grid": 259
+      },
+      "flow": {
+        "flows": {
+          "pBat": [
+            "pConsum",
+            "pGrid"
+          ]
+        },
+        "pSystem": 0,
+        "pAc": 1.29723,
+        "pBat": 1.29723,
+        "pGrid": 0.259,
+        "soc": 41,
+        "pConsum": 1.03823,
+        "refreshTime": "2026-09-27T19:33:00"
       }
     },
     {

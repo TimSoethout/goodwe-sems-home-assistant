@@ -516,6 +516,9 @@ async def test_web_flow_battery_and_grid_signs_from_captured_samples(
         assert grid_state is not None
         assert float(battery_state.state) == pytest.approx(-float(flow["pBat"]) * 1000)
         assert float(grid_state.state) == pytest.approx(float(flow["pGrid"]) * 1000)
+        if reported_values := sample.get("reported_local_sensor_values_w"):
+            assert round(float(battery_state.state)) == reported_values["battery"]
+            assert round(float(grid_state.state)) == reported_values["grid"]
 
 
 async def test_unique_id_migration_powerflow_to_homekit_sn(
