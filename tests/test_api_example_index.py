@@ -36,6 +36,27 @@ def test_api_example_index_references_unique_json_files() -> None:
             assert (REPOSITORY_ROOT / test_path).is_file()
 
 
+def test_legacy_multi_inverter_fixture_keeps_serials_distinct() -> None:
+    fixture = REPOSITORY_ROOT / "api_examples/legacy/multiple_inverters.json"
+    devices = json.loads(fixture.read_text(encoding="utf-8"))["data"]["list"]
+    serials = [device["sn"] for device in devices]
+
+    assert len(serials) > 1
+    assert len(serials) == len(set(serials))
+
+
+def test_legacy_get_data_fixture_redacts_device_check_code() -> None:
+    fixture = REPOSITORY_ROOT / "api_examples/legacy/sydneywonder_get_data.json"
+    devices = json.loads(fixture.read_text(encoding="utf-8"))["inverter"]
+    check_codes = [
+        item["value"]
+        for item in devices[0]["dict"]["left"]
+        if item.get("key") == "laCheckcode"
+    ]
+
+    assert check_codes == ["<redacted>"]
+
+
 def test_index_covers_all_shared_fixture_json() -> None:
     git_root = Path(
         subprocess.run(

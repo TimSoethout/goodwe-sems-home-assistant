@@ -170,7 +170,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [INVERTER, SMART_METER]
+            enum: [INVERTER, SMART_METER, ENERGY_STORAGE_INTEGRATED_CABINET]
         - $ref: "#/components/parameters/PowerStationId"
       responses:
         "200":
@@ -226,7 +226,7 @@ paths:
         default:
           description: HTTP or API-level error; not exhaustively captured.
       x-evidence:
-        reportedFixtures:
+        fixtures:
           - ./smart_meter_related_devices.json
   /sems-plant/api/stations/statistics:
     post:
@@ -370,7 +370,11 @@ components:
       required: true
       schema:
         type: string
-        enum: [INVERTER, SMART_METER, BAT_SYS]
+        enum:
+          - INVERTER
+          - SMART_METER
+          - BAT_SYS
+          - ENERGY_STORAGE_INTEGRATED_CABINET
     PowerStationId:
       name: pwId
       in: query
@@ -554,7 +558,7 @@ components:
         dataType:
           type: string
         unit:
-          type: string
+          type: [string, "null"]
         alias:
           type: string
       additionalProperties: true

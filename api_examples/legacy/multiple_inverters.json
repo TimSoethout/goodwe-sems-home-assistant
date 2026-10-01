@@ -25,7 +25,7 @@
       },
       {
         "id": "REDACTED",
-        "sn": "GW0000SN0001TEST",
+        "sn": "GW0000SN0002TEST",
         "name": "Example Device",
         "type": 1,
         "status": 1,
@@ -43,7 +43,7 @@
       },
       {
         "id": "REDACTED",
-        "sn": "GW0000SN0001TEST",
+        "sn": "GW0000SN0003TEST",
         "name": "Example Device",
         "type": 1,
         "status": 1,
