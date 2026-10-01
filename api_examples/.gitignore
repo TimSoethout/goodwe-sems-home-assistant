@@ -11,6 +11,7 @@ legacy/*
 !web_cross_login.json
 !station_flow.json
 !station_flow_import.json
+!station_flow_battery_directions.json
 !telecounting.json
 !telemetry.json
 !smart_meter_all_status.json

@@ -1,6 +1,8 @@
 *.pyc
 
 .vscode
+!.vscode/
+!.vscode/tasks.json
 example.json
 
 .DS_Store
@@ -9,3 +11,4 @@ coverage.xml
 
 .mypy_cache
 .ruff_cache
+.ha-core

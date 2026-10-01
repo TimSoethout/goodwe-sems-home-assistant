@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -20,9 +21,10 @@ from .const import (
     DOMAIN,
     GOODWE_SPELLING,
     PLATFORMS,
+    account_key,
     redact_for_log,
 )
-from .sems_api import SemsApi, SemsRateLimitedError
+from .sems_api import SemsApi, SemsAuthError, SemsRateLimitedError
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -70,6 +72,53 @@ class SemsRuntimeData:
 type SemsConfigEntry = ConfigEntry[SemsRuntimeData]
 
 
+@dataclass(slots=True)
+class _SharedApi:
+    """An API client shared by the config entries of one account."""
+
+    api: SemsApi
+    entry_ids: set[str]
+
+
+def _shared_clients(hass: HomeAssistant) -> dict[str, _SharedApi]:
+    """Return the shared API clients, keyed by account."""
+    return hass.data.setdefault(DOMAIN, {}).setdefault("clients", {})
+
+
+def _acquire_api(hass: HomeAssistant, entry: ConfigEntry) -> SemsApi:
+    """Return the account's shared API client, creating it if needed.
+
+    SEMS+ keeps one web session per account, so the stations of an account
+    must share one client and token instead of logging in against each other.
+    """
+    clients = _shared_clients(hass)
+    key = account_key(entry.data[CONF_USERNAME])
+    shared = clients.get(key)
+    if shared is None:
+        shared = clients[key] = _SharedApi(
+            api=SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]),
+            entry_ids=set(),
+        )
+    else:
+        # The most recently set up entry carries the newest password.
+        shared.api.update_credentials(entry.data[CONF_PASSWORD])
+    shared.entry_ids.add(entry.entry_id)
+    return shared.api
+
+
+async def _async_release_api(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Release the entry's reference and close the client after the last one."""
+    clients = _shared_clients(hass)
+    key = account_key(entry.data[CONF_USERNAME])
+    shared = clients.get(key)
+    if shared is None:
+        return
+    shared.entry_ids.discard(entry.entry_id)
+    if not shared.entry_ids:
+        del clients[key]
+        await hass.async_add_executor_job(shared.api.close)
+
+
 def _normalize_energy_statistics_charts(
     charts: dict[str, Any], inverter_capacity_kw: float | None
 ) -> dict[str, Any]:
@@ -106,6 +155,8 @@ class SemsData:
     homekit: dict[str, Any] | None = None
     currency: str | None = None
     ev_chargers: dict[str, dict[str, Any]] | None = None
+    unavailable_inverter_sources: dict[str, set[str]] = field(default_factory=dict)
+    unavailable_homekit_sources: set[str] = field(default_factory=set)
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -115,12 +166,18 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Set up sems from a config entry."""
-    sems_api = SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
+    sems_api = _acquire_api(hass, entry)
     coordinator = SemsDataUpdateCoordinator(hass, sems_api, entry)
     entry.runtime_data = SemsRuntimeData(api=sems_api, coordinator=coordinator)
 
-    await coordinator.async_config_entry_first_refresh()
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    try:
+        await coordinator.async_config_entry_first_refresh()
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except BaseException:
+        # A failed setup is not unloaded, so release the client here. This
+        # covers both the first refresh and forwarding to the platforms.
+        await _async_release_api(hass, entry)
+        raise
 
     return True
 
@@ -145,7 +202,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        await _async_release_api(hass, entry)
+    return unload_ok
 
 
 class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
@@ -323,9 +383,12 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             batteries = await self._async_get_battery_functions(energy_storage_cabinets)
             immediate_charging = await self._async_get_immediate_charging(batteries)
 
+        except SemsAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
         except SemsRateLimitedError as err:
             raise UpdateFailed(
-                f"SEMS API rate limited (retry after {err.retry_after}s)"
+                f"SEMS API rate limited (retry after {err.retry_after}s)",
+                retry_after=err.retry_after,
             ) from err
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
@@ -337,6 +400,35 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             if not inverters or not isinstance(inverters, list):
                 raise UpdateFailed(
                     "Error communicating with API: invalid or missing inverter data. See debug logs."
+                )
+
+            unavailable_data_sources = data_result.get("unavailable_data_sources", {})
+            if not isinstance(unavailable_data_sources, dict):
+                raise UpdateFailed(
+                    "Error communicating with API: invalid source status."
+                )
+            raw_inverter_sources = unavailable_data_sources.get("inverters", {})
+            raw_homekit_sources = unavailable_data_sources.get("homekit", set())
+            if not isinstance(raw_inverter_sources, dict) or not isinstance(
+                raw_homekit_sources, set
+            ):
+                raise UpdateFailed(
+                    "Error communicating with API: invalid source status."
+                )
+            unavailable_inverter_sources: dict[str, set[str]] = {}
+            for inverter_sn, sources in raw_inverter_sources.items():
+                if (
+                    not isinstance(inverter_sn, str)
+                    or not isinstance(sources, set)
+                    or any(not isinstance(source, str) for source in sources)
+                ):
+                    raise UpdateFailed(
+                        "Error communicating with API: invalid source status."
+                    )
+                unavailable_inverter_sources[inverter_sn] = sources
+            if any(not isinstance(source, str) for source in raw_homekit_sources):
+                raise UpdateFailed(
+                    "Error communicating with API: invalid source status."
                 )
 
             # Get Inverter Data
@@ -435,6 +527,8 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 currency=currency,
                 ev_chargers=data_result.get("ev_chargers") or None,
                 immediate_charging=immediate_charging,
+                unavailable_inverter_sources=unavailable_inverter_sources,
+                unavailable_homekit_sources=raw_homekit_sources,
             )
             _LOGGER.debug(
                 "Resulting data: %s",

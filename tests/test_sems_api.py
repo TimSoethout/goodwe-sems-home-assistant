@@ -16,6 +16,7 @@ from custom_components.sems.sems_api import (
     OLD_LOGIN_URL,
     OutOfRetries,
     SemsApi,
+    SemsAuthExpiredError,
     SemsPermissionError,
     SemsRateLimitedError,
 )
@@ -178,8 +179,10 @@ class TestSemsApi:
         "_get_web_energy_statistics",
         return_value=({"sum": 5.0, "buy": 0, "sell": 0}, {"sum": 100.0}, "EUR", 42.0),
     )
-    def test_get_web_data_prefers_smart_meter_counters(self, mock_statistics):
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_get_web_data_prefers_smart_meter_counters(self, mock_now, mock_statistics):
         """Test captured smart-meter counters override station statistics."""
+        mock_now.return_value = datetime(2026, 9, 25, 12)
 
         def load(name):
             with open(API_EXAMPLES_DIR / name, encoding="utf-8") as file:
@@ -262,7 +265,7 @@ class TestSemsApi:
         assert request["startTime"] == "2026-01-01 00:00:00"
         assert request["endTime"] == "2026-01-01 23:59:59"
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_success(self, mock_request):
         """Test successful HTTP request."""
         # Mock successful response
@@ -293,7 +296,7 @@ class TestSemsApi:
             timeout=30,
         )
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_validation_failure(self, mock_request):
         """Test HTTP request with validation failure."""
         # Mock response with error code
@@ -313,7 +316,7 @@ class TestSemsApi:
 
         assert result is None
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_no_validation(self, mock_request):
         """Test HTTP request without validation."""
         # Mock response with error code but validation disabled
@@ -333,7 +336,7 @@ class TestSemsApi:
 
         assert result == {"code": 1001, "msg": "Error"}
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_network_error(self, mock_request):
         """Test HTTP request with network error."""
         mock_request.side_effect = requests.ConnectionError("Network error")
@@ -522,7 +525,7 @@ class TestSemsApi:
 
             mock_legacy.assert_not_called()
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_rate_limit_raises(self, mock_request):
         """Test HTTP request raises SemsRateLimitedError on rate-limit code."""
         mock_response = Mock()
@@ -819,7 +822,7 @@ class TestSemsApi:
             },
         )
 
-        with caplog.at_level(logging.ERROR):
+        with caplog.at_level(logging.WARNING):
             result = self.api._make_http_request(
                 "https://example.test/api",
                 {},
@@ -880,8 +883,8 @@ class TestSemsApi:
         mock_http_request.assert_called_once()
         mock_login.assert_not_called()
 
-    def test_telecounting_token_error_is_error_logged(self, requests_mock, caplog):
-        """Test telecounting token errors remain visible in the logs."""
+    def test_telecounting_token_error_is_not_error_logged(self, requests_mock, caplog):
+        """Test a rejected token is raised for re-login, not logged as an error."""
         requests_mock.post(
             "https://example.test/api",
             json={
@@ -891,20 +894,18 @@ class TestSemsApi:
             },
         )
 
-        with caplog.at_level(logging.DEBUG):
-            result = self.api._make_http_request(
+        with (
+            caplog.at_level(logging.DEBUG),
+            pytest.raises(SemsAuthExpiredError, match="C0602"),
+        ):
+            self.api._make_http_request(
                 "https://example.test/api",
                 {},
                 operation_name="getWebInverterTelecounting API call",
             )
 
-        assert result is None
-        assert "code: C0602, message: account login abnormal" in caplog.text
-        assert any(
-            record.levelno >= logging.ERROR
-            and "getWebInverterTelecounting API call" in record.message
-            for record in caplog.records
-        )
+        assert "code C0602: account login abnormal" in caplog.text
+        assert not any(record.levelno >= logging.WARNING for record in caplog.records)
 
     def test_login_network_error(self, requests_mock):
         """Test login with network error."""
@@ -1108,15 +1109,16 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "getLoginToken")
     def test_make_api_call_login_failure(self, mock_login):
-        """Test API call with login failure."""
+        """Test a failed login pauses the client instead of retrying."""
         self.api._token = None
         mock_login.return_value = None
 
-        result = self.api._make_api_call(
-            "/test/endpoint", operation_name="test API call"
-        )
+        with pytest.raises(SemsRateLimitedError):
+            self.api._make_api_call("/test/endpoint", operation_name="test API call")
+        with pytest.raises(SemsRateLimitedError):
+            self.api._make_api_call("/test/endpoint", operation_name="test API call")
 
-        assert result is None
+        mock_login.assert_called_once()
 
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_make_http_request")
@@ -1125,10 +1127,10 @@ class TestSemsApi:
         # Set up token
         self.api._token = {"token": "test-token", "api": "https://api.test.com"}
 
-        # First call fails validation, second succeeds
+        # First call is rejected for its token, second succeeds
         mock_http_request.side_effect = [
-            None,  # First call fails validation
-            {"code": 0, "data": {"result": "success"}},  # Second call succeeds
+            SemsAuthExpiredError("test API call rejected the token"),
+            {"code": 0, "data": {"result": "success"}},
         ]
 
         mock_login.return_value = {"token": "new-token", "api": "https://api.test.com"}
@@ -1141,7 +1143,22 @@ class TestSemsApi:
         assert mock_http_request.call_count == 2
         mock_login.assert_called_once()
 
-    @patch("custom_components.sems.sems_api.requests.request")
+    @patch.object(SemsApi, "getLoginToken")
+    @patch.object(SemsApi, "_make_http_request")
+    def test_make_api_call_api_error_does_not_log_in(
+        self, mock_http_request, mock_login
+    ):
+        """Test other API errors fail without fetching a new token."""
+        self.api._token = {"token": "test-token", "api": "https://api.test.com"}
+        mock_http_request.return_value = None
+
+        with pytest.raises(OutOfRetries):
+            self.api._make_api_call("/test/endpoint", operation_name="test API call")
+
+        mock_http_request.assert_called_once()
+        mock_login.assert_not_called()
+
+    @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_immediate_charging_states_read_fail_does_not_retry(self, mock_request):
         """Reproduce read_fail responses from the immediate charging endpoint."""
         self.api._web_token = {
@@ -1276,6 +1293,80 @@ class TestSemsApi:
             is_web=True,
             token_type="web",
         )
+
+    def test_get_web_data_reuses_cached_device_inventory_after_request_failure(self):
+        """Reuse recent discovery metadata, but never its stale device status."""
+        with (API_EXAMPLES_DIR / "all_status.json").open(encoding="utf-8") as file:
+            captured_devices = json.load(file)["data"]
+
+        with (
+            patch.object(
+                self.api, "_make_api_call", side_effect=[captured_devices, None]
+            ),
+            patch.object(
+                self.api, "getWebInverterTelemetry", return_value={"pac": 1200}
+            ),
+            patch.object(
+                self.api, "getWebInverterTelecounting", return_value={"etotal": 42}
+            ),
+            patch.object(self.api, "getWebStationFlow", return_value={}),
+            patch.object(self.api, "_get_web_energy_statistics", return_value=None),
+        ):
+            first = self.api.getWebData("station")
+            recovered = self.api.getWebData("station")
+
+        first_inverter = first["inverter"][0]["invert_full"]
+        recovered_inverter = recovered["inverter"][0]["invert_full"]
+        assert recovered_inverter["sn"] == first_inverter["sn"]
+        assert recovered_inverter["pac"] == 1200
+        assert "status" not in recovered_inverter
+        assert recovered["unavailable_data_sources"]["inverters"][
+            recovered_inverter["sn"]
+        ] == {"device_status"}
+
+    def test_get_web_data_does_not_reuse_inventory_after_successful_empty_response(
+        self,
+    ):
+        """A successful empty device list replaces the cached inventory."""
+        with (API_EXAMPLES_DIR / "all_status.json").open(encoding="utf-8") as file:
+            captured_devices = json.load(file)["data"]
+
+        with (
+            patch.object(
+                self.api,
+                "_make_api_call",
+                side_effect=[
+                    captured_devices,
+                    {"deviceDetailList": []},
+                    None,
+                ],
+            ),
+            patch.object(self.api, "getWebInverterTelemetry", return_value={}),
+            patch.object(self.api, "getWebInverterTelecounting", return_value={}),
+            patch.object(self.api, "getWebStationFlow", return_value={}),
+            patch.object(self.api, "_get_web_energy_statistics", return_value=None),
+        ):
+            self.api.getWebData("station")
+            result = self.api.getWebData("station")
+            with pytest.raises(OutOfRetries):
+                self.api.getWebData("station")
+
+        assert result["inverter"] == []
+        assert "unavailable_data_sources" not in result
+
+    def test_get_web_data_does_not_use_expired_device_inventory(self):
+        """Expired discovery metadata cannot hide an unavailable API."""
+        self.api._web_cache["devices:station"] = (
+            10.0,
+            [{"sn": "SN1", "deviceType": "INVERTER", "status": 1}],
+        )
+
+        with (
+            patch.object(self.api, "getWebInverterDevices", side_effect=OutOfRetries),
+            patch("custom_components.sems.sems_api.time.monotonic", return_value=3610),
+            pytest.raises(OutOfRetries),
+        ):
+            self.api.getWebData("station")
 
     @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
     @patch.object(SemsApi, "getWebStationFlow", return_value={})
@@ -1503,6 +1594,30 @@ class TestSemsApi:
             "ppv1": 991.38,
         }
 
+    @pytest.mark.parametrize(
+        "method_name",
+        ("getWebInverterTelemetry", "getWebInverterTelecounting"),
+    )
+    @patch.object(SemsApi, "_make_api_call", return_value=None)
+    def test_web_measurement_request_failure_raises(self, mock_api_call, method_name):
+        """Do not normalize a failed request as a successful empty response."""
+        with pytest.raises(OutOfRetries):
+            getattr(self.api, method_name)("station", "SN1")
+
+    @pytest.mark.parametrize(
+        "method_name",
+        ("getWebInverterTelemetry", "getWebInverterTelecounting"),
+    )
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call", return_value=[])
+    def test_empty_web_measurement_response_is_successful(
+        self, mock_api_call, mock_now, method_name
+    ):
+        """Keep a valid empty response distinct from a failed request."""
+        mock_now.return_value = datetime(2026, 1, 15, 12)
+
+        assert getattr(self.api, method_name)("station", "SN1") == {}
+
     @patch.object(SemsApi, "_make_api_call", return_value=[])
     def test_get_web_data_uses_discovered_device_type(self, mock_api_call):
         """Test cabinet telemetry and telecounting use the discovered type."""
@@ -1533,8 +1648,10 @@ class TestSemsApi:
         )
 
     @patch.object(SemsApi, "_make_api_call")
-    def test_get_web_inverter_telecounting(self, mock_api_call):
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_get_web_inverter_telecounting(self, mock_now, mock_api_call):
         """Test SEMS+ energy counter normalization."""
+        mock_now.return_value = datetime(2026, 1, 15, 12)
         mock_api_call.return_value = [
             {
                 "code": "telecounting_today",
@@ -1668,10 +1785,12 @@ class TestSemsApi:
         )
 
     @patch.object(SemsApi, "_make_api_call")
+    @patch("custom_components.sems.sems_api.dt_util.now")
     def test_get_web_inverter_telecounting_ignores_invalid_lifetime_reset(
-        self, mock_api_call
+        self, mock_now, mock_api_call
     ):
         """Test a transient zero lifetime counter is not published."""
+        mock_now.return_value = datetime(2026, 1, 15, 12)
         response = [
             {
                 "code": "telecounting_lifetime",
@@ -1766,8 +1885,12 @@ class TestSemsApi:
         }
 
     @patch.object(SemsApi, "_make_api_call")
-    def test_get_web_inverter_telecounting_maps_battery_counters(self, mock_api_call):
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_get_web_inverter_telecounting_maps_battery_counters(
+        self, mock_now, mock_api_call
+    ):
         """Test SEMS+ battery charge and discharge counter normalization."""
+        mock_now.return_value = datetime(2026, 1, 15, 12)
         mock_api_call.return_value = [
             {
                 "code": "telecounting_today",
@@ -2225,10 +2348,15 @@ class TestSemsApi:
             }
         ]
 
-        inverter = self.api.getWebData("station")["inverter"][0]["invert_full"]
+        result = self.api.getWebData("station")
+        inverter = result["inverter"][0]["invert_full"]
 
         assert inverter["pac"] == 2500
         assert inverter["pmeter"] == -1000
+        assert result["unavailable_data_sources"] == {
+            "inverters": {"SN1": {"telemetry", "counters"}},
+            "homekit": set(),
+        }
         mock_telemetry.assert_called_once_with(
             "station", "SN1", False, 2, device_type="INVERTER"
         )
@@ -2248,7 +2376,7 @@ class TestSemsApi:
         side_effect=[{"meter_power": 1234}, OutOfRetries],
     )
     @patch.object(SemsApi, "getWebInverterDevices")
-    def test_get_web_data_reuses_cached_smart_meter_telemetry(
+    def test_get_web_data_does_not_reuse_failed_smart_meter_telemetry(
         self,
         mock_devices,
         mock_telemetry,
@@ -2256,7 +2384,7 @@ class TestSemsApi:
         mock_flow,
         mock_statistics,
     ):
-        """Test an offline inverter does not remove the last smart-meter values."""
+        """Mark smart-meter telemetry unavailable instead of publishing cached data."""
         mock_devices.return_value = [
             {"sn": "METER1", "name": "Meter", "deviceType": "SMART_METER"},
         ]
@@ -2264,7 +2392,8 @@ class TestSemsApi:
         self.api.getWebData("station")
         result = self.api.getWebData("station")
 
-        assert result["powerflow"]["meter_power"] == 1234
+        assert "meter_power" not in result["powerflow"]
+        assert result["unavailable_data_sources"]["homekit"] == {"telemetry"}
         assert mock_telemetry.call_count == 2
 
     @patch.object(SemsApi, "_make_api_call")

@@ -1,0 +1,45 @@
+{
+  "name": "GoodWe SEMS development",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/awf-project/devcontainer-features/rtk:1": {
+      "version": "0.50.0"
+    }
+  },
+  "mounts": [
+    "type=bind,source=${localEnv:HOME}/.copilot,target=/home/vscode/.copilot",
+    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,readonly"
+  ],
+  "containerEnv": {
+    "GIT_EDITOR": "code --wait"
+  },
+  "forwardPorts": [
+    8123
+  ],
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "bash .devcontainer/start-home-assistant",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "charliermarsh.ruff",
+        "ms-python.vscode-pylance",
+        "redhat.vscode-yaml",
+        "GitHub.vscode-pull-request-github"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestArgs": [
+          "tests"
+        ],
+        "python.testing.pytestEnabled": true,
+        "editor.formatOnSave": true,
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        }
+      }
+    }
+  }
+}

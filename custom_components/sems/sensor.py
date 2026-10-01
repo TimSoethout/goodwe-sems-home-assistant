@@ -52,6 +52,55 @@ _LOGGER = logging.getLogger(__name__)
 
 type SemsValuePath = list[str | int]
 
+_COUNTER_SENSOR_FIELDS = {
+    "capacity",
+    "eday",
+    "eweek",
+    "thismonthetotle",
+    "eyear",
+    "etotal",
+    "eChargeDay",
+    "eDischargeDay",
+    "Charts_buy",
+    "Charts_sell",
+    "Totals_buy",
+    "Totals_sell",
+}
+_TELEMETRY_SENSOR_FIELDS = {
+    "pac",
+    "hour_total",
+    "tempperature",
+    "power_factor",
+    "pbattery",
+    "vbattery",
+    "ibattery",
+    "vbattery1",
+    "ibattery1",
+    "soc",
+    "soh",
+    "bms_temperature",
+    "bms_charge_i_max",
+    "bms_discharge_i_max",
+}
+
+
+def _data_source_for_value_path(path: SemsValuePath) -> str | None:
+    """Return the SEMS+ data source used by a sensor value."""
+    if not path:
+        return None
+    field = path[-1]
+    if not isinstance(field, str):
+        return None
+    if field == "status":
+        return "device_status"
+    if field in _COUNTER_SENSOR_FIELDS:
+        return "counters"
+    if field in _TELEMETRY_SENSOR_FIELDS or field.startswith(
+        ("vpv", "ipv", "ppv", "vac", "iac", "fac", "meter_")
+    ):
+        return "telemetry"
+    return None
+
 
 def convert_status_to_label(status: Any) -> str:
     """Convert numeric status code to human-readable label."""
@@ -66,7 +115,7 @@ def _percentage_handler(value: Any, _data: dict[str, Any]) -> Any:
         return None
     try:
         return Decimal(str(value)) * 100
-    except (TypeError, ValueError, InvalidOperation):
+    except TypeError, ValueError, InvalidOperation:
         return value
 
 
@@ -519,7 +568,7 @@ def sensor_options_for_data(
                     return value
                 try:
                     return Decimal(str(value)) * int(grid_status)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     return value
 
             return value_status_handler
@@ -935,7 +984,7 @@ def get_value_from_path(data: dict[str, Any], path: SemsValuePath) -> Any:
     try:
         for key in path:
             value = value[key]
-    except (KeyError, TypeError):
+    except KeyError, TypeError:
         return None
     return value
 
@@ -966,6 +1015,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
 
         super().__init__(coordinator)
         self._value_path = value_path
+        self._data_source = _data_source_for_value_path(value_path)
         self._data_type_converter = data_type_converter
         self._empty_value = empty_value
 
@@ -1042,7 +1092,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
 
         try:
             return self._data_type_converter(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return value
 
 
@@ -1053,6 +1103,24 @@ class SemsInverterSensor(SemsSensor):
         """Return inverter dict."""
 
         return self.coordinator.data.inverters
+
+    @property
+    def available(self) -> bool:
+        """Return whether this inverter sensor's source was available."""
+        if not super().available:
+            return False
+        if (
+            self._data_source is None
+            or self._get_native_value_from_coordinator() is not None
+        ):
+            return True
+        inverter_sn = self._value_path[0]
+        if not isinstance(inverter_sn, str):
+            return True
+        failed_sources = self.coordinator.data.unavailable_inverter_sources.get(
+            inverter_sn, set()
+        )
+        return self._data_source not in failed_sources
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -1084,7 +1152,7 @@ class SemsInverterSensor(SemsSensor):
         else:
             try:
                 attributes["statusText"] = STATUS_LABELS.get(int(status), "Unknown")
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 attributes["statusText"] = "Unknown"
 
         return attributes
@@ -1097,6 +1165,20 @@ class SemsHomekitSensor(SemsSensor):
         """Return HomeKit dict."""
 
         return self.coordinator.data.homekit
+
+    @property
+    def available(self) -> bool:
+        """Return whether this HomeKit sensor's source was available."""
+        if not super().available:
+            return False
+        if (
+            self._data_source is None
+            or self._get_native_value_from_coordinator() is not None
+        ):
+            return True
+        return (
+            self._data_source not in self.coordinator.data.unavailable_homekit_sources
+        )
 
 
 class SemsLegacyPowerflowSensor(SemsHomekitSensor):
@@ -1130,7 +1212,7 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
 
         try:
             return Decimal(str(value)) if int(grid_status) == 1 else Decimal("0")
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return value
 
     @staticmethod
@@ -1139,7 +1221,7 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
             return "Unknown"
         try:
             return GRID_STATUS_LABELS[int(status)]
-        except (TypeError, ValueError, KeyError):
+        except TypeError, ValueError, KeyError:
             return "Unknown"
 
     @staticmethod
@@ -1175,7 +1257,7 @@ class SemsLegacyPowerflowSensor(SemsHomekitSensor):
         load_status = data.get("loadStatus")
         try:
             load_status_int = int(load_status) if load_status is not None else None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             load_status_int = None
 
         if load_status_int == -1:

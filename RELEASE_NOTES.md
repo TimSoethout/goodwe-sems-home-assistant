@@ -14,6 +14,194 @@
 - Controls were verified against a live charger; a full charging session has
   not been tested yet. Please report issues with sanitized debug logs.
 
+## 11.12.0 - 2026-10-01
+
+## Improve SEMS+ reliability and recovery
+
+- Protect energy counters from transient zero, decreasing, and stale midnight
+  readings while allowing legitimate reporting-period resets.
+- Preserve valid lifetime counters and smart-meter telemetry through temporary
+  API and inverter refresh failures. Mark failed data sources unavailable
+  instead of presenting cached telemetry as current.
+- Share SEMS+ clients and sessions across station entries for the same account,
+  coordinate token refresh, handle rate limits with a client-wide cool-down,
+  and back off failed production and statistics requests.
+- Restore smart-meter import/export counters and HomeKit load values, preserve
+  entity IDs and energy history, and avoid replacing meter values with missing
+  station statistics.
+- Keep discovered inverters available through temporary discovery or telemetry
+  failures, recover discovery from a recent device inventory, and avoid empty
+  battery entities or unstable PV string entities.
+
+### Compatibility
+
+- SEMS+ HomeKit `grid` power is negative for import and positive for export;
+  this differs from pre-11.x HomeKit fields.
+- Entries using the same normalized username share a client. If saved
+  passwords differ, the most recently set-up entry's password is used.
+- During temporary discovery failures, inverter entities may remain present
+  with inventory up to one hour old; device status remains unavailable until a
+  fresh status is received.
+- Python 3.14 is the only supported and tested runtime.
+
+### Limitations
+
+- SEMS+ production totals and currency parsing, and HEMS graph units, timezone,
+  and direction semantics, still need validation against real measured data.
+- Detailed BMS values remain unavailable when the station exposes no BAT_SYS
+  response. Generator, grid-meter-power, and detailed load-status fields were
+  not present in the captured flow contracts.
+- The previous-month energy sensor remains disabled by default unless
+  explicitly requested.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - maintenance and validation.
+- [@kaaammill](https://github.com/kaaammill) - hybrid flow samples and sign
+  observations.
+- [@GertJanH](https://github.com/GertJanH) - diagnostics and counter fixes.
+- [@WestLabsAI](https://github.com/WestLabsAI) - shared-session and API
+  reliability work.
+- [@mholka](https://github.com/mholka) and [@claude](https://github.com/claude)
+  contributed smart-meter and HomeKit fixes.
+- [@davidsonimagerygmailcom](https://github.com/davidsonimagerygmailcom) -
+  midnight counter report.
+- [@kimjamesmaher-dot](https://github.com/kimjamesmaher-dot) - testing and grid
+  sign verification.
+- [@robinhood-code](https://github.com/robinhood-code) - beta.3 HomeKit
+  regression report.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation,
+  regression coverage, and fixture documentation.
+
+## 11.12.0-beta.7 - 2026-09-30
+
+## Recover SEMS+ devices during discovery failures
+
+- Reuse a recent station device inventory after temporary discovery failures,
+  while marking device status unavailable until fresh status is received.
+- Add regression coverage for hybrid battery/grid flow directions using four
+  sanitized SEMS+ samples.
+
+### Compatibility
+
+- During temporary discovery failures, inverter entities may remain present
+  using inventory up to one hour old; stale device status is not published.
+
+### Related
+
+- [#234](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/234)
+  - SEMS+ hybrid battery/grid flow samples and sign validation.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - device-inventory recovery.
+- [@kaaammill](https://github.com/kaaammill) - paired hybrid flow samples and
+  sign observations.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - regression coverage
+  and sanitized fixture documentation.
+
+## 11.12.0-beta.6 - 2026-09-29
+
+## Mark failed SEMS+ data unavailable
+
+- Mark telemetry and counter sensors unavailable when their API request fails,
+  while preserving successful data from other sources.
+- Stop publishing cached telemetry as current. Successful empty responses
+  still leave missing sensor values unknown.
+
+### Compatibility
+
+- Python 3.14 is now the only supported and tested runtime.
+
+### Related
+
+- [#244](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/244)
+  - request-timeout handling.
+
+### Contributors
+
+- [@GertJanH](https://github.com/GertJanH) - reported and diagnosed #244.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression coverage.
+
+## 11.12.0-beta.5 - 2026-09-29
+
+## Reduce SEMS+ login storms and improve recovery
+
+- Share one API client and web session among station entries for the same
+  account, avoiding competing logins.
+- Serialize concurrent logins and reuse a token refreshed by another request.
+  Only known session-expiry responses trigger one re-login.
+- Handle HTTP 429 and `GY0429` with a client-wide cool-down, honoring numeric
+  `Retry-After` values. Setup and reauthentication flows show when to retry.
+- Limit concurrent API requests; cache station production and battery function
+  menus; back off failed production and statistics requests while retaining
+  the last good values.
+- Prompt for reauthentication after repeated non-transient login rejections;
+  updating a password updates all station entries for the account.
+
+### Compatibility
+
+- Entries with the same normalized username share a client and credentials. If
+  their saved passwords differ, the most recently set-up entry's password is
+  used.
+
+### Related
+
+- Addresses the repeated token-expiry and login bursts in
+  [#192](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/192);
+  the C0602 diagnostic trace is in
+  [#232](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/232).
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - review and validation.
+- [@WestLabsAI](https://github.com/WestLabsAI) - implementation and regression
+  tests.
+
+## 11.12.0-beta.4 - 2026-09-28
+
+## Restore smart-meter import/export and HomeKit load values
+
+- Preserve existing HomeKit entity IDs when SEMS+ identifies the smart meter
+  by its own serial, avoiding duplicates and retaining Energy dashboard history.
+- Prefer smart-meter daily and lifetime import/export counters; missing station
+  statistics no longer overwrite meter values with zero.
+- Keep HomeKit Load positive and updating while exporting.
+- Protect period and lifetime energy counters from transient zero/decreasing
+  readings while allowing legitimate period resets.
+- Hold SEMS+ counters from 23:58 through 00:19 local time to avoid stale
+  previous-day readings after midnight. If no cached values exist, withhold
+  counters until the portal settles.
+- Preserve valid lifetime counters and smart-meter telemetry across temporary
+  API or inverter refresh failures.
+- Keep discovered inverters available when telemetry access is denied, exclude
+  battery racks and dongles from inverter fallbacks, avoid empty battery
+  entities, and keep PV string entities stable.
+
+### Compatibility
+
+- SEMS+ HomeKit `grid` power is signed: negative for import and positive for
+  export. This differs from pre-11.x HomeKit fields; downstream automations may
+  need to be updated.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - integration maintenance and
+  validation.
+- [@mholka](https://github.com/mholka) and [@claude](https://github.com/claude) -
+  smart-meter and HomeKit fixes.
+- [@GertJanH](https://github.com/GertJanH) - reported the counter replay and
+  implemented the rollover fix.
+- [@davidsonimagerygmailcom](https://github.com/davidsonimagerygmailcom) -
+  reported the midnight counter replay.
+- [@kimjamesmaher-dot](https://github.com/kimjamesmaher-dot) - tested with a
+  shared Monitor account and verified the grid sign convention.
+- [@robinhood-code](https://github.com/robinhood-code) - reported the beta.3
+  HomeKit regression.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - SEMS+ reliability
+  fixes and regression tests.
+
 ## 11.12.0-beta.3 - 2026-09-27
 
 ## Improve SEMS+ counter and telemetry reliability

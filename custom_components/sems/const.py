@@ -17,6 +17,12 @@ CONF_STATION_ID = "powerstation_id"
 
 DEFAULT_SCAN_INTERVAL = 60  # timedelta(seconds=60)
 
+
+def account_key(username: str) -> str:
+    """Return the key that identifies a SEMS account."""
+    return username.strip().casefold()
+
+
 AC_EMPTY = 6553.5
 AC_CURRENT_EMPTY = 6553.5
 AC_FEQ_EMPTY = 655.35

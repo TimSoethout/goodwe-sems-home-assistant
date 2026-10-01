@@ -13,6 +13,8 @@ This directory contains comprehensive tests for the SEMS API module.
 
 ## Running Tests
 
+Run the test suite with Python 3.14, the only supported runtime.
+
 To run all tests:
 ```bash
 python -m pytest tests/ \

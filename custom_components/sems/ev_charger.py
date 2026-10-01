@@ -141,7 +141,7 @@ class _EvChargerEntity(CoordinatorEntity[SemsCoordinator]):
     def _work_status(self) -> int | None:
         try:
             return int(self._charger.get("charge_log", {}).get("workStu"))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     @property
@@ -152,7 +152,7 @@ class _EvChargerEntity(CoordinatorEntity[SemsCoordinator]):
             value = self._charger.get(source, {}).get("chargeMode")
             try:
                 return int(value)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
         return None
 
@@ -226,7 +226,7 @@ class EvChargerPlugSensor(_EvChargerEntity, SensorEntity):
             return None
         try:
             return "Connected" if int(status) else "Disconnected"
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
 
@@ -309,7 +309,7 @@ class EvChargerSessionSensor(_EvChargerEntity, SensorEntity):
         value = self._charger.get("charge_log", {}).get(self._field)
         try:
             return float(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
 
@@ -485,7 +485,7 @@ class EvChargerConfigNumber(_EvChargerEntity, NumberEntity):
         mode_info = self._charger.get("mode_info", {})
         try:
             rated = float(mode_info.get("ratedPower") or 0)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             rated = 0.0
         if not rated:
             rated = 22.0
@@ -497,7 +497,7 @@ class EvChargerConfigNumber(_EvChargerEntity, NumberEntity):
         default_max = 63.0 if unit == UnitOfElectricCurrent.AMPERE else max(rated, 22.0)
         try:
             return float(ranges.get("min", 0)), float(ranges.get("max", default_max))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return 0.0, default_max
 
     @property
@@ -505,7 +505,7 @@ class EvChargerConfigNumber(_EvChargerEntity, NumberEntity):
         value = self._charger.get("detail", {}).get(self._field)
         try:
             return float(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     async def async_set_native_value(self, value: float) -> None:

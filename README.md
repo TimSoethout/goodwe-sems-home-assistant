@@ -7,10 +7,12 @@
 Integration for Home Assistant that retrieves PV data from the GoodWe SEMS and
 SEMS+ APIs.
 
-The integration uses the SEMS+ Web API for inverter discovery, live telemetry,
-and energy counters. It falls back to the legacy SEMS monitor API when that
-endpoint provides usable data. If the legacy response is empty, the SEMS+ Web
-API is used automatically.
+The integration uses the SEMS+ Web API for station and device discovery, live
+telemetry, and energy counters. The legacy monitor endpoint is not used in the
+live data path. Legacy authentication and control remain compatibility
+fallbacks for accounts and devices that need them. See the
+[architecture plan](./ARCHITECTURE_PLAN.md) for the data flow and
+[follow-up work](./TODO.md) for known coverage gaps.
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/TimSoethout/goodwe-sems-home-assistant)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TimSoethout/goodwe-sems-home-assistant/total)](https://tooomm.github.io/github-release-stats/?username=TimSoethout&repository=goodwe-sems-home-assistant)
@@ -21,14 +23,15 @@ API is used automatically.
 
 ### Easiest install method via HACS
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/custom-components/hacs)
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=TimSoethout&repository=goodwe-sems-home-assistant&category=integration)
 
-The repository folder structure is compatible with [HACS](https://hacs.xyz) and is included by default in HACS.
+Select the button to open this integration in HACS. HACS must already be
+installed in your Home Assistant instance.
 
-Install HACS via: https://hacs.xyz/docs/installation/manual.
-Then search for "SEMS" in the Integrations tab (under Community). Click
-`HACS` > `Integrations` > `Explore and Download Repositories`, search for
-`SEMS`, select the result, and click `Download`.
+If the button does not open HACS, go to `HACS` > `Integrations` >
+`Explore and Download Repositories`, search for `SEMS`, select the integration,
+and click `Download`. For HACS installation instructions, see
+https://hacs.xyz/docs/installation/manual.
 
 ### Manual Setup
 
@@ -155,15 +158,53 @@ station details or personal information before sharing logs.
 
 ## Development setup
 
-- Setup HA development environment using https://developers.home-assistant.io/docs/development_environment
-- clone this repo in config directory:
-  - `cd core/config`
-  - `git clone git@github.com:TimSoethout/goodwe-sems-home-assistant.git`
-- go to terminal in remote VSCode environment
-- `cd core/config/custom_components`
-- `ln -s ../goodwe-sems-home-assistant/custom_components/sems sems`
+Open this repository in VS Code with the Dev Containers extension and choose
+**Reopen in Container**. The container automatically:
+
+- Installs the test and lint dependencies.
+- Installs the RTK CLI devcontainer feature.
+- Clones Home Assistant Core into the workspace's `.ha-core` directory.
+- Runs the Home Assistant development setup.
+- Links this integration into `.ha-core/config/custom_components/sems`.
+- Enables SEMS debug logging in `.ha-core/config/configuration.yaml`.
+- Installs HACS if it is not already installed.
+- Starts Home Assistant at http://localhost:8123.
+
+On a fresh Home Assistant config, the first start creates a disposable owner
+account and completes the onboarding wizard. The generated password is stored
+in `.ha-core/.dev-owner-credentials.json` with owner-only file permissions.
+Read that file to log in to the local instance.
+HACS files are installed automatically, but HACS still requires its one-time
+GitHub device authorization in the Home Assistant UI. Adding the SEMS
+integration and entering GoodWe credentials also remain UI steps.
+
+The Home Assistant Core branch is controlled by
+`.devcontainer/ha-core.ref`. The default is `dev`; change it before creating
+the container if a different branch or tag is required.
+
+Set `HA_CORE_DIR` to use a different writable Home Assistant Core checkout
+location.
+
+To use host-installed Copilot skills, set `COPILOT_SKILLS_DIR` on the host
+before launching VS Code. It must point to a directory whose children are
+skill folders containing `SKILL.md` files (for an installed plugin, this is
+typically its `skills` subdirectory). The devcontainer bind-mounts that
+directory read-only at `/home/vscode/.copilot/skills`. For example:
+
+```bash
+export COPILOT_SKILLS_DIR="/path/to/agentPlugins/<plugin>/skills"
+code .
+```
+
+The source directory must exist when the devcontainer is created.
+
+The Home Assistant log is available at `/tmp/home-assistant.log` inside the
+container. VS Code tasks are provided for testing, linting, bootstrapping, and
+starting Home Assistant.
 
 ## Linting
+
+Python 3.14 is the only supported and tested runtime for this integration.
 
 Run the same lint checks as the CI workflow:
 
