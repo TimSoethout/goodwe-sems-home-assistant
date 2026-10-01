@@ -1,5 +1,64 @@
 # Release notes
 
+## 11.12.0 - 2026-10-01
+
+## Improve SEMS+ reliability and recovery
+
+- Protect energy counters from transient zero, decreasing, and stale midnight
+  readings while allowing legitimate reporting-period resets.
+- Preserve valid lifetime counters and smart-meter telemetry through temporary
+  API and inverter refresh failures. Mark failed data sources unavailable
+  instead of presenting cached telemetry as current.
+- Share SEMS+ clients and sessions across station entries for the same account,
+  coordinate token refresh, handle rate limits with a client-wide cool-down,
+  and back off failed production and statistics requests.
+- Restore smart-meter import/export counters and HomeKit load values, preserve
+  entity IDs and energy history, and avoid replacing meter values with missing
+  station statistics.
+- Keep discovered inverters available through temporary discovery or telemetry
+  failures, recover discovery from a recent device inventory, and avoid empty
+  battery entities or unstable PV string entities.
+
+### Compatibility
+
+- SEMS+ HomeKit `grid` power is negative for import and positive for export;
+  this differs from pre-11.x HomeKit fields.
+- Entries using the same normalized username share a client. If saved
+  passwords differ, the most recently set-up entry's password is used.
+- During temporary discovery failures, inverter entities may remain present
+  with inventory up to one hour old; device status remains unavailable until a
+  fresh status is received.
+- Python 3.14 is the only supported and tested runtime.
+
+### Limitations
+
+- SEMS+ production totals and currency parsing, and HEMS graph units, timezone,
+  and direction semantics, still need validation against real measured data.
+- Detailed BMS values remain unavailable when the station exposes no BAT_SYS
+  response. Generator, grid-meter-power, and detailed load-status fields were
+  not present in the captured flow contracts.
+- The previous-month energy sensor remains disabled by default unless
+  explicitly requested.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - maintenance and validation.
+- [@kaaammill](https://github.com/kaaammill) - hybrid flow samples and sign
+  observations.
+- [@GertJanH](https://github.com/GertJanH) - diagnostics and counter fixes.
+- [@WestLabsAI](https://github.com/WestLabsAI) - shared-session and API
+  reliability work.
+- [@mholka](https://github.com/mholka) and [@claude](https://github.com/claude)
+  contributed smart-meter and HomeKit fixes.
+- [@davidsonimagerygmailcom](https://github.com/davidsonimagerygmailcom) -
+  midnight counter report.
+- [@kimjamesmaher-dot](https://github.com/kimjamesmaher-dot) - testing and grid
+  sign verification.
+- [@robinhood-code](https://github.com/robinhood-code) - beta.3 HomeKit
+  regression report.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation,
+  regression coverage, and fixture documentation.
+
 ## 11.12.0-beta.7 - 2026-09-30
 
 ## Recover SEMS+ devices during discovery failures
