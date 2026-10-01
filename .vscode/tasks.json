@@ -22,7 +22,7 @@
     {
       "label": "SEMS: sync Home Assistant version",
       "type": "shell",
-      "command": "bash -lc 'set -euo pipefail; version=\"$(sed -n \"s/^homeassistant==\\([^[:space:]#]*\\).*$/\\1/p\" requirements.test.txt)\"; git -C .ha-core fetch --tags origin; git -C .ha-core checkout --detach \"$version\"; rm -rf .ha-core/.venv; bash .devcontainer/setup.sh'",
+      "command": "bash .devcontainer/sync-home-assistant.sh",
       "problemMatcher": []
     },
     {
