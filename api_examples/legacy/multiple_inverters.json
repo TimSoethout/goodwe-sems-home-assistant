@@ -1,0 +1,84 @@
+{
+  "data": {
+    "stationId": "00000000-0000-4000-8000-000000000001",
+    "uid": "<redacted>",
+    "time": 1740787200000,
+    "timeServer": 1740787200000,
+    "list": [
+      {
+        "id": "REDACTED",
+        "sn": "GW0000SN0001TEST",
+        "name": "Example Device",
+        "type": 1,
+        "status": -1,
+        "pac": 0,
+        "eday": 6,
+        "emonth": 180,
+        "etotal": 12500,
+        "capacity": 5.4,
+        "to_hour": 1.11,
+        "location": "Example Location",
+        "powerstation_type": "Residencial",
+        "lastUpdateTime": 1740787200000,
+        "weather_code": 999,
+        "weather_txt": "N/A"
+      },
+      {
+        "id": "REDACTED",
+        "sn": "GW0000SN0001TEST",
+        "name": "Example Device",
+        "type": 1,
+        "status": 1,
+        "pac": 2300,
+        "eday": 23,
+        "emonth": 690,
+        "etotal": 48500,
+        "capacity": 5.8,
+        "to_hour": 3.97,
+        "location": "Example Location",
+        "powerstation_type": "Residencial",
+        "lastUpdateTime": 1740787200000,
+        "weather_code": 801,
+        "weather_txt": "Poucas nuvens"
+      },
+      {
+        "id": "REDACTED",
+        "sn": "GW0000SN0001TEST",
+        "name": "Example Device",
+        "type": 1,
+        "status": 1,
+        "pac": 1700,
+        "eday": 17.3,
+        "emonth": 520,
+        "etotal": 36200,
+        "capacity": 5.6,
+        "to_hour": 3.09,
+        "location": "Example Location",
+        "powerstation_type": "Residencial",
+        "lastUpdateTime": 1740787200000,
+        "weather_code": 801,
+        "weather_txt": "Poucas nuvens"
+      }
+    ],
+    "total": {
+      "count": 3,
+      "capacity": 16.8,
+      "eday": 46.3,
+      "emonth": 1390,
+      "etotal": 97200,
+      "income": 10.53,
+      "income_total": 2210.5,
+      "co2": 48500,
+      "coal": 18500,
+      "trees": 890
+    },
+    "dashboard": {
+      "working": 2,
+      "waiting": 0,
+      "offline": 1,
+      "fault": 0
+    }
+  },
+  "msg": "success",
+  "code": 0
+}

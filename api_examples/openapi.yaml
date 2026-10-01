@@ -1,0 +1,707 @@
+openapi: 3.1.0
+info:
+  title: GoodWe SEMS Observed API
+  version: "0.1.0"
+  description: |
+    Partial, evidence-based description of SEMS and SEMS+ endpoints used by
+    this integration. This is not an official or complete GoodWe API contract.
+    Payloads vary by region, device model, and API generation. Required fields
+    and schemas are intentionally conservative; see x-evidence for provenance.
+servers:
+  - url: https://{region}-gateway.semsportal.com/web/sems
+    description: Regional SEMS+ Web API base returned by Web login.
+    variables:
+      region:
+        default: eu
+        description: Region returned by the SEMS+ Web login response.
+paths:
+  /sems-user/api/v1/auth/cross-login:
+    post:
+      operationId: webCrossLogin
+      summary: Authenticate with the SEMS+ Web API
+      description: |
+        The linked capture is a browser request. The integration currently
+        sends different auxiliary fields in its login body; the exact accepted
+        login contract has not been independently verified.
+      servers:
+        - url: https://semsplus.goodwe.com/web/sems
+          description: SEMS+ Web login service.
+      x-evidence:
+        provenance: api_capture
+        fixtures:
+          - ./web_cross_login.json
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebLoginRequest"
+      responses:
+        "200":
+          description: Login response; tokens and user identifiers are redacted in the capture.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebLoginResponse"
+        default:
+          description: HTTP or API-level login error; not exhaustively captured.
+  /sems-plant/api/portal/stations/page:
+    post:
+      operationId: listStations
+      summary: List accessible power stations
+      security:
+        - WebToken: []
+          WebSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StationPageRequest"
+      responses:
+        "200":
+          description: Station page response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StationPageResponse"
+              examples:
+                capturedPage:
+                  externalValue: ./station_list.json
+        default:
+          description: HTTP or API-level error; not exhaustively captured.
+  /sems-plant/api/stations/flow:
+    get:
+      operationId: getStationFlow
+      summary: Read station power flow
+      security:
+        - WebToken: []
+          WebSignature: []
+      parameters:
+        - $ref: "#/components/parameters/StationId"
+      responses:
+        "200":
+          description: |
+            Power values in captured hybrid examples are kW. Positive pGrid
+            indicates export; negative pGrid indicates import. Positive pBat
+            indicates discharge; negative pBat indicates charging.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StationFlowResponse"
+              examples:
+                stationOverview:
+                  externalValue: ./station_flow.json
+                gridImport:
+                  externalValue: ./station_flow_import.json
+                hybridStation:
+                  externalValue: ./semsplus_hybrid/station_flow.json
+        default:
+          description: HTTP or API-level error; not exhaustively captured.
+      x-evidence:
+        reportedFixtures:
+          - ./station_flow_battery_directions.json
+          - ./station_flow_richaaldo_eu_battery_rack_schema.json
+  /sems-plant/api/stations/device/all-status:
+    get:
+      operationId: getStationDevices
+      summary: Discover station devices and their status
+      security:
+        - WebToken: []
+          WebSignature: []
+      parameters:
+        - $ref: "#/components/parameters/StationId"
+      responses:
+        "200":
+          description: Device groups and per-device details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceDiscoveryResponse"
+              examples:
+                inverter:
+                  externalValue: ./all_status.json
+                smartMeter:
+                  externalValue: ./smart_meter_all_status.json
+                hybrid:
+                  externalValue: ./semsplus_hybrid/all_status.json
+        default:
+          description: HTTP or API-level error; not exhaustively captured.
+  /sems-plant/api/equipments/{serialNumber}/telemetry:
+    get:
+      operationId: getEquipmentTelemetry
+      summary: Read live equipment telemetry
+      security:
+        - WebToken: []
+          WebSignature: []
+      parameters:
+        - $ref: "#/components/parameters/SerialNumber"
+        - $ref: "#/components/parameters/DeviceType"
+        - $ref: "#/components/parameters/PowerStationId"
+      responses:
+        "200":
+          description: Telemetry factor groups; factor values may be strings or numbers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactorGroupsResponse"
+              examples:
+                inverter:
+                  externalValue: ./telemetry.json
+                smartMeter:
+                  externalValue: ./smart_meter_telemetry.json
+                hybridInverter:
+                  externalValue: ./semsplus_hybrid/inverter_telemetry.json
+                batterySystem:
+                  externalValue: ./semsplus_hybrid/battery_system_telemetry.json
+        default:
+          description: HTTP or API-level error; not exhaustively captured.
+  /sems-plant/api/equipments/{serialNumber}/telecounting:
+    get:
+      operationId: getEquipmentTelecounting
+      summary: Read equipment energy counters
+      security:
+        - WebToken: []
+          WebSignature: []
+      parameters:
+        - $ref: "#/components/parameters/SerialNumber"
+        - name: deviceType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [INVERTER, SMART_METER]
+        - $ref: "#/components/parameters/PowerStationId"
+      responses:
+        "200":
+          description: Telecounting factor groups.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactorGroupsResponse"
+              examples:
+                inverter:
+                  externalValue: ./telecounting.json
+                smartMeter:
+                  externalValue: ./smart_meter_telecounting.json
+                hybridInverter:
+                  externalValue: ./semsplus_hybrid/inverter_telecounting.json
+        default:
+          description: HTTP or API-level error; not exhaustively captured.
+  /sems-plant/api/equipments/{serialNumber}/relatedDevices:
+    get:
+      operationId: getRelatedDevices
+      summary: Read related equipment
+      security:
+        - WebToken: []
+          WebSignature: []
+      parameters:
+        - $ref: "#/components/parameters/SerialNumber"
+        - name: sn
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: deviceType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - INVERTER
+              - SMART_METER
+              - ENERGY_STORAGE_INTEGRATED_CABINET
+              - BAT_SYS
+        - $ref: "#/components/parameters/PowerStationId"
+      responses:
+        "200":
+          description: Related devices for the requested equipment and device type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedDevicesResponse"
+              examples:
+                storageCabinet:
+                  externalValue: ./semsplus_hybrid/related_devices_storage_cabinet.json
+        default:
+          description: HTTP or API-level error; not exhaustively captured.
+      x-evidence:
+        reportedFixtures:
+          - ./smart_meter_related_devices.json
+  /sems-plant/api/stations/statistics:
+    post:
+      operationId: getStationStatistics
+      summary: Read station energy statistics
+      security:
+        - WebToken: []
+          WebSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatisticsRequest"
+      responses:
+        "200":
+          description: |
+            Captured success and API-level rejection bodies. The HTTP status
+            was not retained with the statistics examples; inspect code for
+            the API result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatisticsResponse"
+              examples:
+                daily:
+                  externalValue: ./semsplus_hybrid/statistics_day.json
+                year2025:
+                  externalValue: ./semsplus_hybrid/statistics_year_2025.json
+                year2026:
+                  externalValue: ./semsplus_hybrid/statistics_year_2026.json
+                invalidDimension:
+                  summary: Captured API-level rejection for dimension total.
+                  externalValue: ./semsplus_hybrid/statistics_invalid_dimension.json
+                syntheticMonth:
+                  summary: Synthetic response; shape only, not measured values.
+                  externalValue: ./semsplus_hybrid/statistics_month_2026-08.json
+        default:
+          description: HTTP error; not exhaustively captured.
+      x-evidence:
+        reportedFixtures:
+          - ./station_statistics_richaaldo_eu_schema.json
+          - ./hems_power_statistics_richaaldo_eu_schema.json
+  /sems-remote/api/v1/address/remote/setDeviceFunctionParameters:
+    post:
+      operationId: setDeviceFunctionParameters
+      summary: Set remote device function parameters
+      description: |
+        Captured start/stop examples document one function address and model.
+        Other addresses, values, and device-specific behavior are not inferred.
+      security:
+        - WebToken: []
+          WebSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetDeviceFunctionParametersRequest"
+      responses:
+        "200":
+          description: Captured success response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEnvelope"
+        default:
+          description: HTTP or API-level error; not exhaustively captured.
+      x-evidence:
+        fixtures:
+          - ./device_start_stop.json
+  /v3/PowerStation/GetMonitorDetailByPowerstationId:
+    post:
+      operationId: getLegacyMonitorDetail
+      summary: Read legacy inverter monitor details
+      description: The available capture returns no monitor data despite a success code.
+      servers:
+        - url: https://{region}.semsportal.com/api
+          description: Regional legacy SEMS API.
+          variables:
+            region:
+              default: eu
+      security:
+        - LegacyToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                powerStationId:
+                  type: string
+              required: [powerStationId]
+              additionalProperties: true
+      responses:
+        "200":
+          description: Legacy monitor response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegacyMonitorResponse"
+              examples:
+                emptyMonitor:
+                  externalValue: ./legacy/legacy_monitor_empty.json
+        default:
+          description: HTTP or API-level error; not exhaustively captured.
+components:
+  securitySchemes:
+    WebToken:
+      type: apiKey
+      in: header
+      name: token
+      description: JSON-serialized SEMS+ Web token object; never use live values in examples.
+    WebSignature:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: Per-request signature derived from the Web token and timestamp.
+    LegacyToken:
+      type: apiKey
+      in: header
+      name: token
+      description: JSON-serialized legacy SEMS token object.
+  parameters:
+    StationId:
+      name: stationId
+      in: query
+      required: true
+      schema:
+        type: string
+    SerialNumber:
+      name: serialNumber
+      in: path
+      required: true
+      schema:
+        type: string
+    DeviceType:
+      name: deviceType
+      in: query
+      required: true
+      schema:
+        type: string
+        enum: [INVERTER, SMART_METER, BAT_SYS]
+    PowerStationId:
+      name: pwId
+      in: query
+      required: true
+      schema:
+        type: string
+  schemas:
+    ApiEnvelope:
+      type: object
+      properties:
+        code:
+          oneOf:
+            - type: string
+            - type: integer
+          description: API-level result code; success codes vary by API generation.
+        description:
+          type: string
+        msg:
+          type: string
+        traceId:
+          type: string
+        data: {}
+      required: [code]
+      additionalProperties: true
+    WebLoginRequest:
+      type: object
+      description: Captured SEMS+ Web UI request; auxiliary fields vary by client.
+      properties:
+        account:
+          type: string
+        pwd:
+          type: string
+          description: Redacted encoded password value.
+        version:
+          type: string
+        client:
+          type: string
+        language:
+          type: string
+        agreement:
+          type: integer
+        isChinese:
+          type: boolean
+        isLocal:
+          type: boolean
+      required: [account, pwd]
+      additionalProperties: true
+    WebLoginResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                api:
+                  type: string
+                  format: uri
+                region:
+                  type: string
+                uid:
+                  type: string
+                timestamp: {}
+                token:
+                  type: string
+                uuid:
+                  type: string
+              additionalProperties: true
+    StationPageRequest:
+      type: object
+      properties:
+        current:
+          type: integer
+          minimum: 1
+        size:
+          type: integer
+          minimum: 1
+      required: [current, size]
+      additionalProperties: true
+    StationPageResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                dataList:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      status:
+                        type: string
+                      installedPower:
+                        type: number
+                      timeZone:
+                        type: string
+                    additionalProperties: true
+                current:
+                  type: integer
+                size:
+                  type: integer
+                total:
+                  type: integer
+              additionalProperties: true
+    StationFlowResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                pSystem:
+                  type: number
+                  description: PV power in kW.
+                pAc:
+                  type: number
+                  description: Inverter AC output in kW.
+                pBat:
+                  type: number
+                  description: Battery power in kW; positive discharge, negative charge.
+                pGrid:
+                  type: number
+                  description: Grid power in kW; positive export, negative import.
+                pConsum:
+                  type: number
+                  description: Consumption power in kW.
+                soc:
+                  type: number
+                refreshTime:
+                  type: string
+              additionalProperties: true
+    DeviceDiscoveryResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                deviceDetailList:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      deviceType:
+                        type: string
+                      statusDetailList:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            snList:
+                              type: array
+                              items:
+                                type: string
+                            detailMap:
+                              type: object
+                              additionalProperties: true
+                          additionalProperties: true
+                    additionalProperties: true
+              additionalProperties: true
+    Factor:
+      type: object
+      properties:
+        code:
+          type: string
+        data:
+          description: Factor values are commonly strings, including numeric values.
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+            - type: "null"
+        dataType:
+          type: string
+        unit:
+          type: string
+        alias:
+          type: string
+      additionalProperties: true
+    FactorGroupsResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  alias:
+                    type: string
+                  factors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Factor"
+                additionalProperties: true
+    RelatedDevicesResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  sn:
+                    type: string
+                  name:
+                    type: string
+                  type:
+                    type: string
+                  status:
+                    type: integer
+                  soc:
+                    type: number
+                additionalProperties: true
+    StatisticsRequest:
+      type: object
+      properties:
+        stationId:
+          type: string
+        isReport:
+          type: boolean
+        items:
+          type: array
+          items:
+            type: string
+        dimension:
+          type: string
+          enum: [day, month, year]
+        startTime:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$'
+          description: Station-local timestamp.
+        endTime:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$'
+          description: Station-local timestamp.
+      required: [stationId, isReport, items, dimension, startTime, endTime]
+      additionalProperties: true
+    StatisticsResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                dataList:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      item:
+                        type: string
+                      unit:
+                        type: string
+                      statisticsList:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                            val:
+                              type: number
+                          additionalProperties: true
+                    additionalProperties: true
+              additionalProperties: true
+    SetDeviceFunctionParametersRequest:
+      type: object
+      properties:
+        sn:
+          type: string
+        addressMap:
+          type: object
+          additionalProperties:
+            type: integer
+        addrFuncMap:
+          type: object
+          additionalProperties:
+            type: string
+        controlItemLogs:
+          type: object
+          additionalProperties:
+            type: string
+        waitingForDevice:
+          type: boolean
+        plantId:
+          type: string
+        deviceName:
+          type: string
+        virtualSn:
+          type: string
+      required:
+        - sn
+        - addressMap
+        - addrFuncMap
+        - controlItemLogs
+        - waitingForDevice
+        - plantId
+        - deviceName
+      additionalProperties: true
+    LegacyMonitorResponse:
+      type: object
+      properties:
+        code:
+          oneOf:
+            - type: string
+            - type: integer
+        components:
+          type: object
+          additionalProperties: true
+        data: {}
+        function: {}
+        hasError:
+          type: boolean
+        language:
+          type: string
+        msg:
+          type: string
+      required: [code, data]
+      additionalProperties: true

@@ -3,10 +3,19 @@
 These sanitized JSON files document response shapes observed while testing the
 GoodWe SEMS and SEMS+ APIs. Credentials, tokens, trace IDs, station IDs, serial
 numbers, and names are replaced with placeholders or representative values.
-Legacy SEMS response examples are kept in [`legacy/`](./legacy/). See the
-repository [architecture plan](../ARCHITECTURE_PLAN.md) and
-[follow-up work](../TODO.md) for the current integration design and open
-coverage items.
+The machine-readable [`index.json`](./index.json) catalogs the committed
+examples, including file-backed fixtures under `tests/test-data/`, their
+provenance, and known test consumers. Sanitized examples with unverified
+capture context are explicitly labeled as such. Legacy SEMS response examples
+are kept in [`legacy/`](./legacy/). See the repository
+[architecture plan](../ARCHITECTURE_PLAN.md) and [follow-up work](../TODO.md)
+for the current integration design and open coverage items.
+
+[`openapi.yaml`](./openapi.yaml) is a partial, evidence-based OpenAPI 3.1
+description of selected endpoints. It is not an official or complete GoodWe
+contract. Captured responses are linked to their fixture files; reported and
+synthetic data is labeled separately and must not be treated as verified API
+behavior.
 
 ## Capturing a new endpoint or response
 
@@ -17,11 +26,12 @@ coverage items.
 3. Add the sanitized JSON response under this directory. Put legacy SEMS
    monitor responses in [`legacy/`](./legacy/); keep SEMS+ Web responses at the
    top level.
-4. Add the endpoint, request method, required token type, and important fields
-   to this README.
+4. Add it to [`index.json`](./index.json), including provenance and any test
+   consumers. Update the response reference below with its endpoint and field
+   details.
 5. Add or update a fixture-backed regression test before adding a production
-   mapping. Include units, device type, region, and any known limitations in
-   the fixture or test documentation.
+   mapping. Include units, device type, region, and known limitations in the
+   fixture or test documentation.
 
 Never commit credentials, cookies, authorization headers, signatures, live
 tokens, station IDs, serial numbers, trace IDs, or personal names. Replace

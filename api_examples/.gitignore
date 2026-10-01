@@ -1,10 +1,16 @@
 *
 !.gitignore
 !README.md
+!index.json
+!openapi.yaml
 !SEMSPlusMigrationProposal.md
 !legacy/
 legacy/*
 !legacy/legacy_monitor_empty.json
+!legacy/multiple_inverters.json
+!legacy/multiple_inverters_query_power_station_monitor.json
+!legacy/sydneywonder_get_data.json
+!legacy/sydneywonder_inverters.json
 !all_status.json
 !browser_api_endpoints.json
 !device_start_stop.json
