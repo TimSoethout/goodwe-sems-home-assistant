@@ -271,6 +271,25 @@ async def test_control_command_starts_reauth_on_rejected_credentials(
     assert flows[0]["step_id"] == "reauth_confirm"
 
 
+async def test_control_command_without_config_entry_still_raises(
+    hass: HomeAssistant,
+) -> None:
+    """Without a config entry there is no reauth to start, but the error is kept."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(
+        hass, SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD), entry
+    )
+    coordinator.config_entry = None
+    method = MagicMock(side_effect=SemsAuthError("rejected"))
+
+    with pytest.raises(HomeAssistantError, match="reauthenticate"):
+        await coordinator.async_control(method)
+    await hass.async_block_till_done()
+
+    assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+
+
 # ---------------------------------------------------------------------------
 # Translations
 # ---------------------------------------------------------------------------
