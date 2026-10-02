@@ -233,6 +233,26 @@ async def test_last_month_energy_is_requested_only_when_enabled(
         assert float(state.state) == pytest.approx(76.8)
 
 
+async def test_last_month_energy_is_not_requested_without_config_entry(
+    hass: HomeAssistant,
+) -> None:
+    """Without a config entry there is no registry to check, so skip the request."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(hass, SemsApi(hass, "user", "pass"), entry)
+    coordinator.config_entry = None
+
+    assert coordinator._last_month_energy_requested() is False
+
+
 async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
     hass: HomeAssistant,
     enable_custom_integrations: None,
