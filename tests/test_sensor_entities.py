@@ -1215,3 +1215,85 @@ async def test_homekit_sensors_handle_empty_strings_at_night(
     assert load_status_state is not None
     # loadStatus=1 * gridStatus=-1 = -1
     assert load_status_state.state == "-1"
+
+
+@pytest.mark.parametrize(
+    ("telemetry_capture", "counter_capture"),
+    [
+        ("telemetry.json", "telecounting.json"),
+        (
+            "semsplus_hybrid/inverter_telemetry.json",
+            "semsplus_hybrid/inverter_telecounting.json",
+        ),
+    ],
+)
+def test_web_inverter_skips_sensors_without_sems_plus_source(
+    telemetry_capture: str, counter_capture: str
+) -> None:
+    """Do not create legacy sensors that SEMS+ responses never fill."""
+    api_examples = Path(__file__).parent.parent / "api_examples"
+
+    def capture(name: str) -> object:
+        return json.loads((api_examples / name).read_text(encoding="utf-8"))["data"]
+
+    api = SemsApi(None, "user", "pass")  # type: ignore[arg-type]
+    with patch.object(
+        api,
+        "_make_api_call",
+        side_effect=[capture(telemetry_capture), capture(counter_capture)],
+    ):
+        inverter = {
+            "sn": "INV1",
+            "name": "Inverter",
+            **api.getWebInverterTelemetry("station", "INV1"),
+            **api.getWebInverterTelecounting("station", "INV1"),
+        }
+
+    unique_ids = {
+        sensor.unique_id
+        for sensor in sensor_options_for_data(SemsData(inverters={"INV1": inverter}))
+    }
+
+    for field in (
+        "iday",
+        "itotal",
+        "vbattery1",
+        "ibattery1",
+        "iac2",
+        "iac3",
+        "fac2",
+        "fac3",
+    ):
+        assert f"INV1-{field}" not in unique_ids
+    # Fields with a SEMS+ mapping keep their entities even while a value is
+    # missing, so IDs stay stable across night-time telemetry gaps.
+    for field in ("iac1", "fac1", "vac1", "vac2", "vac3", "lastmonthetotle"):
+        assert f"INV1-{field}" in unique_ids
+
+
+def test_legacy_inverter_fields_keep_their_sensors() -> None:
+    """Payloads that carry the legacy fields keep their sensors and IDs."""
+    data = SemsData(
+        inverters={
+            "INV1": {
+                "sn": "INV1",
+                "iday": 1.5,
+                "itotal": 842.5,
+                "vbattery1": 0.0,
+                "ibattery1": 0.0,
+                "iac2": 0.0,
+                "fac3": 50.01,
+            }
+        }
+    )
+
+    unique_ids = {sensor.unique_id for sensor in sensor_options_for_data(data)}
+
+    assert {
+        "INV1-iday",
+        "INV1-itotal",
+        "INV1-vbattery1",
+        "INV1-ibattery1",
+        "INV1-iac2",
+        "INV1-fac3",
+    } <= unique_ids
