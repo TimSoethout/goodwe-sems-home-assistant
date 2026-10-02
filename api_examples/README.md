@@ -160,8 +160,10 @@ adding or updating an example.
 
 ## EV charger (HCA wallbox) endpoints
 
-Derived from the SEMS+ Web UI charger page; no live captures yet. Chargers are
-discovered as `EV_CHARGER` devices in `all-status`.
+Derived from the SEMS+ Web UI charger page. The integration was checked
+against a live HCA charger (values and every control), but no sanitized
+response captures are stored yet; the tests use hand-built responses with the
+same shapes. Chargers are discovered as `EV_CHARGER` devices in `all-status`.
 
 | Purpose | Request |
 | --- | --- |

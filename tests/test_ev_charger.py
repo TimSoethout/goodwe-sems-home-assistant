@@ -32,6 +32,11 @@ from custom_components.sems.sems_api import (
     SemsPermissionError,
 )
 
+# The response constants below are hand-built, not sanitized captures. Their
+# shapes and field names follow the SEMS+ Web UI charger page requests, and the
+# integration reading them was checked against a live HCA charger on the
+# SEMS+ portal (values and every control). A full charging session was not
+# captured yet; replace these with sanitized captures once one is available.
 STATION_ID = "12345678-1234-5678-9abc-123456789abc"
 CHARGER_SN = "EVC0000SN0TEST1"
 
