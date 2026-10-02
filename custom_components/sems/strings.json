@@ -28,5 +28,98 @@
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
       "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]"
     }
+  },
+  "entity": {
+    "sensor": {
+      "ev_status": {
+        "name": "Status",
+        "state": {
+          "available": "Available",
+          "charging": "Charging",
+          "fault": "Fault",
+          "maintenance": "Maintenance",
+          "offline": "Offline",
+          "unknown": "Unknown"
+        }
+      },
+      "ev_plug": {
+        "name": "Plug",
+        "state": {
+          "connected": "Connected",
+          "disconnected": "Disconnected"
+        }
+      },
+      "ev_charging_power": {
+        "name": "Charging Power"
+      },
+      "ev_session_energy": {
+        "name": "Session Energy"
+      },
+      "ev_session_pv_energy": {
+        "name": "Session PV Energy"
+      },
+      "ev_session_grid_energy": {
+        "name": "Session Grid Energy"
+      },
+      "ev_session_average_power": {
+        "name": "Session Average Power"
+      },
+      "ev_session_max_power": {
+        "name": "Session Max Power"
+      },
+      "ev_session_duration": {
+        "name": "Session Duration"
+      },
+      "ev_session_range_added": {
+        "name": "Session Range Added"
+      }
+    },
+    "select": {
+      "ev_charge_mode": {
+        "name": "Charge Mode",
+        "state": {
+          "fast": "Fast",
+          "pv": "PV",
+          "pv_battery": "PV + battery"
+        }
+      }
+    },
+    "switch": {
+      "ev_start_charging": {
+        "name": "Start Charging"
+      },
+      "ev_plug_and_charge": {
+        "name": "Plug and Charge"
+      },
+      "ev_min_charging_power": {
+        "name": "Min Charging Power"
+      },
+      "ev_grid_compliance_limit": {
+        "name": "Grid Compliance Limit"
+      },
+      "ev_dynamic_load_management": {
+        "name": "Dynamic Load Management"
+      },
+      "ev_phase_switching": {
+        "name": "Single/Three-phase Switching"
+      },
+      "ev_lock_charging_plug": {
+        "name": "Lock Charging Plug"
+      }
+    },
+    "number": {
+      "ev_output_power_limit": {
+        "name": "Output Power Limit"
+      },
+      "ev_max_import_power_limit": {
+        "name": "Max Import Power Limit"
+      },
+      "ev_grid_compliance_limit_value": {
+        "name": "Grid Compliance Limit Value"
+      },
+      "ev_dynamic_load_import_current_limit": {
+        "name": "Dynamic Load Import Current Limit"
+      }
+    }
   }
 }

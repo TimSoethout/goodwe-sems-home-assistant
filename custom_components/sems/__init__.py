@@ -154,6 +154,7 @@ class SemsData:
     immediate_charging: dict[str, dict[str, Any]] | None = None
     homekit: dict[str, Any] | None = None
     currency: str | None = None
+    ev_chargers: dict[str, dict[str, Any]] | None = None
     unavailable_inverter_sources: dict[str, set[str]] = field(default_factory=dict)
     unavailable_homekit_sources: set[str] = field(default_factory=set)
 
@@ -524,6 +525,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 batteries=batteries,
                 homekit=homekit,
                 currency=currency,
+                ev_chargers=data_result.get("ev_chargers") or None,
                 immediate_charging=immediate_charging,
                 unavailable_inverter_sources=unavailable_inverter_sources,
                 unavailable_homekit_sources=raw_homekit_sources,

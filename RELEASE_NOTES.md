@@ -1,5 +1,19 @@
 # Release notes
 
+## Unreleased
+
+## Add GoodWe EV charger (HCA wallbox) support
+
+- Discover EV chargers from SEMS+ and add each as its own device, with
+  status, plug, charging power, live telemetry, energy counters, and last
+  session sensors.
+- Start and stop charging, and choose the charge mode (Fast, PV, or PV +
+  battery).
+- Toggle Plug and Charge and adjust the SEMS+ More Control settings, such as
+  power limits, dynamic load management, phase switching, and plug lock.
+- Controls were verified against a live charger; a full charging session has
+  not been tested yet. Please report issues with sanitized debug logs.
+
 ## 11.12.0 - 2026-10-01
 
 ## Improve SEMS+ reliability and recovery

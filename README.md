@@ -75,6 +75,42 @@ reports the inverter name, serial number, and station in the service error.
 Re-register the integration with the GoodWe account that has remote-control
 permission.
 
+### GoodWe EV charger (HCA wallbox)
+
+GoodWe EV chargers reported by SEMS+ are added as a separate **EV Charger**
+device per charger. Each entity is created only when SEMS+ reports the
+matching value or setting.
+
+Sensors:
+
+- **Status**: Offline, Available, Charging, Fault, or Maintenance. The start,
+  end, and end reason of the last session are shown as attributes.
+- **Plug**: whether a vehicle is connected.
+- **Charging Power**: live charging power. This comes from the station power
+  flow, so it's only reported for stations with a single charger.
+- Live values and energy counters that the charger reports, such as voltage,
+  current, power, and total charged energy.
+- **Last session** values: energy, PV and grid share, average and maximum
+  power, duration, and range added.
+
+Controls:
+
+- **Start Charging** switch: starts or stops a charging session.
+- **Charge Mode** select: Fast, PV, or PV + battery. Fast mode uses the
+  charger's configured maximum power.
+- **Plug and Charge** switch: starts charging as soon as a vehicle is plugged
+  in.
+- Settings from SEMS+ **More Control**, shown under the device's
+  configuration entities: Output Power Limit, Max Import Power Limit, Grid
+  Compliance Limit, Dynamic Load Management and its import current limit, Min
+  Charging Power, Single/Three-phase Switching, and Lock Charging Plug. Value
+  ranges follow the SEMS+ Web UI.
+
+Controlling the charger requires an account with remote-control permission;
+a Visitor account shows the values only. The charger can take a moment to
+apply a change. Scheduled charging, RFID cards, and charging
+session history aren't supported.
+
 ### Recommended: use visitor account if you do not need to control the inverter
 
 In case you are only reading the inverter stats, you can use a Visitor (read-only) account.

@@ -157,3 +157,25 @@ body selects the corresponding battery function address and value.
 Do not add live API responses to this directory. Remove credentials, tokens,
 station identifiers, serial numbers, trace IDs, and personal names before
 adding or updating an example.
+
+## EV charger (HCA wallbox) endpoints
+
+Derived from the SEMS+ Web UI charger page. The integration was checked
+against a live HCA charger (values and every control), but no sanitized
+response captures are stored yet; the tests use hand-built responses with the
+same shapes. Chargers are discovered as `EV_CHARGER` devices in `all-status`.
+
+| Purpose | Request |
+| --- | --- |
+| Live values / counters | `GET /web/sems/sems-plant/api/equipments/<sn>/telemetry` and `.../telecounting` with `deviceType=EV_CHARGER&pwId=<station_id>` |
+| Mode settings | `GET /web/sems/sems-remote/api/ev-charger/control-item-content-list/<sn>` (`productModel`, `chargeMode`, `chargeMaxPower`) |
+| Charge state | `GET /web/sems/sems-plant/api/v1/chargePile/getLastCharge?chargeSn=<sn>&pwId=<station_id>`; `chargeLog.workStu`: 0 offline, 2 fault, 6 charging, 8/10 available, 9 maintenance; `chargeLog.status` = plug status |
+| Current mode and settings | `POST /web/sems/sems-remote/api/ev-charger/detail` with `{sn, productModel}`: `chargeMode`, `chargeMaxPower`, `ratedMaxiChargePower`, `buyPwrLimit`, `ensureMinimumChargingPower`, `gridControlLimitSwitch`/`gridControlLimitValue`, `dynamicLoad`/`currentLimit`, `phaseSwitch`, `lockChargingPlug`, `chargedNow` (plug and charge) |
+| Change a setting | `POST /web/sems/sems-remote/api/ev-charger/set-config` with `{sn, plantId, productModel, <field>: value}`; toggles are sent as 0/1; ranges come from the mode settings' `controlItemRanges` |
+| Live charging power | `stations/flow` field `pEvChar` (kW, station total) |
+| Last session | `getLastCharge` `chargeLog`: `currentChargeQuantity`, `greenElec`, `purElec` (kWh), `averCharP`, `maxCharP` (kW), `chargeTimeLength` (min), `chargeStartTime`, `chargeEndTime`, `chargeEndCauseDetail`, `mileage` |
+| Start / stop | `POST /web/sems/sems-remote/api/ev-charger/startCharge` or `stopCharge` with `{sn, plantId, productModel, mode}` |
+| Charge mode | `POST /web/sems/sems-remote/api/ev-charger/set-mode` with `{mode, sn, plantId, productModel}`; mode 0 fast (also sends `chargeMaxPower`, `chargePowerSetted`), 1 PV, 2 PV + battery |
+
+Also present in the UI but not implemented: `set-scheduled` / `cancel-charge` (scheduled charging), RFID
+`card/*`, and `chargePile/queryChargeLogList` (session history).
