@@ -46,7 +46,7 @@ from .const import (
     redact_for_log,
 )
 from .device import device_info_for_inverter
-from .ev_charger import ev_charger_sensors
+from .ev_charger import async_add_ev_charger_entities, ev_charger_sensors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -949,7 +949,10 @@ async def async_setup_entry(
                 sensor_option.entity_registry_enabled_default,
             )
         )
-    async_add_entities([*sensors, *ev_charger_sensors(coordinator)])
+    async_add_entities(sensors)
+    async_add_ev_charger_entities(
+        coordinator, config_entry, async_add_entities, ev_charger_sensors
+    )
 
 
 def _migrate_unique_ids(hass: HomeAssistant, migrations: dict[str, str]) -> None:

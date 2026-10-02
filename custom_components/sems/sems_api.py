@@ -1413,6 +1413,8 @@ class SemsApi:
         except (OutOfRetries, SemsRateLimitedError) as err:
             _LOGGER.debug("SEMS station flow unavailable: %s", err)
             flow = {}
+            for charger in ev_chargers.values():
+                charger["unavailable_sources"].add("flow")
         if len(ev_chargers) == 1 and flow.get("pEvChar") is not None:
             # Station flow reports the (total) EV charging power in kW; it can
             # only be attributed to a charger when the station has one.
@@ -1543,15 +1545,18 @@ class SemsApi:
         """Get EV charger telemetry, counters, mode settings, and charge state.
 
         Each request is optional so one failing charger endpoint does not hide
-        the others or the station's inverter data.
+        the others or the station's inverter data. Failed requests are listed
+        in `unavailable_sources` so the entities they feed report unavailable.
         """
         serial_number = device["sn"]
+        unavailable_sources: set[str] = set()
         charger: dict[str, Any] = {
             **device,
             "powerstation_id": powerStationId,
             "factors": {},
             "mode_info": {},
             "charge_log": {},
+            "unavailable_sources": unavailable_sources,
         }
         for endpoint, name in (
             (_WEB_TELEMETRY_ENDPOINT, "telemetry"),
@@ -1570,11 +1575,15 @@ class SemsApi:
                 )
             except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
                 _LOGGER.debug("SEMS EV charger %s unavailable: %s", name, err)
+                unavailable_sources.add(name)
                 continue
             charger["factors"].update(
-                self._web_factors_with_units(
-                    result if isinstance(result, list) else None
-                )
+                {
+                    code: {**factor, "source": name}
+                    for code, factor in self._web_factors_with_units(
+                        result if isinstance(result, list) else None
+                    ).items()
+                }
             )
 
         for key, url_part, operation_name in (
@@ -1604,6 +1613,7 @@ class SemsApi:
                 )
             except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
                 _LOGGER.debug("SEMS EV charger %s unavailable: %s", key, err)
+                unavailable_sources.add(key)
                 continue
             if not isinstance(result, dict):
                 continue
@@ -1634,9 +1644,13 @@ class SemsApi:
                 )
             except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
                 _LOGGER.debug("SEMS EV charger detail unavailable: %s", err)
+                unavailable_sources.add("detail")
             else:
                 if isinstance(detail, dict):
                     charger["detail"] = detail
+        elif "mode_info" in unavailable_sources:
+            # Without the model the settings can't be read either.
+            unavailable_sources.add("detail")
         return charger
 
     @staticmethod

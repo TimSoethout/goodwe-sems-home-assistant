@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
@@ -14,6 +15,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
@@ -25,8 +27,11 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
@@ -34,19 +39,19 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# `chargeLog.workStu` values from the SEMS+ Web UI.
+# `chargeLog.workStu` values from the SEMS+ Web UI, as translated states.
 EV_CHARGER_STATUS_LABELS = {
-    0: "Offline",
-    2: "Fault",
-    6: "Charging",
-    8: "Available",
-    9: "Maintenance",
-    10: "Available",
+    0: "offline",
+    2: "fault",
+    6: "charging",
+    8: "available",
+    9: "maintenance",
+    10: "available",
 }
 _EV_CHARGER_CHARGING_STATUS = 6
 
-# SEMS+ charge modes, as listed by the Web UI mode selector.
-EV_CHARGE_MODES = {0: "Fast", 1: "PV", 2: "PV + battery"}
+# SEMS+ charge modes, as listed by the Web UI mode selector (translated options).
+EV_CHARGE_MODES = {0: "fast", 1: "pv", 2: "pv_battery"}
 
 # Unit -> (device class, HA unit, state class) for dynamic factor sensors.
 _UNIT_MAP: dict[str, tuple[SensorDeviceClass | None, str, SensorStateClass]] = {
@@ -119,9 +124,14 @@ def _factor_name(code: str, alias: str) -> str:
 
 
 class _EvChargerEntity(CoordinatorEntity[SemsCoordinator]):
-    """Base entity for an EV charger."""
+    """Base entity for an EV charger.
+
+    `_sources` lists the SEMS+ requests the entity's state comes from; the
+    entity is unavailable while any of them failed in the last refresh.
+    """
 
     _attr_has_entity_name = True
+    _sources: tuple[str, ...] = ()
 
     def __init__(
         self, coordinator: SemsCoordinator, serial_number: str, key: str
@@ -136,6 +146,16 @@ class _EvChargerEntity(CoordinatorEntity[SemsCoordinator]):
     @property
     def _charger(self) -> dict[str, Any]:
         return (self.coordinator.data.ev_chargers or {}).get(self.serial_number, {})
+
+    @property
+    def available(self) -> bool:
+        """Return False when the charger or one of its data sources is missing."""
+        charger = self._charger
+        return (
+            super().available
+            and bool(charger)
+            and not set(self._sources) & charger.get("unavailable_sources", set())
+        )
 
     @property
     def _work_status(self) -> int | None:
@@ -178,18 +198,19 @@ class EvChargerStatusSensor(_EvChargerEntity, SensorEntity):
     """Charger working status (available, charging, fault, ...)."""
 
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = sorted({*EV_CHARGER_STATUS_LABELS.values(), "Unknown"})
+    _attr_options = sorted({*EV_CHARGER_STATUS_LABELS.values(), "unknown"})
+    _attr_translation_key = "ev_status"
+    _sources = ("last_charge",)
 
     def __init__(self, coordinator: SemsCoordinator, serial_number: str) -> None:
         super().__init__(coordinator, serial_number, "status")
-        self._attr_name = "Status"
 
     @property
     def native_value(self) -> str | None:
         status = self._work_status
         if status is None:
             return None
-        return EV_CHARGER_STATUS_LABELS.get(status, "Unknown")
+        return EV_CHARGER_STATUS_LABELS.get(status, "unknown")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -213,11 +234,12 @@ class EvChargerPlugSensor(_EvChargerEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_icon = "mdi:ev-plug-type2"
+    _attr_translation_key = "ev_plug"
+    _sources = ("last_charge",)
 
     def __init__(self, coordinator: SemsCoordinator, serial_number: str) -> None:
         super().__init__(coordinator, serial_number, "plug")
-        self._attr_name = "Plug"
-        self._attr_options = ["Connected", "Disconnected"]
+        self._attr_options = ["connected", "disconnected"]
 
     @property
     def native_value(self) -> str | None:
@@ -225,7 +247,7 @@ class EvChargerPlugSensor(_EvChargerEntity, SensorEntity):
         if status is None:
             return None
         try:
-            return "Connected" if int(status) else "Disconnected"
+            return "connected" if int(status) else "disconnected"
         except TypeError, ValueError:
             return None
 
@@ -236,72 +258,75 @@ class EvChargerPowerSensor(_EvChargerEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.POWER
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_translation_key = "ev_charging_power"
+    _sources = ("flow",)
 
     def __init__(self, coordinator: SemsCoordinator, serial_number: str) -> None:
         super().__init__(coordinator, serial_number, "charging-power")
-        self._attr_name = "Charging Power"
 
     @property
     def native_value(self) -> float | None:
         return self._charger.get("charging_power")
 
 
-# Last charging session values (`chargeLog`): field -> (name, unit, class, state).
+# Last session values (`chargeLog`): field -> (translation key, unit, class, state).
 # They are replaced by the next session, so energies have no state class: a
 # counter state class would build misleading long-term statistics.
 EV_CHARGER_SESSION_SENSORS: dict[
     str, tuple[str, str | None, SensorDeviceClass | None, SensorStateClass | None]
 ] = {
     "currentChargeQuantity": (
-        "Session Energy",
+        "ev_session_energy",
         UnitOfEnergy.KILO_WATT_HOUR,
         SensorDeviceClass.ENERGY,
         None,
     ),
     "greenElec": (
-        "Session PV Energy",
+        "ev_session_pv_energy",
         UnitOfEnergy.KILO_WATT_HOUR,
         SensorDeviceClass.ENERGY,
         None,
     ),
     "purElec": (
-        "Session Grid Energy",
+        "ev_session_grid_energy",
         UnitOfEnergy.KILO_WATT_HOUR,
         SensorDeviceClass.ENERGY,
         None,
     ),
     "averCharP": (
-        "Session Average Power",
+        "ev_session_average_power",
         UnitOfPower.KILO_WATT,
         SensorDeviceClass.POWER,
         SensorStateClass.MEASUREMENT,
     ),
     "maxCharP": (
-        "Session Max Power",
+        "ev_session_max_power",
         UnitOfPower.KILO_WATT,
         SensorDeviceClass.POWER,
         SensorStateClass.MEASUREMENT,
     ),
     "chargeTimeLength": (
-        "Session Duration",
+        "ev_session_duration",
         UnitOfTime.MINUTES,
         SensorDeviceClass.DURATION,
         SensorStateClass.MEASUREMENT,
     ),
-    "mileage": ("Session Range Added", None, None, SensorStateClass.MEASUREMENT),
+    "mileage": ("ev_session_range_added", None, None, SensorStateClass.MEASUREMENT),
 }
 
 
 class EvChargerSessionSensor(_EvChargerEntity, SensorEntity):
     """A value of the last charging session."""
 
+    _sources = ("last_charge",)
+
     def __init__(
         self, coordinator: SemsCoordinator, serial_number: str, field: str
     ) -> None:
         super().__init__(coordinator, serial_number, f"session-{field}")
         self._field = field
-        name, unit, device_class, state_class = EV_CHARGER_SESSION_SENSORS[field]
-        self._attr_name = name
+        key, unit, device_class, state_class = EV_CHARGER_SESSION_SENSORS[field]
+        self._attr_translation_key = key
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_state_class = state_class
@@ -327,7 +352,10 @@ class EvChargerFactorSensor(_EvChargerEntity, SensorEntity):
     ) -> None:
         super().__init__(coordinator, serial_number, code)
         self._code = code
+        # Names come from SEMS+ factor aliases, so they can't be translated.
         self._attr_name = _factor_name(code, factor.get("alias", code))
+        if source := factor.get("source"):
+            self._sources = (source,)
         unit = str(factor.get("unit") or "").strip()
         if mapped := _UNIT_MAP.get(unit.lower()):
             device_class, native_unit, state_class = mapped
@@ -347,10 +375,11 @@ class EvChargerChargingSwitch(_EvChargerEntity, SwitchEntity):
     """Start or stop charging (SEMS+ "Start charging" toggle)."""
 
     _attr_icon = "mdi:ev-station"
+    _attr_translation_key = "ev_start_charging"
+    _sources = ("last_charge", "mode_info")
 
     def __init__(self, coordinator: SemsCoordinator, serial_number: str) -> None:
         super().__init__(coordinator, serial_number, "charging")
-        self._attr_name = "Start Charging"
 
     @property
     def is_on(self) -> bool | None:
@@ -372,10 +401,11 @@ class EvChargeModeSelect(_EvChargerEntity, SelectEntity):
     """Charge mode: fast, PV only, or PV and battery."""
 
     _attr_icon = "mdi:ev-plug-type2"
+    _attr_translation_key = "ev_charge_mode"
+    _sources = ("mode_info", "detail")
 
     def __init__(self, coordinator: SemsCoordinator, serial_number: str) -> None:
         super().__init__(coordinator, serial_number, "charge-mode")
-        self._attr_name = "Charge Mode"
         self._attr_options = list(EV_CHARGE_MODES.values())
 
     @property
@@ -392,34 +422,41 @@ class EvChargeModeSelect(_EvChargerEntity, SelectEntity):
         )
 
 
-# "More Control" switches: detail field -> name (sent as 0/1 like the Web UI).
+# "More Control" switches: detail field -> translation key (sent as 0/1 like
+# the Web UI).
 EV_CHARGER_CONFIG_SWITCHES = {
     # Main dashboard control in the Web UI, not a More Control setting.
-    "chargedNow": "Plug and Charge",
-    "ensureMinimumChargingPower": "Min Charging Power",
-    "gridControlLimitSwitch": "Grid Compliance Limit",
-    "dynamicLoad": "Dynamic Load Management",
-    "phaseSwitch": "Single/Three-phase Switching",
-    "lockChargingPlug": "Lock Charging Plug",
+    "chargedNow": "ev_plug_and_charge",
+    "ensureMinimumChargingPower": "ev_min_charging_power",
+    "gridControlLimitSwitch": "ev_grid_compliance_limit",
+    "dynamicLoad": "ev_dynamic_load_management",
+    "phaseSwitch": "ev_phase_switching",
+    "lockChargingPlug": "ev_lock_charging_plug",
 }
 
-# "More Control" numbers: detail field -> (name, unit, SEMS range key, step).
+# "More Control" numbers: detail field -> (translation key, unit, SEMS range
+# key, step).
 EV_CHARGER_CONFIG_NUMBERS: dict[str, tuple[str, str, str | None, float]] = {
-    "ratedMaxiChargePower": ("Output Power Limit", UnitOfPower.KILO_WATT, None, 0.1),
+    "ratedMaxiChargePower": (
+        "ev_output_power_limit",
+        UnitOfPower.KILO_WATT,
+        None,
+        0.1,
+    ),
     "buyPwrLimit": (
-        "Max Import Power Limit",
+        "ev_max_import_power_limit",
         UnitOfPower.KILO_WATT,
         "Buy_Pwr_Limit",
         0.1,
     ),
     "gridControlLimitValue": (
-        "Grid Compliance Limit Value",
+        "ev_grid_compliance_limit_value",
         UnitOfPower.KILO_WATT,
         "Grid_Control_Limit_Value",
         0.1,
     ),
     "currentLimit": (
-        "Dynamic Load Import Current Limit",
+        "ev_dynamic_load_import_current_limit",
         UnitOfElectricCurrent.AMPERE,
         "charge_pile_dynamic_load_import_current_limit",
         1,
@@ -431,13 +468,14 @@ class EvChargerConfigSwitch(_EvChargerEntity, SwitchEntity):
     """Toggle one EV charger "More Control" setting."""
 
     _attr_entity_category: EntityCategory | None = EntityCategory.CONFIG
+    _sources = ("mode_info", "detail")
 
     def __init__(
         self, coordinator: SemsCoordinator, serial_number: str, field: str
     ) -> None:
         super().__init__(coordinator, serial_number, f"config-{field}")
         self._field = field
-        self._attr_name = EV_CHARGER_CONFIG_SWITCHES[field]
+        self._attr_translation_key = EV_CHARGER_CONFIG_SWITCHES[field]
         if field == "chargedNow":
             self._attr_entity_category = None
             self._attr_icon = "mdi:ev-plug-type2"
@@ -463,14 +501,15 @@ class EvChargerConfigNumber(_EvChargerEntity, NumberEntity):
 
     _attr_entity_category = EntityCategory.CONFIG
     _attr_mode = NumberMode.BOX
+    _sources = ("mode_info", "detail")
 
     def __init__(
         self, coordinator: SemsCoordinator, serial_number: str, field: str
     ) -> None:
         super().__init__(coordinator, serial_number, f"config-{field}")
         self._field = field
-        name, unit, range_key, step = EV_CHARGER_CONFIG_NUMBERS[field]
-        self._attr_name = name
+        key, unit, range_key, step = EV_CHARGER_CONFIG_NUMBERS[field]
+        self._attr_translation_key = key
         self._attr_native_unit_of_measurement = unit
         self._attr_native_step = step
         self._attr_device_class = (
@@ -567,3 +606,30 @@ def ev_charger_selects(coordinator: SemsCoordinator) -> list[SelectEntity]:
         EvChargeModeSelect(coordinator, serial_number)
         for serial_number in coordinator.data.ev_chargers or {}
     ]
+
+
+def async_add_ev_charger_entities(
+    coordinator: SemsCoordinator,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+    factory: Callable[[SemsCoordinator], Sequence[Entity]],
+) -> None:
+    """Add charger entities now and whenever a refresh reports new ones.
+
+    Factories only build entities for values SEMS+ reported, so a charger or
+    endpoint that comes back after a failure gets its entities on a later
+    refresh.
+    """
+    added: set[str | None] = set()
+
+    @callback
+    def add_new_entities() -> None:
+        new = [
+            entity for entity in factory(coordinator) if entity.unique_id not in added
+        ]
+        if new:
+            added.update(entity.unique_id for entity in new)
+            async_add_entities(new)
+
+    add_new_entities()
+    entry.async_on_unload(coordinator.async_add_listener(add_new_entities))

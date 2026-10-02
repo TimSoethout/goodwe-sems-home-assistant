@@ -22,7 +22,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import SemsCoordinator
 from .const import CONF_STATION_ID, INVERTER_ON_STATUSES
 from .device import device_info_for_inverter
-from .ev_charger import ev_charger_switches
+from .ev_charger import async_add_ev_charger_entities, ev_charger_switches
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -176,6 +176,7 @@ async def async_setup_entry(
                     )
                 )
 
-    switch_entities.extend(ev_charger_switches(coordinator))
-
     async_add_entities(switch_entities)
+    async_add_ev_charger_entities(
+        coordinator, config_entry, async_add_entities, ev_charger_switches
+    )
