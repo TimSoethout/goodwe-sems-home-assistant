@@ -57,6 +57,7 @@
 - Use the [release-workflow skill](.github/skills/release-workflow/SKILL.md) when preparing HACS releases, including version bumps, tags, beta/pre-release publishing, and release notes.
 
 ## GitHub and session wrap-up
+- Use the `gh` CLI or Github-MCP for GitHub issues, pull requests, comments, and replies.
 - Label GitHub PRs, comments and replies as AI/Copilot-generated.
 
 ## Examples to follow
