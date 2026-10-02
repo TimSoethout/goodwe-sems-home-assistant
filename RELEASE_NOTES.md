@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 11.13.0-beta.1 - 2026-10-02
+
 ## Add GoodWe EV charger (HCA wallbox) support
 
 - Discover EV chargers from SEMS+ and add each as its own device, with
@@ -11,8 +13,30 @@
   battery).
 - Toggle Plug and Charge and adjust the SEMS+ More Control settings, such as
   power limits, dynamic load management, phase switching, and plug lock.
-- Controls were verified against a live charger; a full charging session has
-  not been tested yet. Please report issues with sanitized debug logs.
+- Charger controls require an SEMS+ account with remote-control permission;
+  Visitor accounts can read values but cannot control the charger.
+
+### Limitations
+
+- A full charging session and its live/session sensors have not been tested.
+- Tests use hand-built responses based on the SEMS+ Web UI request shapes;
+  sanitized API captures are not yet bundled.
+- HACS users must opt into prereleases to install this beta.
+
+### Related
+
+- [#240](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/240) -
+  EV charger support.
+- [#182](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/182) -
+  EV charger endpoint discovery and response samples.
+
+### Contributors
+
+- [@mholka](https://github.com/mholka) - implementation and live charger
+  testing.
+- [@floslight](https://github.com/floslight) - SEMS+ endpoint samples and
+  observations.
+- [@TimSoethout](https://github.com/TimSoethout) - review and validation.
 
 ## 11.12.0 - 2026-10-01
 
