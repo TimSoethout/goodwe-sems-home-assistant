@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -39,6 +41,7 @@ from custom_components.sems.sems_api import (
 # captured yet; replace these with sanitized captures once one is available.
 STATION_ID = "12345678-1234-5678-9abc-123456789abc"
 CHARGER_SN = "EVC0000SN0TEST1"
+API_EXAMPLES_DIR = Path(__file__).parent.parent / "api_examples"
 
 ALL_STATUS = {
     "deviceDetailList": [
@@ -133,6 +136,13 @@ def _web_api() -> SemsApi:
     return SemsApi(Mock(), "user", "pass")
 
 
+def _load_issue_182_data(name: str) -> dict[str, Any]:
+    with (API_EXAMPLES_DIR / name).open(encoding="utf-8") as file:
+        response = json.load(file)
+    assert response["code"] == "00000"
+    return response["data"]
+
+
 @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
 @patch.object(SemsApi, "getWebStationFlow", return_value={"pEvChar": 7.2})
 def test_get_web_data_collects_ev_charger(mock_flow, mock_statistics):
@@ -168,6 +178,74 @@ def test_get_web_data_collects_ev_charger(mock_flow, mock_statistics):
         },
     }
     assert charger["unavailable_sources"] == set()
+
+
+async def test_issue_182_response_excerpts_reach_ev_charger_entities(
+    hass: HomeAssistant, enable_custom_integrations: None
+) -> None:
+    """Test issue-reported detail and last-charge values through entity setup."""
+    del enable_custom_integrations
+    detail = _load_issue_182_data("ev_charger_detail_issue_182.json")
+    last_charge = _load_issue_182_data("ev_charger_last_charge_issue_182.json")
+    sample_serial = "<charger_serial>"
+    api = _web_api()
+
+    def captured_api_call(url_part: str, *args: Any, **kwargs: Any) -> Any:
+        if "telemetry" in url_part or "telecounting" in url_part:
+            raise OutOfRetries("No EV charger response excerpt in issue #182")
+        if "control-item-content-list" in url_part:
+            # The issue excerpt does not include this response; the model is
+            # only needed to reach the captured detail endpoint.
+            return {"productModel": "GW11K-HCA"}
+        if "chargePile/getLastCharge" in url_part:
+            return last_charge
+        if url_part == "/sems-remote/api/ev-charger/detail":
+            return detail
+        raise AssertionError(f"Unexpected EV charger endpoint: {url_part}")
+
+    with patch.object(api, "_make_api_call", side_effect=captured_api_call):
+        charger = api.getWebEvCharger(
+            "station", {"sn": sample_serial, "name": "GW11K-HCA"}
+        )
+
+    data = {
+        "inverter": [
+            {"invert_full": {"sn": "INV1", "name": "Inverter", "status": 1, "pac": 100}}
+        ],
+        "ev_chargers": {sample_serial: charger},
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Captured EV charger",
+        data={CONF_USERNAME: "u", CONF_PASSWORD: "p", CONF_STATION_ID: "station"},
+    )
+    entry.add_to_hass(hass)
+    with (
+        patch("custom_components.sems.sems_api.SemsApi.getData", return_value=data),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
+            return_value=[],
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+
+    def state(platform: Platform, key: str) -> Any:
+        entity_id = ent_reg.async_get_entity_id(
+            platform, DOMAIN, f"{sample_serial}-ev-{key}"
+        )
+        assert entity_id is not None, key
+        return hass.states.get(entity_id)
+
+    assert state(Platform.SENSOR, "status").state == "charging"
+    assert state(Platform.SENSOR, "plug").state == "connected"
+    assert float(state(Platform.SENSOR, "session-currentChargeQuantity").state) == 5.67
+    assert float(state(Platform.SENSOR, "session-chargeTimeLength").state) == 45
+    assert float(state(Platform.SENSOR, "session-mileage").state) == 28.35
+    assert state(Platform.SELECT, "charge-mode").state == "fast"
+    assert state(Platform.SWITCH, "config-dynamicLoad").state == "off"
 
 
 def test_ev_charger_commands_use_web_ui_payloads():

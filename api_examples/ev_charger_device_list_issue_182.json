@@ -1,0 +1,12 @@
+{
+  "code": "00000",
+  "data": [
+    {
+      "sn": "<charger_serial>",
+      "name": "GW11K-HCA",
+      "deviceType": "EV_CHARGER",
+      "status": 6,
+      "isHems": false
+    }
+  ]
+}

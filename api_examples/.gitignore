@@ -14,6 +14,10 @@ legacy/*
 !all_status.json
 !browser_api_endpoints.json
 !device_start_stop.json
+!ev_charger_detail_issue_182.json
+!ev_charger_device_list_issue_182.json
+!ev_charger_equipment_information_issue_182.json
+!ev_charger_last_charge_issue_182.json
 !web_cross_login.json
 !station_flow.json
 !station_flow_import.json

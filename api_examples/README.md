@@ -171,9 +171,31 @@ adding or updating an example.
 ## EV charger (HCA wallbox) endpoints
 
 Derived from the SEMS+ Web UI charger page. The integration was checked
-against a live HCA charger (values and every control), but no sanitized
-response captures are stored yet; the tests use hand-built responses with the
-same shapes. Chargers are discovered as `EV_CHARGER` devices in `all-status`.
+against a live HCA charger (values and every control). [A redacted HAR report
+in issue #182](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/182#issuecomment-4110082226)
+contains response excerpts for `detail`, `getLastCharge`, equipment
+information, and `getDevicesByType`; these are cataloged as `issue_report`,
+not complete API captures. The issue samples do not cover the `all-status`,
+telemetry, telecounting, `control-item-content-list`, or station-flow `pEvChar`
+responses used by this integration. In particular, `getDevicesByType` is not
+the `all-status` endpoint used for discovery. Tests still use hand-built
+responses for those uncovered shapes. Chargers are discovered as `EV_CHARGER`
+devices in `all-status`.
+
+The `detail` and `getLastCharge` excerpts are exercised by
+[`tests/test_ev_charger.py`](../tests/test_ev_charger.py); their reported
+fields are not evidence for fields absent from the excerpts.
+
+### Issue #182 response excerpts
+
+| File | Issue-reported endpoint | Fields shown |
+| --- | --- | --- |
+| [`ev_charger_detail_issue_182.json`](./ev_charger_detail_issue_182.json) | `/web/sems/sems-remote/api/ev-charger/detail` | `chargeMode`, `chargePower`, `chargePowerSetted`, `status`, `workState`, `schedule*` |
+| [`ev_charger_last_charge_issue_182.json`](./ev_charger_last_charge_issue_182.json) | `/web/sems/sems-plant/api/v1/chargePile/getLastCharge` | `chargeLog` values and a short `curveList` |
+| [`ev_charger_equipment_information_issue_182.json`](./ev_charger_equipment_information_issue_182.json) | `/web/sems/sems-plant/api/equipments/<sn>/information?deviceType=EV_CHARGER` | Equipment information factors |
+| [`ev_charger_device_list_issue_182.json`](./ev_charger_device_list_issue_182.json) | `/web/sems/sems-plant/api/web/device/station/getDevicesByType?deviceType=EV_CHARGER` | Device serial, name, type, status, and HEMS flag |
+
+### Current integration requests
 
 | Purpose | Request |
 | --- | --- |
