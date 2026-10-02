@@ -7,6 +7,8 @@ This directory contains comprehensive tests for the SEMS API module.
 - `test_sems_api.py` - Main comprehensive test suite with full coverage of all SEMS API functionality
 - `test_sems_api_clean.py` - Clean integration test suite with realistic JSON data structures
 - `test_sensor_entities.py` - Home Assistant entity tests (config entry + entity registry)
+- `test_api_example_index.py` - Validates the shared API-example catalog and fixture files
+- `test_openapi_spec.py` - Validates the observed OpenAPI document and linked fixtures
 - `fixtures.py` - Anonymized SEMS API response data for test fixtures
 - `__init__.py` - Package initialization for tests
 - `requirements.txt` - Test dependencies
