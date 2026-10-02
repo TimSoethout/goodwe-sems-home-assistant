@@ -247,6 +247,8 @@ class EvChargerPowerSensor(_EvChargerEntity, SensorEntity):
 
 
 # Last charging session values (`chargeLog`): field -> (name, unit, class, state).
+# They are replaced by the next session, so energies have no state class: a
+# counter state class would build misleading long-term statistics.
 EV_CHARGER_SESSION_SENSORS: dict[
     str, tuple[str, str | None, SensorDeviceClass | None, SensorStateClass | None]
 ] = {
@@ -254,19 +256,19 @@ EV_CHARGER_SESSION_SENSORS: dict[
         "Session Energy",
         UnitOfEnergy.KILO_WATT_HOUR,
         SensorDeviceClass.ENERGY,
-        SensorStateClass.TOTAL_INCREASING,
+        None,
     ),
     "greenElec": (
         "Session PV Energy",
         UnitOfEnergy.KILO_WATT_HOUR,
         SensorDeviceClass.ENERGY,
-        SensorStateClass.TOTAL_INCREASING,
+        None,
     ),
     "purElec": (
         "Session Grid Energy",
         UnitOfEnergy.KILO_WATT_HOUR,
         SensorDeviceClass.ENERGY,
-        SensorStateClass.TOTAL_INCREASING,
+        None,
     ),
     "averCharP": (
         "Session Average Power",

@@ -1568,7 +1568,7 @@ class SemsApi:
                     is_web=True,
                     token_type=endpoint.token_type,
                 )
-            except (OutOfRetries, SemsRateLimitedError) as err:
+            except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
                 _LOGGER.debug("SEMS EV charger %s unavailable: %s", name, err)
                 continue
             charger["factors"].update(
@@ -1602,7 +1602,7 @@ class SemsApi:
                     is_web=True,
                     token_type="web",
                 )
-            except (OutOfRetries, SemsRateLimitedError) as err:
+            except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
                 _LOGGER.debug("SEMS EV charger %s unavailable: %s", key, err)
                 continue
             if not isinstance(result, dict):
@@ -1632,7 +1632,7 @@ class SemsApi:
                     is_web=True,
                     token_type="web",
                 )
-            except (OutOfRetries, SemsRateLimitedError) as err:
+            except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
                 _LOGGER.debug("SEMS EV charger detail unavailable: %s", err)
             else:
                 if isinstance(detail, dict):

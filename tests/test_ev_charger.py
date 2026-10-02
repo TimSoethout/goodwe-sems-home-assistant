@@ -25,7 +25,11 @@ from custom_components.sems.ev_charger import (
     EvChargerStatusSensor,
     ev_charger_sensors,
 )
-from custom_components.sems.sems_api import OutOfRetries, SemsApi
+from custom_components.sems.sems_api import (
+    OutOfRetries,
+    SemsApi,
+    SemsPermissionError,
+)
 
 STATION_ID = "12345678-1234-5678-9abc-123456789abc"
 CHARGER_SN = "EVC0000SN0TEST1"
@@ -562,3 +566,37 @@ def test_get_web_ev_charger_ignores_invalid_detail():
         charger = _web_api().getWebEvCharger(STATION_ID, {"sn": CHARGER_SN})
 
     assert charger["detail"] == {}
+
+
+@pytest.mark.parametrize(
+    "denied",
+    [
+        "telemetry",
+        "telecounting",
+        "control-item-content-list",
+        "getLastCharge",
+        "detail",
+    ],
+)
+def test_get_web_ev_charger_survives_permission_denied(denied):
+    """Test a denied optional charger request does not fail the refresh."""
+
+    def fake_api_call(url_part, *args, **kwargs):
+        if denied in url_part:
+            raise SemsPermissionError("EV charger call", "denied")
+        return _fake_api_call(url_part, *args, **kwargs)
+
+    with patch.object(SemsApi, "_make_api_call", side_effect=fake_api_call):
+        charger = _web_api().getWebEvCharger(STATION_ID, {"sn": CHARGER_SN})
+
+    assert charger["sn"] == CHARGER_SN
+
+
+def test_ev_charger_session_energy_has_no_state_class():
+    """Test last-session energies don't build long-term counter statistics."""
+    coordinator = _coordinator({"charge_log": {"currentChargeQuantity": 3.5}})
+
+    for field in ("currentChargeQuantity", "greenElec", "purElec"):
+        sensor = EvChargerSessionSensor(coordinator, CHARGER_SN, field)
+        assert sensor.device_class == "energy"
+        assert sensor.state_class is None
