@@ -15,7 +15,7 @@
 - SEMS has misspelled keys; use `GOODWE_SPELLING` constants, not corrected inline spellings.
 
 ## Home Assistant reviews
-- When reviewing or changing integration code, always consider Home Assistant best practices and Integration Quality Scale rules.
+- When reviewing or changing integration code, always consider Home Assistant best practices and Integration Quality Scale rules. Use Github suggestions where possible.
 - If `.ha-core/` is available, consult its `AGENTS.md` and relevant skills under `.ha-core/.claude/skills/`, especially `ha-integration-knowledge`; use `ha-review` for code reviews and follow linked references when relevant.
 
 ## Development
