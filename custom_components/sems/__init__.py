@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
+from functools import partial
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -261,6 +262,25 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         # Prefer the serial that carries the lifetime import counter.
         return max(earlier, key=lambda sn: earlier[sn])
 
+    def _last_month_energy_requested(self) -> bool:
+        """Return whether an enabled sensor needs the previous month's energy.
+
+        The previous-month statistics cost an extra request per refresh, so
+        they are only fetched once the user enabled the (disabled by default)
+        "Energy Last Month" sensor.
+        """
+        if self.config_entry is None:
+            return False
+        suffix = f"-{GOODWE_SPELLING.lastMonthTotalE}"
+        return any(
+            entity.domain == "sensor"
+            and entity.unique_id.endswith(suffix)
+            and entity.disabled_by is None
+            for entity in er.async_entries_for_config_entry(
+                er.async_get(self.hass), self.config_entry.entry_id
+            )
+        )
+
     async def _async_get_energy_storage_cabinets(
         self, data_result: dict[str, Any]
     ) -> dict[str, list[dict[str, Any]]]:
@@ -374,7 +394,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         # async with async_timeout.timeout(10):
         try:
             data_result = await self.hass.async_add_executor_job(
-                self.sems_api.getData, self.station_id
+                partial(
+                    self.sems_api.getData,
+                    self.station_id,
+                    include_last_month=self._last_month_energy_requested(),
+                )
             )
 
             energy_storage_cabinets = await self._async_get_energy_storage_cabinets(

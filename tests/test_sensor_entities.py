@@ -168,6 +168,71 @@ async def test_sensor_state_from_coordinator(
     assert "statusText" not in status_state.attributes
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_last_month_energy_is_requested_only_when_enabled(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+    enabled: bool,
+) -> None:
+    """Fetch previous-month statistics once the user enabled that sensor."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    ent_reg = er.async_get(hass)
+    registry_entry = ent_reg.async_get_or_create(
+        Platform.SENSOR,
+        DOMAIN,
+        "GW0000SN000TEST1-lastmonthetotle",
+        config_entry=entry,
+        disabled_by=None if enabled else er.RegistryEntryDisabler.INTEGRATION,
+    )
+    data_without_last_month = {
+        **MOCK_GET_DATA_RESULT_MINIMAL,
+        "inverter": [
+            {
+                "invert_full": {
+                    key: value
+                    for key, value in MOCK_GET_DATA_RESULT_MINIMAL["inverter"][0][
+                        "invert_full"
+                    ].items()
+                    if key != "lastmonthetotle"
+                }
+            }
+        ],
+    }
+
+    def get_data(*_args, include_last_month: bool = False, **_kwargs):
+        return (
+            MOCK_GET_DATA_RESULT_MINIMAL
+            if include_last_month
+            else data_without_last_month
+        )
+
+    with (
+        _mock_no_battery_api(MOCK_GET_DATA_RESULT_MINIMAL),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getData",
+            side_effect=get_data,
+        ) as mock_get_data,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert mock_get_data.call_args.kwargs == {"include_last_month": enabled}
+    if enabled:
+        state = hass.states.get(registry_entry.entity_id)
+        assert state is not None
+        assert float(state.state) == pytest.approx(76.8)
+
+
 async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
     hass: HomeAssistant,
     enable_custom_integrations: None,
