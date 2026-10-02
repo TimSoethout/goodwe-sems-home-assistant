@@ -1410,7 +1410,7 @@ class SemsApi:
             result["ev_chargers"] = ev_chargers
         try:
             flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
-        except (OutOfRetries, SemsRateLimitedError) as err:
+        except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
             _LOGGER.debug("SEMS station flow unavailable: %s", err)
             flow = {}
             for charger in ev_chargers.values():

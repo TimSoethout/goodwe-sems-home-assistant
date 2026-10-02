@@ -623,11 +623,17 @@ def test_ev_charger_session_energy_has_no_state_class():
         assert sensor.state_class is None
 
 
+@pytest.mark.parametrize(
+    "error",
+    [OutOfRetries("down"), SemsPermissionError("getWebStationFlow", "denied")],
+)
 @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
-@patch.object(SemsApi, "getWebStationFlow", side_effect=OutOfRetries("down"))
-def test_get_web_data_marks_flow_unavailable(mock_flow, mock_statistics):
+def test_get_web_data_marks_flow_unavailable(mock_statistics, error):
     """Test a failed station flow marks the charging power source unavailable."""
-    with patch.object(SemsApi, "_make_api_call", side_effect=_fake_api_call):
+    with (
+        patch.object(SemsApi, "_make_api_call", side_effect=_fake_api_call),
+        patch.object(SemsApi, "getWebStationFlow", side_effect=error),
+    ):
         result = _web_api().getWebData(STATION_ID)
 
     charger = result["ev_chargers"][CHARGER_SN]
