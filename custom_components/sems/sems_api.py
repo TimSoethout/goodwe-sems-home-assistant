@@ -163,6 +163,13 @@ _WEB_RELATED_DEVICES_REFRESH_SECONDS = 3_600
 _WEB_DEVICE_LIST_CACHE_SECONDS = 3_600
 _WEB_FAILED_REQUEST_RETRY_SECONDS = 300
 _WEB_FUNCTION_MENUS_REFRESH_SECONDS = 21_600
+# Cache entries not refreshed for this long are dropped. Statistics keys
+# contain dates, so without pruning the cache grows every day.
+_WEB_CACHE_MAX_AGE_SECONDS = 2 * _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS
+_WEB_CACHE_PRUNE_INTERVAL_SECONDS = 3_600
+# Counter caches hold the last valid counter values for the plausibility
+# checks; they are not date-keyed and must survive pruning.
+_WEB_CACHE_PERSISTENT_PREFIXES = ("counters:",)
 
 
 class SemsApi:
@@ -178,6 +185,8 @@ class SemsApi:
         self._web_token: dict[str, Any] | None = None  # Used for SEMS+ web APIs
         self._preferred_login_mode: TokenType | None = None
         self._web_cache: dict[str, tuple[float, Any]] = {}
+        self._web_cache_lock = threading.Lock()
+        self._web_cache_pruned_at = time.monotonic()
         self._session = requests.Session()
         self._request_slots = threading.BoundedSemaphore(_MaxConcurrentRequests)
         # Logins are serialized. Each successful login bumps the generation of
@@ -965,7 +974,7 @@ class SemsApi:
             if dimension == "day"
             else _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS
         )
-        cached = self._web_cache.get(cache_key)
+        cached = self._get_web_cache_entry(cache_key)
         if cached and time.monotonic() - cached[0] < refresh:
             return cached[1]
         if self._recently_failed(cache_key):
@@ -1067,19 +1076,43 @@ class SemsApi:
             min(response_dates) if response_dates else None,
             max(response_dates) if response_dates else None,
         )
-        self._web_cache[cache_key] = (time.monotonic(), parsed)
+        self._set_web_cache_entry(cache_key, (time.monotonic(), parsed))
         return parsed
+
+    def _get_web_cache_entry(self, key: str) -> tuple[float, Any] | None:
+        """Read one response-cache entry safely across executor threads."""
+        with self._web_cache_lock:
+            return self._web_cache.get(key)
+
+    def _set_web_cache_entry(self, key: str, value: tuple[float, Any]) -> None:
+        """Write one response-cache entry safely across executor threads."""
+        with self._web_cache_lock:
+            self._web_cache[key] = value
+
+    def _prune_web_cache(self) -> None:
+        """Drop cache entries that have not been refreshed for a long time."""
+        now = time.monotonic()
+        with self._web_cache_lock:
+            if now - self._web_cache_pruned_at < _WEB_CACHE_PRUNE_INTERVAL_SECONDS:
+                return
+            self._web_cache_pruned_at = now
+            for key, entry in list(self._web_cache.items()):
+                if (
+                    not key.startswith(_WEB_CACHE_PERSISTENT_PREFIXES)
+                    and now - entry[0] > _WEB_CACHE_MAX_AGE_SECONDS
+                ):
+                    self._web_cache.pop(key, None)
 
     def _recently_failed(self, cache_key: str) -> bool:
         """Return whether a request failed too recently to retry it."""
-        failed = self._web_cache.get(f"failed:{cache_key}")
+        failed = self._get_web_cache_entry(f"failed:{cache_key}")
         return bool(
             failed and time.monotonic() - failed[0] < _WEB_FAILED_REQUEST_RETRY_SECONDS
         )
 
     def _remember_failure(self, cache_key: str) -> None:
         """Delay the next attempt of a failed optional request."""
-        self._web_cache[f"failed:{cache_key}"] = (time.monotonic(), None)
+        self._set_web_cache_entry(f"failed:{cache_key}", (time.monotonic(), None))
 
     def _get_web_energy_statistics(
         self,
@@ -1205,7 +1238,7 @@ class SemsApi:
     ) -> dict[str, Any] | None:
         """Get optional flat station production totals and currency."""
         cache_key = f"production:{power_station_id}:{start.date()}:{end.date()}"
-        cached = self._web_cache.get(cache_key)
+        cached = self._get_web_cache_entry(cache_key)
         if cached and time.monotonic() - cached[0] < _WEB_STATISTICS_REFRESH_SECONDS:
             return cached[1]
         if self._recently_failed(cache_key):
@@ -1241,7 +1274,7 @@ class SemsApi:
         if not isinstance(response, dict):
             self._remember_failure(cache_key)
             return cached[1] if cached else None
-        self._web_cache[cache_key] = (time.monotonic(), response)
+        self._set_web_cache_entry(cache_key, (time.monotonic(), response))
         return response
 
     def getWebData(
@@ -1252,13 +1285,14 @@ class SemsApi:
         include_last_month: bool = False,
     ) -> dict[str, Any]:
         """Build the legacy coordinator shape from SEMS+ Web responses."""
+        self._prune_web_cache()
         inverters: list[dict[str, Any]] = []
         smart_meters: list[dict[str, Any]] = []
         ev_chargers: dict[str, dict[str, Any]] = {}
         unavailable_inverter_sources: dict[str, set[str]] = {}
         unavailable_homekit_sources: set[str] = set()
         device_cache_key = f"devices:{powerStationId}"
-        cached_devices = self._web_cache.get(device_cache_key)
+        cached_devices = self._get_web_cache_entry(device_cache_key)
         device_inventory_unavailable = False
         try:
             devices = self.getWebInverterDevices(
@@ -1281,7 +1315,7 @@ class SemsApi:
             ]
             device_inventory_unavailable = True
         else:
-            self._web_cache[device_cache_key] = (time.monotonic(), devices)
+            self._set_web_cache_entry(device_cache_key, (time.monotonic(), devices))
 
         for device in devices:
             serial_number = device.get("sn")
@@ -1464,7 +1498,7 @@ class SemsApi:
                 continue
             serial_number = inverter_full["sn"]
             cache_key = f"cabinets:{powerStationId}:{serial_number}"
-            cached = self._web_cache.get(cache_key)
+            cached = self._get_web_cache_entry(cache_key)
             if (
                 cached
                 and time.monotonic() - cached[0] < _WEB_RELATED_DEVICES_REFRESH_SECONDS
@@ -1487,7 +1521,7 @@ class SemsApi:
                     )
                     cabinets = []
                 if cabinets:
-                    self._web_cache[cache_key] = (time.monotonic(), cabinets)
+                    self._set_web_cache_entry(cache_key, (time.monotonic(), cabinets))
                 elif cached:
                     cabinets = cached[1]
             storage_cabinets[serial_number] = cabinets
@@ -1790,7 +1824,10 @@ class SemsApi:
         flow: dict[str, Any], smart_meter: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Map SEMS+ flow and smart-meter counters to HomeKit fields."""
-        grid_status = -1 if float(flow.get("pGrid", 0)) > 0 else 1
+        # SEMS+ can report null or non-numeric flow values; skip them instead
+        # of failing the whole refresh.
+        grid_power = SemsApi._numeric_web_factor(flow, "pGrid")
+        grid_status = -1 if grid_power is not None and grid_power > 0 else 1
         homekit: dict[str, Any] = {
             "sn": smart_meter.get("sn") if smart_meter else None,
             "gridStatus": grid_status,
@@ -1804,8 +1841,8 @@ class SemsApi:
             ("pConsum", "load"),
             ("pBat", "battery"),
         ):
-            if (value := flow.get(source)) is not None:
-                homekit[target] = float(value) * 1000
+            if (value := SemsApi._numeric_web_factor(flow, source)) is not None:
+                homekit[target] = value * 1000
         if "load" in homekit:
             # Household consumption is never negative; SEMS+ can report pConsum
             # with a flow-direction sign.
@@ -2040,7 +2077,7 @@ class SemsApi:
             if (value := self._numeric_web_factor(factors, source)) is not None:
                 counters[target] = value
         cache_key = f"counters:{powerStationId}:{serialNumber}:{device_type}"
-        cached = self._web_cache.get(cache_key)
+        cached = self._get_web_cache_entry(cache_key)
         previous = cached[1] if cached and isinstance(cached[1], dict) else {}
         previous_periods = previous.get("_periods", {})
         if not isinstance(previous_periods, dict):
@@ -2111,13 +2148,16 @@ class SemsApi:
                     if (value := self._numeric_web_factor(factors, source)) is not None:
                         counters[target] = value
         if counters:
-            self._web_cache[cache_key] = (
-                time.monotonic(),
-                {
-                    **previous,
-                    **counters,
-                    "_periods": {**previous_periods, **counter_periods},
-                },
+            self._set_web_cache_entry(
+                cache_key,
+                (
+                    time.monotonic(),
+                    {
+                        **previous,
+                        **counters,
+                        "_periods": {**previous_periods, **counter_periods},
+                    },
+                ),
             )
         return counters
 
@@ -2255,7 +2295,7 @@ class SemsApi:
         # The function menus (addresses and ids) are static; don't refetch
         # them on every refresh.
         cache_key = f"function_menus:{serialNumber}:{batIndex}"
-        cached = self._web_cache.get(cache_key)
+        cached = self._get_web_cache_entry(cache_key)
         if (
             cached
             and time.monotonic() - cached[0] < _WEB_FUNCTION_MENUS_REFRESH_SECONDS
@@ -2282,13 +2322,17 @@ class SemsApi:
         if not isinstance(result, dict):
             return {}
         if result.get("functionMenus"):
-            self._web_cache[cache_key] = (time.monotonic(), result)
+            self._set_web_cache_entry(cache_key, (time.monotonic(), result))
         return result
 
     def getBatteryImmediateChargingStates(
         self, serialNumber: str, renewToken: bool = False, maxTokenRetries: int = 2
-    ) -> dict[str, Any]:
-        """Get the battery immediate charging states from the SEMS API."""
+    ) -> dict[str, Any] | None:
+        """Get the battery immediate charging states from the SEMS API.
+
+        Return None when SEMS returned no state, so callers don't mistake a
+        failed read for a disabled function.
+        """
         data = json.dumps(
             {
                 "sn": serialNumber,
@@ -2311,7 +2355,7 @@ class SemsApi:
             is_web=True,
             retry_on_api_error=False,
         )
-        return result if isinstance(result, dict) else {}
+        return result if isinstance(result, dict) else None
 
     def stopImmediateCharging(
         self,
