@@ -18,7 +18,11 @@ from custom_components.sems import (
     SemsDataUpdateCoordinator,
     _normalize_energy_statistics_charts,
 )
-from custom_components.sems.const import CONF_STATION_ID, DOMAIN
+from custom_components.sems.const import (
+    CONF_STATION_ID,
+    DOMAIN,
+    homekit_station_serial,
+)
 from custom_components.sems.sems_api import SemsApi
 from custom_components.sems.sensor import (
     convert_status_to_label,
@@ -31,6 +35,8 @@ from .fixtures import (
 )
 
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
+# Powerflow serial of a station without a HomeKit/smart meter serial.
+MOCK_STATION_SERIAL = homekit_station_serial(MOCK_POWER_STATION_ID)
 
 
 def test_status_code_5_is_normal() -> None:
@@ -402,7 +408,7 @@ async def test_web_meter_data_keeps_registered_homekit_serial(
     assert state is not None
     assert float(state.state) == 20314.77
     export_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "GW-HOMEKIT-NO-SERIAL-export-energy"
+        Platform.SENSOR, DOMAIN, f"{MOCK_STATION_SERIAL}-export-energy"
     )
     assert export_entity_id is not None
     assert float(hass.states.get(export_entity_id).state) == 36.77
@@ -534,7 +540,7 @@ async def test_web_flow_load_sensors_report_consumption_while_exporting(
     ent_reg = er.async_get(hass)
     for suffix in ("-load", "-homekit"):
         entity_id = ent_reg.async_get_entity_id(
-            Platform.SENSOR, DOMAIN, f"GW-HOMEKIT-NO-SERIAL{suffix}"
+            Platform.SENSOR, DOMAIN, f"{MOCK_STATION_SERIAL}{suffix}"
         )
         assert entity_id is not None
         assert float(hass.states.get(entity_id).state) == 500.0
@@ -578,10 +584,10 @@ async def test_web_flow_battery_and_grid_signs_from_captured_samples(
 
     ent_reg = er.async_get(hass)
     battery_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "GW-HOMEKIT-NO-SERIAL-battery"
+        Platform.SENSOR, DOMAIN, f"{MOCK_STATION_SERIAL}-battery"
     )
     grid_entity_id = ent_reg.async_get_entity_id(
-        Platform.SENSOR, DOMAIN, "GW-HOMEKIT-NO-SERIAL-grid"
+        Platform.SENSOR, DOMAIN, f"{MOCK_STATION_SERIAL}-grid"
     )
     assert battery_entity_id is not None
     assert grid_entity_id is not None
@@ -646,7 +652,7 @@ async def test_unique_id_migration_powerflow_to_homekit_sn(
 
     homekit_sn = (
         MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON.get("homKit", {}).get("sn")
-        or "GW-HOMEKIT-NO-SERIAL"
+        or MOCK_STATION_SERIAL
     )
     expected_migrations = {
         "powerflow-import-energy": f"{homekit_sn}-import-energy",
@@ -806,7 +812,7 @@ async def test_exact_unique_ids_homekit_powerflow_fixture(
     sn = MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON["inverter"][0]["invert_full"]["sn"]
     homekit_sn = (
         MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON.get("homKit", {}).get("sn")
-        or "GW-HOMEKIT-NO-SERIAL"
+        or MOCK_STATION_SERIAL
     )
     expected_unique_ids = {
         # Regular inverter sensors
@@ -916,7 +922,7 @@ async def test_homekit_powerflow_values_from_api_fixture(
 
     homekit_sn = (
         MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON.get("homKit", {}).get("sn")
-        or "GW-HOMEKIT-NO-SERIAL"
+        or MOCK_STATION_SERIAL
     )
 
     load_entity_id = ent_reg.async_get_entity_id(
@@ -1118,7 +1124,7 @@ def _build_homekit_test_data(
         "hasPowerflow": True,
         "hasEnergeStatisticsCharts": False,
         "homKit": {
-            "sn": None,  # Will use GW-HOMEKIT-NO-SERIAL as default
+            "sn": None,  # Falls back to the station-scoped serial
             "homeKitLimit": False,
         },
         "powerflow": {
@@ -1166,7 +1172,7 @@ async def test_homekit_sensors_handle_empty_strings_at_night(
         await hass.async_block_till_done()
 
     ent_reg = er.async_get(hass)
-    homekit_sn = "GW-HOMEKIT-NO-SERIAL"  # Default when sn is None
+    homekit_sn = MOCK_STATION_SERIAL  # Default when sn is None
 
     # Verify entities are created and have values
     load_entity_id = ent_reg.async_get_entity_id(
