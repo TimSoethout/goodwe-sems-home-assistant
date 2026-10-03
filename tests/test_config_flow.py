@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
@@ -152,6 +152,54 @@ async def test_multiple_stations_auto_creates_all_entries(
     assert station_ids == {MOCK_STATION_ID_1, MOCK_STATION_ID_2}
     unique_ids = {entry.unique_id for entry in entries}
     assert unique_ids == {MOCK_STATION_ID_1, MOCK_STATION_ID_2}
+
+
+async def test_new_station_inherits_account_update_interval(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+    mock_setup_entry,
+) -> None:
+    """Newly discovered stations use the interval already configured for the account."""
+    del enable_custom_integrations
+    MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=MOCK_STATION_ID_1,
+        data={
+            CONF_USERNAME: MOCK_USERNAME,
+            CONF_PASSWORD: MOCK_PASSWORD,
+            CONF_STATION_ID: MOCK_STATION_ID_1,
+        },
+        options={CONF_SCAN_INTERVAL: 300},
+    ).add_to_hass(hass)
+
+    result = await _init_flow(hass)
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi.test_authentication",
+            return_value=True,
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getPowerStationIds",
+            return_value=[MOCK_STATION_ID_1, MOCK_STATION_ID_2],
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_USERNAME: MOCK_USERNAME,
+                CONF_PASSWORD: MOCK_PASSWORD,
+                CONF_SCAN_INTERVAL: 60,
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] == FlowResultType.ABORT
+    new_station = next(
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.data.get(CONF_STATION_ID) == MOCK_STATION_ID_2
+    )
+    assert new_station.data[CONF_SCAN_INTERVAL] == 300
 
 
 async def test_single_station_already_configured_aborts(

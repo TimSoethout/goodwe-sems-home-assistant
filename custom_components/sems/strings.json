@@ -121,5 +121,16 @@
         "name": "Dynamic Load Import Current Limit"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update interval",
+        "description": "The {station_count} station(s) of this account share one SEMS session and all use this interval. Each update makes several requests per station, so choose a longer interval for accounts with many stations. Minimum: {min_interval} seconds.",
+        "data": {
+          "scan_interval": "Update Interval (seconds)"
+        }
+      }
+    }
   }
 }

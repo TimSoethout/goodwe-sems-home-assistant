@@ -56,6 +56,22 @@ waiting, offline, or not producing. SEMS+ may omit live telemetry in that
 state while still returning historical energy counters. The integration does
 not replace missing values with zero.
 
+### Update interval and password changes
+
+SEMS is polled every 60 seconds by default. To change this, open the
+integration under `Settings` > `Devices & services` and click `Configure`.
+The interval must be between 60 and 3600 seconds; SEMS+ reports station data
+once per minute, so polling faster only repeats data. All stations of one
+account share one SEMS session, so the interval applies to every station of
+that account. Each update makes several requests per station: with many
+stations on one account (for example an installer account), a longer interval
+lowers the risk of SEMS rate limiting. The change takes effect without a
+restart.
+
+When the account password changes, Home Assistant shows a re-authentication
+notification after SEMS rejects the old password. Enter the new password once;
+it is stored for all stations of that account.
+
 ### Optional: control the inverter power output via the "Inverter Control" switch
 
 It is possible to temporarily pause and resume energy production using the

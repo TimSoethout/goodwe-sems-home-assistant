@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import partial
@@ -12,7 +13,6 @@ import requests
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_PASSWORD,
-    CONF_SCAN_INTERVAL,
     CONF_USERNAME,
     Platform,
 )
@@ -25,7 +25,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CONF_STATION_ID,
-    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     GOODWE_SPELLING,
     HOMEKIT_NO_SERIAL,
@@ -35,6 +34,7 @@ from .const import (
     homekit_device_id,
     homekit_station_serial,
     redact_for_log,
+    scan_interval_seconds,
 )
 from .sems_api import (
     OutOfRetries,
@@ -198,7 +198,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool
         await _async_release_api(hass, entry)
         raise
 
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: SemsConfigEntry) -> None:
+    """Apply a changed update interval without reloading the entry.
+
+    A reload would refetch every station of the account at once; the new
+    interval instead takes effect from the next scheduled refresh.
+    """
+    coordinator = entry.runtime_data.coordinator
+    update_interval = timedelta(
+        seconds=scan_interval_seconds(entry.data, entry.options)
+    )
+    if coordinator.update_interval != update_interval:
+        _LOGGER.debug(
+            "SEMS - Update interval of %s changed to %s",
+            redact_for_log(coordinator.station_id),
+            update_interval,
+        )
+        coordinator.update_interval = update_interval
 
 
 def _migrate_unique_ids(hass: HomeAssistant, migrations: dict[str, str]) -> None:
@@ -343,7 +363,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         self.station_id = entry.data[CONF_STATION_ID]
 
         update_interval = timedelta(
-            seconds=entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            seconds=scan_interval_seconds(entry.data, entry.options)
         )
         super().__init__(
             hass,
@@ -352,6 +372,22 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             name=DOMAIN,
             update_interval=update_interval,
         )
+
+    async def async_control(self, method: Callable[..., Any], *args: Any) -> None:
+        """Run a blocking control command of the API client.
+
+        When SEMS rejects the credentials, ask for reauthentication right away
+        instead of waiting for the next refresh to fail as well.
+        """
+        try:
+            await self.hass.async_add_executor_job(method, *args)
+        except SemsAuthError as err:
+            if self.config_entry is not None:
+                self.config_entry.async_start_reauth(self.hass)
+            raise HomeAssistantError(
+                "SEMS rejected the account credentials; reauthenticate the "
+                "integration and try again"
+            ) from err
 
     def _registered_homekit_sn(self, current_sn: str | None) -> str | None:
         """Return the serial of earlier registered HomeKit sensors, if any.

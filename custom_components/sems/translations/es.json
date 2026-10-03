@@ -1,7 +1,8 @@
 {
     "config": {
         "abort": {
-            "already_configured": "El dispositivo ya está configurado"
+            "already_configured": "El dispositivo ya está configurado",
+            "reauth_successful": "La reautenticación se realizó correctamente"
         },
         "error": {
             "cannot_connect": "No se pudo conectar",
@@ -15,6 +16,24 @@
                 "data": {
                     "password": "Contraseña",
                     "username": "Nombre de usuario",
+                    "scan_interval": "Intervalo de actualización (segundos)"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Volver a autenticar la integración",
+                "description": "SEMS rechazó las credenciales de {username}. Introduzca la contraseña actual; se actualizarán todas las plantas de esta cuenta.",
+                "data": {
+                    "password": "Contraseña"
+                }
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Intervalo de actualización",
+                "description": "Las {station_count} planta(s) de esta cuenta comparten una sesión de SEMS y todas usan este intervalo. Cada actualización realiza varias solicitudes por planta, así que elija un intervalo más largo para cuentas con muchas plantas. Mínimo: {min_interval} segundos.",
+                "data": {
                     "scan_interval": "Intervalo de actualización (segundos)"
                 }
             }

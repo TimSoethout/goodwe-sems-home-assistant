@@ -6,6 +6,7 @@ from copy import deepcopy
 from unittest.mock import patch
 
 import pytest
+from homeassistant.config_entries import SOURCE_REAUTH
 from homeassistant.const import (
     CONF_PASSWORD,
     CONF_USERNAME,
@@ -13,12 +14,13 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import async_get_platforms
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
-from custom_components.sems.sems_api import OutOfRetries
+from custom_components.sems.sems_api import OutOfRetries, SemsAuthError
 from tests.fixtures import MOCK_GET_DATA_RESULT_MINIMAL
 
 POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
@@ -308,3 +310,62 @@ async def test_inverter_switch_status_five_is_on(hass: HomeAssistant) -> None:
     )
     assert entity_id is not None
     assert hass.states.get(entity_id).state == "on"
+
+
+def _reauth_flows(hass: HomeAssistant, entry: MockConfigEntry) -> list:
+    return hass.config_entries.flow.async_progress_by_handler(
+        DOMAIN, match_context={"entry_id": entry.entry_id, "source": SOURCE_REAUTH}
+    )
+
+
+async def test_inverter_switch_rejected_credentials_start_reauth(
+    hass: HomeAssistant,
+) -> None:
+    """A control command rejected for bad credentials asks for reauth."""
+    entry = await _setup_entry(
+        hass,
+        cabinets=[],
+        functions={},
+        get_data={**MOCK_GET_DATA_RESULT_MINIMAL, "info": {"is_stored": False}},
+    )
+    entity_id = er.async_get(hass).async_get_entity_id(
+        Platform.SWITCH, DOMAIN, f"{INVERTER_SERIAL}-switch"
+    )
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi.change_status",
+            side_effect=SemsAuthError("rejected"),
+        ),
+        pytest.raises(HomeAssistantError, match="reauthenticate"),
+    ):
+        await hass.services.async_call(
+            "switch", "turn_off", {"entity_id": entity_id}, blocking=True
+        )
+    await hass.async_block_till_done()
+
+    assert len(_reauth_flows(hass, entry)) == 1
+
+
+async def test_battery_number_rejected_credentials_start_reauth(
+    hass: HomeAssistant,
+) -> None:
+    """Battery settings rejected for bad credentials ask for reauth."""
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.setImmediateChargingEndSoC",
+        side_effect=SemsAuthError("rejected"),
+    ):
+        entry = await _setup_entry(hass)
+        with pytest.raises(HomeAssistantError, match="reauthenticate"):
+            await hass.services.async_call(
+                "number",
+                "set_value",
+                {
+                    "entity_id": _entity_id(hass, Platform.NUMBER, "end_charge_soc"),
+                    "value": 80,
+                },
+                blocking=True,
+            )
+        await hass.async_block_till_done()
+
+    assert len(_reauth_flows(hass, entry)) == 1

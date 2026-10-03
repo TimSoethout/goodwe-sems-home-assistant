@@ -57,7 +57,7 @@ class SemsSwitchBase(CoordinatorEntity[SemsCoordinator], SwitchEntity):
                 f"Unable to update {self.entity_id}: no coordinator data"
             )
 
-        await self.hass.async_add_executor_job(method, *args)
+        await self.coordinator.async_control(method, *args)
         await self.coordinator.async_request_refresh()
 
 
