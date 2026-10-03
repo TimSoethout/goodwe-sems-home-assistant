@@ -4,9 +4,9 @@
 
 ## Related Issue
 
-<!-- Link to the related issue. Use "Fixes #123" if this PR closes an issue -->
+<!-- Add a related issue if applicable. Use "Closes #123" only if this PR closes it. -->
 
-Fixes #
+Related issue: #
 
 ## Type of Change
 
@@ -25,14 +25,9 @@ Fixes #
 
 <!-- Mark completed items with an "x" -->
 
-- [ ] My code follows the code style of this project (ran `ruff check` and `ruff format`)
-- [ ] I have run type checking (`mypy custom_components/`)
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] I have run all tests and they pass (`pytest tests/ -v`)
-- [ ] I have updated the documentation accordingly (if applicable)
-- [ ] I have added/updated type hints for new/modified functions
-- [ ] My changes generate no new warnings or errors
-- [ ] I have checked that my changes don't break existing functionality
+- [ ] CI checks pass
+- [ ] Tests cover changed behavior where appropriate; manual testing is described below
+- [ ] User-facing documentation and breaking changes are noted when applicable
 
 ## Testing
 
@@ -42,7 +37,7 @@ Fixes #
 
 - Python version:
 - Home Assistant version (if applicable):
-- Testing method: [ ] Unit tests [ ] Manual testing [ ] Both
+- Testing method: [ ] Automated tests [ ] Manual testing [ ] Both
 
 ### Test Steps
 
