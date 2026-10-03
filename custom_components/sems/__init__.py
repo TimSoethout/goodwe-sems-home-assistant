@@ -603,10 +603,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
             inverters = data_result.get("inverter")
             inverters_by_sn: dict[str, dict[str, Any]] = {}
-            if not inverters or not isinstance(inverters, list):
+            if inverters is not None and not isinstance(inverters, list):
                 raise UpdateFailed(
-                    "Error communicating with API: invalid or missing inverter data. See debug logs."
+                    "Error communicating with API: invalid inverter data. See debug logs."
                 )
+            inverters = inverters or []
 
             unavailable_data_sources = data_result.get("unavailable_data_sources", {})
             if not isinstance(unavailable_data_sources, dict):
@@ -726,6 +727,9 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 powerflow["all_time_generation"] = kpi.get("total_power")
 
                 homekit = powerflow
+
+            if not inverters_by_sn and homekit is None:
+                raise UpdateFailed("No data available from API")
 
             data = SemsData(
                 inverters=inverters_by_sn,

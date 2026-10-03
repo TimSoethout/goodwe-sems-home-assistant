@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -1075,6 +1077,87 @@ async def test_homekit_powerflow_values_from_api_fixture(
     assert daily_sufficiency_state is not None
     assert float(daily_sufficiency_state.state) == 58.03
     assert daily_sufficiency_state.attributes.get("unit_of_measurement") == "%"
+
+
+@pytest.mark.parametrize(
+    "inverter_data",
+    [None, []],
+    ids=["missing-inverter-list", "empty-inverter-list"],
+)
+async def test_homekit_only_station_without_inverters(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+    inverter_data: list[dict[str, object]] | None,
+) -> None:
+    """Set up HomeKit sensors from captured SEMS+ flow without inverter data."""
+    del enable_custom_integrations
+    flow_fixture = Path(__file__).parent.parent / "api_examples" / "station_flow.json"
+    with flow_fixture.open(encoding="utf-8") as fixture:
+        flow = json.load(fixture)["data"]
+
+    payload: dict[str, Any] = {
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": False,
+        "powerflow": SemsApi._normalize_web_homekit_data(flow),
+    }
+    if inverter_data is not None:
+        payload["inverter"] = inverter_data
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with _mock_no_battery_api(payload):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    pv_entity_id = er.async_get(hass).async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{MOCK_STATION_SERIAL}-pv"
+    )
+    assert pv_entity_id is not None
+    pv_state = hass.states.get(pv_entity_id)
+    assert pv_state is not None
+    assert float(pv_state.state) == 2280
+    coordinator_data = entry.runtime_data.coordinator.data
+    assert coordinator_data is not None
+    assert coordinator_data.inverters == {}
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_no_inverter_or_powerflow_data_fails_setup(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Do not treat a response with no inverter or powerflow data as success."""
+    del enable_custom_integrations
+    payload = {
+        "inverter": [],
+        "hasPowerflow": False,
+        "hasEnergeStatisticsCharts": False,
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with _mock_no_battery_api(payload):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
 def _build_homekit_test_data(
