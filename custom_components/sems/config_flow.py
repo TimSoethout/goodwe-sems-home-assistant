@@ -107,6 +107,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not station_ids:
                 errors["base"] = "no_stations_found"
             else:
+                flow_data = dict(user_input)
+                if account_entries := _account_entries(
+                    self.hass, user_input[CONF_USERNAME]
+                ):
+                    flow_data[CONF_SCAN_INTERVAL] = scan_interval_seconds(
+                        account_entries[0].data, account_entries[0].options
+                    )
                 # Schedule flows for any additional stations so all are auto-added.
                 # Users can disable individual entities or devices via the HA UI after setup.
                 for station_id in station_ids[1:]:
@@ -114,7 +121,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         self.hass.config_entries.flow.async_init(
                             DOMAIN,
                             context={"source": config_entries.SOURCE_IMPORT},
-                            data={**user_input, CONF_STATION_ID: station_id},
+                            data={**flow_data, CONF_STATION_ID: station_id},
                         )
                     )
                 station_id = station_ids[0]
@@ -126,7 +133,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 return self.async_create_entry(
                     title=f"Inverter {station_id}",
-                    data={**user_input, CONF_STATION_ID: station_id},
+                    data={**flow_data, CONF_STATION_ID: station_id},
                 )
 
         except CannotConnect:
