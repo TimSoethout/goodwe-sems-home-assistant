@@ -22,6 +22,7 @@ def device_info_for_homekit(station_id: str | None) -> DeviceInfo:
         manufacturer="GoodWe",
     )
 
+
 SEMS_PLUS_URL = "https://semsplus.goodwe.com/"
 
 # SEMS+ reports data loggers and battery racks in the same device list as
