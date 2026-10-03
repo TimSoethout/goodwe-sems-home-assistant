@@ -168,6 +168,91 @@ async def test_sensor_state_from_coordinator(
     assert "statusText" not in status_state.attributes
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_last_month_energy_is_requested_only_when_enabled(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+    enabled: bool,
+) -> None:
+    """Fetch previous-month statistics once the user enabled that sensor."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    ent_reg = er.async_get(hass)
+    registry_entry = ent_reg.async_get_or_create(
+        Platform.SENSOR,
+        DOMAIN,
+        "GW0000SN000TEST1-lastmonthetotle",
+        config_entry=entry,
+        disabled_by=None if enabled else er.RegistryEntryDisabler.INTEGRATION,
+    )
+    data_without_last_month = {
+        **MOCK_GET_DATA_RESULT_MINIMAL,
+        "inverter": [
+            {
+                "invert_full": {
+                    key: value
+                    for key, value in MOCK_GET_DATA_RESULT_MINIMAL["inverter"][0][
+                        "invert_full"
+                    ].items()
+                    if key != "lastmonthetotle"
+                }
+            }
+        ],
+    }
+
+    def get_data(*_args, include_last_month: bool = False, **_kwargs):
+        return (
+            MOCK_GET_DATA_RESULT_MINIMAL
+            if include_last_month
+            else data_without_last_month
+        )
+
+    with (
+        _mock_no_battery_api(MOCK_GET_DATA_RESULT_MINIMAL),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getData",
+            side_effect=get_data,
+        ) as mock_get_data,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert mock_get_data.call_args.kwargs == {"include_last_month": enabled}
+    if enabled:
+        state = hass.states.get(registry_entry.entity_id)
+        assert state is not None
+        assert float(state.state) == pytest.approx(76.8)
+
+
+async def test_last_month_energy_is_not_requested_without_config_entry(
+    hass: HomeAssistant,
+) -> None:
+    """Without a config entry there is no registry to check, so skip the request."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(hass, SemsApi(hass, "user", "pass"), entry)
+    coordinator.config_entry = None
+
+    assert coordinator._last_month_energy_requested() is False
+
+
 async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
     hass: HomeAssistant,
     enable_custom_integrations: None,
@@ -1150,3 +1235,85 @@ async def test_homekit_sensors_handle_empty_strings_at_night(
     assert load_status_state is not None
     # loadStatus=1 * gridStatus=-1 = -1
     assert load_status_state.state == "-1"
+
+
+@pytest.mark.parametrize(
+    ("telemetry_capture", "counter_capture"),
+    [
+        ("telemetry.json", "telecounting.json"),
+        (
+            "semsplus_hybrid/inverter_telemetry.json",
+            "semsplus_hybrid/inverter_telecounting.json",
+        ),
+    ],
+)
+def test_web_inverter_skips_sensors_without_sems_plus_source(
+    telemetry_capture: str, counter_capture: str
+) -> None:
+    """Do not create legacy sensors that SEMS+ responses never fill."""
+    api_examples = Path(__file__).parent.parent / "api_examples"
+
+    def capture(name: str) -> object:
+        return json.loads((api_examples / name).read_text(encoding="utf-8"))["data"]
+
+    api = SemsApi(None, "user", "pass")  # type: ignore[arg-type]
+    with patch.object(
+        api,
+        "_make_api_call",
+        side_effect=[capture(telemetry_capture), capture(counter_capture)],
+    ):
+        inverter = {
+            "sn": "INV1",
+            "name": "Inverter",
+            **api.getWebInverterTelemetry("station", "INV1"),
+            **api.getWebInverterTelecounting("station", "INV1"),
+        }
+
+    unique_ids = {
+        sensor.unique_id
+        for sensor in sensor_options_for_data(SemsData(inverters={"INV1": inverter}))
+    }
+
+    for field in (
+        "iday",
+        "itotal",
+        "vbattery1",
+        "ibattery1",
+        "iac2",
+        "iac3",
+        "fac2",
+        "fac3",
+    ):
+        assert f"INV1-{field}" not in unique_ids
+    # Fields with a SEMS+ mapping keep their entities even while a value is
+    # missing, so IDs stay stable across night-time telemetry gaps.
+    for field in ("iac1", "fac1", "vac1", "vac2", "vac3", "lastmonthetotle"):
+        assert f"INV1-{field}" in unique_ids
+
+
+def test_legacy_inverter_fields_keep_their_sensors() -> None:
+    """Payloads that carry the legacy fields keep their sensors and IDs."""
+    data = SemsData(
+        inverters={
+            "INV1": {
+                "sn": "INV1",
+                "iday": 1.5,
+                "itotal": 842.5,
+                "vbattery1": 0.0,
+                "ibattery1": 0.0,
+                "iac2": 0.0,
+                "fac3": 50.01,
+            }
+        }
+    )
+
+    unique_ids = {sensor.unique_id for sensor in sensor_options_for_data(data)}
+
+    assert {
+        "INV1-iday",
+        "INV1-itotal",
+        "INV1-vbattery1",
+        "INV1-ibattery1",
+        "INV1-iac2",
+        "INV1-fac3",
+    } <= unique_ids

@@ -83,6 +83,30 @@ _TELEMETRY_SENSOR_FIELDS = {
     "bms_discharge_i_max",
 }
 
+# Legacy inverter fields that no SEMS+ Web response is mapped to (see
+# api_examples/). Their sensors are only created when the payload carries the
+# field; otherwise they would stay `unknown` forever.
+_FIELDS_WITHOUT_SEMS_PLUS_SOURCE = {
+    "iday",
+    "itotal",
+    "vbattery1",
+    "ibattery1",
+    "iac2",
+    "iac3",
+    "fac2",
+    "fac3",
+}
+
+
+def _has_no_data_source(data: SemsData, sensor: SemsSensorType) -> bool:
+    """Return whether a sensor reads a field the payload can never supply."""
+    path = sensor.value_path
+    return (
+        len(path) == 2
+        and path[-1] in _FIELDS_WITHOUT_SEMS_PLUS_SOURCE
+        and get_value_from_path(data.inverters, path) is None
+    )
+
 
 def _data_source_for_value_path(path: SemsValuePath) -> str | None:
     """Return the SEMS+ data source used by a sensor value."""
@@ -538,6 +562,8 @@ def sensor_options_for_data(
             redact_for_log(serial_number),
             redact_for_log(sensors),
         )
+
+    sensors = [sensor for sensor in sensors if not _has_no_data_source(data, sensor)]
 
     # HomeKit powerflow + SEMS charts live in `SemsData.homekit`.
     if data.homekit is not None:
