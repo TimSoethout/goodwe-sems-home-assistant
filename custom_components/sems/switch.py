@@ -14,14 +14,16 @@ from homeassistant.components.switch import (
     SwitchEntity,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
-from .const import CONF_STATION_ID, INVERTER_ON_STATUSES
-from .device import device_info_for_inverter
+from .const import CONF_STATION_ID, DOMAIN, INVERTER_ON_STATUSES
+from .device import device_info_for_inverter, is_inverter
 from .ev_charger import async_add_ev_charger_entities, ev_charger_switches
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,8 +64,12 @@ class SemsSwitchBase(CoordinatorEntity[SemsCoordinator], SwitchEntity):
 class SemsInverterSwitch(SemsSwitchBase):
     """Switch controlling an inverter's operating status."""
 
+    FUNCTION_NAME = "switch"
+
     def __init__(self, coordinator: SemsCoordinator, serial_number: str) -> None:
-        super().__init__(coordinator, serial_number, "switch", "Inverter Control")
+        super().__init__(
+            coordinator, serial_number, self.FUNCTION_NAME, "Inverter Control"
+        )
 
     @property
     def is_on(self) -> bool | None:
@@ -148,6 +154,37 @@ class SemsBatteryImmediateChargingSwitch(SemsSwitchBase):
         )
 
 
+def _async_remove_non_inverter_switches(
+    hass: HomeAssistant, config_entry: ConfigEntry, serial_numbers: list[str]
+) -> None:
+    """Remove inverter switches that earlier versions created for non-inverters.
+
+    Only devices that SEMS+ currently reports as non-inverters are cleaned up,
+    so a temporarily missing inverter keeps its switch.
+    """
+    ent_reg = er.async_get(hass)
+    removed = 0
+    for serial_number in serial_numbers:
+        entity_id = ent_reg.async_get_entity_id(
+            Platform.SWITCH,
+            DOMAIN,
+            f"{serial_number}-{SemsInverterSwitch.FUNCTION_NAME}",
+        )
+        if entity_id is None:
+            continue
+        entry = ent_reg.async_get(entity_id)
+        if entry is None or entry.config_entry_id != config_entry.entry_id:
+            continue
+        ent_reg.async_remove(entity_id)
+        removed += 1
+    if removed:
+        # Entity IDs can contain serial numbers, so only log the count.
+        _LOGGER.info(
+            "Removed %s Inverter Control switch(es) of dongles or battery racks",
+            removed,
+        )
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -158,8 +195,14 @@ async def async_setup_entry(
 
     switch_entities: list[SwitchEntity] = []
 
-    for sn in coordinator.data.inverters:
-        switch_entities.append(SemsInverterSwitch(coordinator, sn))
+    non_inverters: list[str] = []
+    for sn, inverter_data in coordinator.data.inverters.items():
+        # Dongles and battery racks do not accept inverter start/stop commands.
+        if is_inverter(inverter_data):
+            switch_entities.append(SemsInverterSwitch(coordinator, sn))
+        else:
+            non_inverters.append(sn)
+    _async_remove_non_inverter_switches(hass, config_entry, non_inverters)
 
     for sn, bats in (coordinator.data.batteries or {}).items():
         for bat_id, bat_data in bats.items():

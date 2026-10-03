@@ -2464,6 +2464,55 @@ class TestSemsApi:
         assert mock_telemetry.call_count == 2
         assert mock_telecounting.call_count == 2
 
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
+    @patch.object(SemsApi, "getWebStationFlow", return_value={})
+    @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
+    @patch.object(SemsApi, "getWebInverterTelemetry", return_value={"pac": 900.0})
+    @patch.object(SemsApi, "getWebInverterDevices")
+    def test_get_web_data_survives_denied_storage_lookup(
+        self,
+        mock_devices,
+        mock_telemetry,
+        mock_telecounting,
+        mock_flow,
+        mock_statistics,
+    ):
+        """A denied optional storage lookup must not fail the station refresh."""
+        mock_devices.return_value = [
+            {
+                "sn": "INV1",
+                "name": "Inverter",
+                "subtype": "store",
+                "deviceType": "INVERTER",
+            }
+        ]
+        with patch.object(
+            self.api,
+            "getEnergyStorageIntegratedCabinets",
+            side_effect=SemsPermissionError("relatedDevices", "denied"),
+        ):
+            result = self.api.getWebData("station")
+
+        inverter = result["inverter"][0]["invert_full"]
+        assert inverter["pac"] == 900.0
+        assert "battery_count" not in inverter
+
+    @patch.object(SemsApi, "getBatterySystemTelemetry")
+    def test_web_batteries_skip_denied_battery_telemetry(self, mock_telemetry):
+        """A denied BAT_SYS telemetry request only drops that battery."""
+        mock_telemetry.side_effect = [
+            SemsPermissionError("BAT_SYS telemetry", "denied"),
+            {"soc": 99.0, "power": 1.25},
+        ]
+        cabinets = [
+            {"sn": "BAT_A", "type": "BAT_SYS"},
+            {"sn": "BAT_B", "type": "BAT_SYS"},
+        ]
+
+        assert self.api._get_web_batteries("station", cabinets) == [
+            {"sn": "BAT_B", "soc": 99.0, "pbattery": 1250.0}
+        ]
+
 
 class TestOutOfRetries:
     """Test OutOfRetries exception."""

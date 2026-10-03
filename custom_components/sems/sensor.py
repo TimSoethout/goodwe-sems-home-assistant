@@ -19,7 +19,6 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
-    Platform,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
@@ -34,18 +33,18 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import SemsConfigEntry, SemsCoordinator, SemsData
+from . import SemsConfigEntry, SemsCoordinator, SemsData, _migrate_unique_ids
 from .const import (
     AC_CURRENT_EMPTY,
     AC_EMPTY,
     AC_FEQ_EMPTY,
-    DOMAIN,
     GOODWE_SPELLING,
     GRID_STATUS_LABELS,
+    HOMEKIT_NO_SERIAL,
     STATUS_LABELS,
     redact_for_log,
 )
-from .device import device_info_for_inverter
+from .device import device_info_for_homekit, device_info_for_inverter
 from .ev_charger import async_add_ev_charger_entities, ev_charger_sensors
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,6 +81,30 @@ _TELEMETRY_SENSOR_FIELDS = {
     "bms_charge_i_max",
     "bms_discharge_i_max",
 }
+
+# Legacy inverter fields that no SEMS+ Web response is mapped to (see
+# api_examples/). Their sensors are only created when the payload carries the
+# field; otherwise they would stay `unknown` forever.
+_FIELDS_WITHOUT_SEMS_PLUS_SOURCE = {
+    "iday",
+    "itotal",
+    "vbattery1",
+    "ibattery1",
+    "iac2",
+    "iac3",
+    "fac2",
+    "fac3",
+}
+
+
+def _has_no_data_source(data: SemsData, sensor: SemsSensorType) -> bool:
+    """Return whether a sensor reads a field the payload can never supply."""
+    path = sensor.value_path
+    return (
+        len(path) == 2
+        and path[-1] in _FIELDS_WITHOUT_SEMS_PLUS_SOURCE
+        and get_value_from_path(data.inverters, path) is None
+    )
 
 
 def _data_source_for_value_path(path: SemsValuePath) -> str | None:
@@ -176,7 +199,9 @@ def get_has_existing_homekit_entity(
 
 
 def sensor_options_for_data(
-    data: SemsData, has_existing_homekit_entity: bool = False
+    data: SemsData,
+    has_existing_homekit_entity: bool = False,
+    station_id: str | None = None,
 ) -> list[SemsSensorType]:
     """Build a list of sensor definitions for the given coordinator data."""
 
@@ -539,20 +564,12 @@ def sensor_options_for_data(
             redact_for_log(sensors),
         )
 
+    sensors = [sensor for sensor in sensors if not _has_no_data_source(data, sensor)]
+
     # HomeKit powerflow + SEMS charts live in `SemsData.homekit`.
     if data.homekit is not None:
-        homekit_sn = get_homekit_sn(data.homekit) or "GW-HOMEKIT-NO-SERIAL"
-        serial_backwards_compatibility = (
-            "homeKit"  # the old code uses homeKit for the serial number
-        )
-        device_info = DeviceInfo(
-            identifiers={
-                # Serial numbers are unique identifiers within a specific domain
-                (DOMAIN, serial_backwards_compatibility)
-            },
-            name="HomeKit",
-            manufacturer="GoodWe",
-        )
+        homekit_sn = get_homekit_sn(data.homekit) or HOMEKIT_NO_SERIAL
+        device_info = device_info_for_homekit(station_id)
 
         def status_value_handler(
             status_path: SemsValuePath,
@@ -899,7 +916,7 @@ async def async_setup_entry(
     # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
 
     # Backwards compatibility note: keep IDs stable for existing entity registry entries.
-    homekit_sn = get_homekit_sn(coordinator.data.homekit) or "GW-HOMEKIT-NO-SERIAL"
+    homekit_sn = get_homekit_sn(coordinator.data.homekit) or HOMEKIT_NO_SERIAL
     _migrate_unique_ids(
         hass,
         {
@@ -921,7 +938,7 @@ async def async_setup_entry(
     )
 
     sensor_options: list[SemsSensorType] = sensor_options_for_data(
-        coordinator.data, has_existing_homekit_entity
+        coordinator.data, has_existing_homekit_entity, coordinator.station_id
     )
     sensors = []
     for sensor_option in sensor_options:
@@ -953,31 +970,6 @@ async def async_setup_entry(
     async_add_ev_charger_entities(
         coordinator, config_entry, async_add_entities, ev_charger_sensors
     )
-
-
-def _migrate_unique_ids(hass: HomeAssistant, migrations: dict[str, str]) -> None:
-    """Migrate unique IDs based on the provided mapping."""
-    ent_reg = er.async_get(hass)
-
-    for old_unique_id, new_unique_id in migrations.items():
-        entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, old_unique_id)
-        _LOGGER.debug("Entity ID: %s", entity_id)
-        if entity_id is None:
-            continue
-        try:
-            ent_reg.async_update_entity(entity_id, new_unique_id=new_unique_id)
-        except ValueError:
-            _LOGGER.warning(
-                "Skip migration of id [%s] to [%s] because it already exists",
-                old_unique_id,
-                new_unique_id,
-            )
-        else:
-            _LOGGER.info(
-                "Migrating unique_id from [%s] to [%s]",
-                old_unique_id,
-                new_unique_id,
-            )
 
 
 def get_value_from_path(data: dict[str, Any], path: SemsValuePath) -> Any:

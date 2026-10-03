@@ -76,7 +76,9 @@ it is stored for all stations of that account.
 
 It is possible to temporarily pause and resume energy production using the
 inverter's `downtime` functionality. This is exposed as the **Inverter
-Control** switch and can be used in your own automations.
+Control** switch and can be used in your own automations. The switch is only
+created for inverters; data loggers (dongles) and battery racks that SEMS+
+lists next to the inverter do not get one.
 
 The switch uses the SEMS+ Web control API when the configured account has
 remote-control permission. The legacy control API is used as a fallback when
