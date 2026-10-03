@@ -23,7 +23,7 @@ INVERTER_SN = "GW0000SN000TEST1"
 BATTERY_SN = "BATSYS0000TEST01"
 
 
-async def test_diagnostics_redact_credentials_station_and_serials(
+async def test_diagnostics_redact_credentials_identifiers_and_models(
     hass: HomeAssistant,
     enable_custom_integrations: None,
 ) -> None:
@@ -47,6 +47,8 @@ async def test_diagnostics_redact_credentials_station_and_serials(
     coordinator = entry.runtime_data.coordinator
     inverter = {
         **MOCK_GET_DATA_RESULT_MINIMAL["inverter"][0]["invert_full"],
+        "subtype": "GW-TEST-MODEL",
+        "mode_info": {"productModel": "GW-EV-TEST-MODEL"},
         "battery_count": 1,
         "more_batterys": [{"sn": BATTERY_SN, "soc": 95}],
     }
@@ -69,6 +71,8 @@ async def test_diagnostics_redact_credentials_station_and_serials(
         INVERTER_SN,
         BATTERY_SN,
         "Test Inverter",
+        "GW-TEST-MODEL",
+        "GW-EV-TEST-MODEL",
     ):
         assert secret not in dumped
 

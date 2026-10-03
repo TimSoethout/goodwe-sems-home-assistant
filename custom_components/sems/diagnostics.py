@@ -19,10 +19,12 @@ TO_REDACT = {
     "email",
     "model_type",
     "name",
+    "productModel",
     "powerstation_id",
     "pwId",
     "sn",
     "stationId",
+    "subtype",
     "token",
     "uid",
 }
