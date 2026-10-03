@@ -82,36 +82,7 @@ logger:
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on how to contribute to this project.
-
-### Quick Development Setup
-
-- Setup HA development environment using https://developers.home-assistant.io/docs/development_environment
-- clone this repo in config directory:
-  - `cd core/config`
-  - `git clone git@github.com:TimSoethout/goodwe-sems-home-assistant.git`
-- go to terminal in remote VSCode environment
-- `cd core/config/custom_components`
-- `ln -s ../goodwe-sems-home-assistant/custom_components/sems sems`
-
-### Linting
-
-Run the same lint checks as the CI workflow:
-
-```bash
-ruff check custom_components/
-ruff format --check custom_components/
-mypy custom_components/ --ignore-missing-imports --python-version 3.13
-```
-
-To fix lint issues locally:
-
-```bash
-ruff check --fix custom_components/
-ruff format custom_components/
-```
-
-For more information, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code quality, testing, and pull request guidelines.
 
 ## Credits
 
