@@ -2,8 +2,10 @@
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Event
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -1502,6 +1504,41 @@ class TestSemsApi:
             self.api._prune_web_cache()
 
         assert "old" in self.api._web_cache
+
+    def test_prune_web_cache_synchronizes_concurrent_writes(self):
+        """A cache writer cannot mutate the dict while pruning iterates it."""
+        iteration_started = Event()
+        continue_iteration = Event()
+
+        class PausingDict(dict):
+            def items(self):
+                entries = iter(super().items())
+                yield next(entries)
+                iteration_started.set()
+                assert continue_iteration.wait(timeout=5)
+                yield from entries
+
+        self.api._web_cache = PausingDict({"old-1": (0.0, None), "old-2": (0.0, None)})
+        self.api._web_cache_pruned_at = 0.0
+
+        with (
+            patch(
+                "custom_components.sems.sems_api.time.monotonic",
+                return_value=3 * 86_400,
+            ),
+            ThreadPoolExecutor(max_workers=2) as executor,
+        ):
+            prune = executor.submit(self.api._prune_web_cache)
+            assert iteration_started.wait(timeout=5)
+            write = executor.submit(
+                self.api._set_web_cache_entry, "fresh", (3 * 86_400, None)
+            )
+            assert not write.done()
+            continue_iteration.set()
+            prune.result(timeout=5)
+            write.result(timeout=5)
+
+        assert self.api._web_cache == {"fresh": (3 * 86_400, None)}
 
     def test_get_web_data_prunes_web_cache(self):
         """Every data refresh gives the cache a chance to shrink."""
