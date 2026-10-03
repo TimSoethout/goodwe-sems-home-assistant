@@ -14,6 +14,10 @@
 - Use `device_info_for_inverter()` for device grouping. Preserve `_migrate_to_new_unique_id()` when changing sensor IDs.
 - SEMS has misspelled keys; use `GOODWE_SPELLING` constants, not corrected inline spellings.
 
+## Home Assistant reviews
+- When reviewing or changing integration code, always consider Home Assistant best practices and Integration Quality Scale rules. Use Github suggestions where possible.
+- If `.ha-core/` is available, consult its `AGENTS.md` and relevant skills under `.ha-core/.claude/skills/`, especially `ha-integration-knowledge`; use `ha-review` for code reviews and follow linked references when relevant.
+
 ## Development
 - Tests: `python -m pytest tests/ -v`; in HA Core, add `--confcutdir=config/goodwe-sems-home-assistant`.
 - Checks: `ruff check custom_components/`, `ruff format --check custom_components/`, and `mypy custom_components/ --ignore-missing-imports --python-version 3.14`. Run the narrowest relevant tests and checks for each change.
@@ -57,6 +61,7 @@
 - Use the [release-workflow skill](.github/skills/release-workflow/SKILL.md) when preparing HACS releases, including version bumps, tags, beta/pre-release publishing, and release notes.
 
 ## GitHub and session wrap-up
+- Use the `gh` CLI or Github-MCP for GitHub issues, pull requests, comments, and replies.
 - Label GitHub PRs, comments and replies as AI/Copilot-generated.
 
 ## Examples to follow

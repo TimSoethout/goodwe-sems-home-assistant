@@ -11,7 +11,7 @@ from homeassistant.const import CONF_SCAN_INTERVAL
 
 DOMAIN = "sems"
 
-PLATFORMS = ["number", "sensor", "switch"]
+PLATFORMS = ["number", "select", "sensor", "switch"]
 
 CONF_STATION_ID = "powerstation_id"
 

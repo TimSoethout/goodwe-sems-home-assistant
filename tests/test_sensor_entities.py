@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -195,7 +198,7 @@ async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
                 }
             },
             unavailable_inverter_sources={
-                "GW0000SN000TEST1": {"telemetry"},
+                "GW0000SN000TEST1": {"device_status", "telemetry"},
             },
         )
     )
@@ -205,12 +208,17 @@ async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
     power_entity_id = ent_reg.async_get_entity_id(
         Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-power"
     )
+    status_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-status"
+    )
     energy_entity_id = ent_reg.async_get_entity_id(
         Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-energy"
     )
     assert power_entity_id is not None
+    assert status_entity_id is not None
     assert energy_entity_id is not None
     assert hass.states.get(power_entity_id).state == "unavailable"
+    assert hass.states.get(status_entity_id).state == "unavailable"
     assert float(hass.states.get(energy_entity_id).state) == 18843.2
 
     coordinator.async_set_updated_data(
@@ -218,6 +226,7 @@ async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
             inverters={
                 "GW0000SN000TEST1": {
                     "pac": 589,
+                    "status": 1,
                 }
             },
             unavailable_inverter_sources={
@@ -228,6 +237,7 @@ async def test_failed_inverter_telemetry_marks_only_its_sensors_unavailable(
     await hass.async_block_till_done()
 
     assert hass.states.get(power_entity_id).state == "589"
+    assert hass.states.get(status_entity_id).state == "Normal"
     assert hass.states.get(energy_entity_id).state == "unavailable"
 
 
@@ -443,6 +453,72 @@ async def test_web_flow_load_sensors_report_consumption_while_exporting(
         )
         assert entity_id is not None
         assert float(hass.states.get(entity_id).state) == 500.0
+
+
+async def test_web_flow_battery_and_grid_signs_from_captured_samples(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Check signed Home Assistant power states against captured SEMS+ flows."""
+    del enable_custom_integrations
+
+    fixture_path = (
+        Path(__file__).parent.parent
+        / "api_examples"
+        / "station_flow_battery_directions.json"
+    )
+    with fixture_path.open(encoding="utf-8") as fixture:
+        samples = json.load(fixture)["samples"]
+
+    initial_homekit = SemsApi._normalize_web_homekit_data(samples[0]["flow"])
+    web_data = {
+        "inverter": MOCK_GET_DATA_RESULT_MINIMAL["inverter"],
+        "hasPowerflow": True,
+        "powerflow": initial_homekit,
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with _mock_no_battery_api(web_data):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    battery_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "GW-HOMEKIT-NO-SERIAL-battery"
+    )
+    grid_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "GW-HOMEKIT-NO-SERIAL-grid"
+    )
+    assert battery_entity_id is not None
+    assert grid_entity_id is not None
+
+    coordinator = entry.runtime_data.coordinator
+    for sample in samples:
+        flow = sample["flow"]
+        normalized_flow = SemsApi._normalize_web_homekit_data(flow)
+        coordinator.async_set_updated_data(
+            SemsData(inverters={}, homekit=normalized_flow)
+        )
+        await hass.async_block_till_done()
+
+        battery_state = hass.states.get(battery_entity_id)
+        grid_state = hass.states.get(grid_entity_id)
+        assert battery_state is not None
+        assert grid_state is not None
+        assert float(battery_state.state) == pytest.approx(-float(flow["pBat"]) * 1000)
+        assert float(grid_state.state) == pytest.approx(float(flow["pGrid"]) * 1000)
+        if reported_values := sample.get("reported_local_sensor_values_w"):
+            assert round(float(battery_state.state)) == reported_values["battery"]
+            assert round(float(grid_state.state)) == reported_values["grid"]
 
 
 async def test_unique_id_migration_powerflow_to_homekit_sn(

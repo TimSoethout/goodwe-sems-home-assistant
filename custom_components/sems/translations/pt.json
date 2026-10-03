@@ -39,5 +39,98 @@
             }
         }
     },
-    "title": "GoodWe SEMS PV API"
+    "title": "GoodWe SEMS PV API",
+    "entity": {
+        "sensor": {
+            "ev_status": {
+                "name": "Estado",
+                "state": {
+                    "available": "Disponível",
+                    "charging": "A carregar",
+                    "fault": "Falha",
+                    "maintenance": "Manutenção",
+                    "offline": "Offline",
+                    "unknown": "Desconhecido"
+                }
+            },
+            "ev_plug": {
+                "name": "Ficha",
+                "state": {
+                    "connected": "Ligada",
+                    "disconnected": "Desligada"
+                }
+            },
+            "ev_charging_power": {
+                "name": "Potência de carregamento"
+            },
+            "ev_session_energy": {
+                "name": "Energia da sessão"
+            },
+            "ev_session_pv_energy": {
+                "name": "Energia FV da sessão"
+            },
+            "ev_session_grid_energy": {
+                "name": "Energia da rede da sessão"
+            },
+            "ev_session_average_power": {
+                "name": "Potência média da sessão"
+            },
+            "ev_session_max_power": {
+                "name": "Potência máxima da sessão"
+            },
+            "ev_session_duration": {
+                "name": "Duração da sessão"
+            },
+            "ev_session_range_added": {
+                "name": "Autonomia adicionada na sessão"
+            }
+        },
+        "select": {
+            "ev_charge_mode": {
+                "name": "Modo de carregamento",
+                "state": {
+                    "fast": "Rápido",
+                    "pv": "FV",
+                    "pv_battery": "FV + bateria"
+                }
+            }
+        },
+        "switch": {
+            "ev_start_charging": {
+                "name": "Iniciar carregamento"
+            },
+            "ev_plug_and_charge": {
+                "name": "Ligar e carregar"
+            },
+            "ev_min_charging_power": {
+                "name": "Potência mínima de carregamento"
+            },
+            "ev_grid_compliance_limit": {
+                "name": "Limite de conformidade da rede"
+            },
+            "ev_dynamic_load_management": {
+                "name": "Gestão dinâmica de carga"
+            },
+            "ev_phase_switching": {
+                "name": "Comutação monofásica/trifásica"
+            },
+            "ev_lock_charging_plug": {
+                "name": "Bloquear ficha de carregamento"
+            }
+        },
+        "number": {
+            "ev_output_power_limit": {
+                "name": "Limite de potência de saída"
+            },
+            "ev_max_import_power_limit": {
+                "name": "Limite máximo de potência importada"
+            },
+            "ev_grid_compliance_limit_value": {
+                "name": "Valor do limite de conformidade da rede"
+            },
+            "ev_dynamic_load_import_current_limit": {
+                "name": "Limite de corrente importada (carga dinâmica)"
+            }
+        }
+    }
 }

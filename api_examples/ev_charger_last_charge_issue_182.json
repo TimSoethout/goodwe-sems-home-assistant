@@ -1,0 +1,32 @@
+{
+  "code": "00000",
+  "data": {
+    "chargeLog": {
+      "chargePileSN": "<charger_serial>",
+      "currentChargeQuantity": 5.67,
+      "chargeTimeLength": 45,
+      "mileage": 28.35,
+      "unit": "km",
+      "charGun": 1,
+      "status": 2,
+      "overViewStatus": 2,
+      "chartUnit": "kWh",
+      "workStu": 6,
+      "pevChar": 7.6
+    },
+    "curveList": [
+      {
+        "tp": "2026-xx-xx 17:57:00",
+        "power": 7.7
+      },
+      {
+        "tp": "2026-xx-xx 17:58:00",
+        "power": 7.6
+      },
+      {
+        "tp": "2026-xx-xx 17:59:00",
+        "power": 7.6
+      }
+    ]
+  }
+}

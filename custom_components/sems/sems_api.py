@@ -29,6 +29,7 @@ _SUPPORTED_WEB_DEVICE_TYPES = {
     "ENERGY_STORAGE_INTEGRATED_CABINET",
     "BATTERY_RACK",
     "DONGLE",
+    "EV_CHARGER",
 }
 _WEB_INVERTER_ENTITY_TYPES = {
     "INVERTER",
@@ -137,6 +138,15 @@ _WEB_STATION_STATISTICS_ENDPOINT = ApiEndpoint(
 _WEB_STATION_PRODUCTION_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/stations/production", "web"
 )
+# EV chargers (e.g. HCA wallboxes) are read and controlled through the same
+# SEMS+ Web endpoints the Web UI uses on the charger device page.
+_WEB_EV_CHARGER_MODE_INFO_ENDPOINT = ApiEndpoint(
+    "/sems-remote/api/ev-charger/control-item-content-list/{serial_number}", "web"
+)
+_WEB_EV_CHARGER_LAST_CHARGE_ENDPOINT = ApiEndpoint(
+    "/sems-plant/api/v1/chargePile/getLastCharge", "web"
+)
+_WEB_EV_CHARGER_COMMAND_URL_PART = "/sems-remote/api/ev-charger/{command}"
 _WEB_STATISTICS_ITEMS = [
     "proConsumStats",
     "proGridStats",
@@ -150,6 +160,7 @@ _WEB_STATISTICS_REFRESH_SECONDS = 300
 _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS = 86_400
 _WEB_STATISTICS_EARLIEST_YEAR = 2015
 _WEB_RELATED_DEVICES_REFRESH_SECONDS = 3_600
+_WEB_DEVICE_LIST_CACHE_SECONDS = 3_600
 _WEB_FAILED_REQUEST_RETRY_SECONDS = 300
 _WEB_FUNCTION_MENUS_REFRESH_SECONDS = 21_600
 
@@ -1243,11 +1254,36 @@ class SemsApi:
         """Build the legacy coordinator shape from SEMS+ Web responses."""
         inverters: list[dict[str, Any]] = []
         smart_meters: list[dict[str, Any]] = []
+        ev_chargers: dict[str, dict[str, Any]] = {}
         unavailable_inverter_sources: dict[str, set[str]] = {}
         unavailable_homekit_sources: set[str] = set()
-        for device in self.getWebInverterDevices(
-            powerStationId, renewToken, maxTokenRetries
-        ):
+        device_cache_key = f"devices:{powerStationId}"
+        cached_devices = self._web_cache.get(device_cache_key)
+        device_inventory_unavailable = False
+        try:
+            devices = self.getWebInverterDevices(
+                powerStationId, renewToken, maxTokenRetries
+            )
+        except OutOfRetries, SemsRateLimitedError:
+            if (
+                cached_devices is None
+                or time.monotonic() - cached_devices[0]
+                >= _WEB_DEVICE_LIST_CACHE_SECONDS
+                or not isinstance(cached_devices[1], list)
+                or not cached_devices[1]
+            ):
+                raise
+            _LOGGER.debug("SEMS+ device discovery unavailable; using recent inventory")
+            devices = [
+                {key: value for key, value in device.items() if key != "status"}
+                for device in cached_devices[1]
+                if isinstance(device, dict)
+            ]
+            device_inventory_unavailable = True
+        else:
+            self._web_cache[device_cache_key] = (time.monotonic(), devices)
+
+        for device in devices:
             serial_number = device.get("sn")
             if not isinstance(serial_number, str):
                 continue
@@ -1255,6 +1291,18 @@ class SemsApi:
             if not isinstance(device_type, str):
                 device_type = "INVERTER"
             device_data = dict(device)
+            if device_type == "EV_CHARGER":
+                ev_chargers[serial_number] = self.getWebEvCharger(
+                    powerStationId, device_data, renewToken, maxTokenRetries
+                )
+                continue
+            if (
+                device_inventory_unavailable
+                and device_type in _WEB_INVERTER_ENTITY_TYPES
+            ):
+                unavailable_inverter_sources.setdefault(serial_number, set()).add(
+                    "device_status"
+                )
             # Dongles have status, but no useful telemetry or counters. Avoid
             # making unsupported requests for them while preserving their
             # device/entity entry.
@@ -1315,9 +1363,9 @@ class SemsApi:
                     if device_type == "SMART_METER":
                         unavailable_homekit_sources.update(unavailable_sources)
                     else:
-                        unavailable_inverter_sources[serial_number] = (
-                            unavailable_sources
-                        )
+                        unavailable_inverter_sources.setdefault(
+                            serial_number, set()
+                        ).update(unavailable_sources)
             if device_type == "BATTERY_RACK":
                 battery_data = {
                     key: device_data.pop(key)
@@ -1358,11 +1406,24 @@ class SemsApi:
             if inverter["invert_full"].get("deviceType") in _WEB_REAL_INVERTER_TYPES
         ]
         result: dict[str, Any] = {"inverter": inverters}
+        if ev_chargers:
+            result["ev_chargers"] = ev_chargers
         try:
             flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
-        except (OutOfRetries, SemsRateLimitedError) as err:
+        except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
             _LOGGER.debug("SEMS station flow unavailable: %s", err)
             flow = {}
+            for charger in ev_chargers.values():
+                charger["unavailable_sources"].add("flow")
+        if len(ev_chargers) == 1 and flow.get("pEvChar") is not None:
+            # Station flow reports the (total) EV charging power in kW; it can
+            # only be attributed to a charger when the station has one.
+            try:
+                next(iter(ev_chargers.values()))["charging_power"] = (
+                    abs(float(flow["pEvChar"])) * 1000
+                )
+            except TypeError, ValueError:
+                _LOGGER.debug("SEMS station flow has an invalid pEvChar value")
         if flow:
             if (
                 not smart_meters
@@ -1473,6 +1534,234 @@ class SemsApi:
                 "homekit": unavailable_homekit_sources,
             }
         return result
+
+    def getWebEvCharger(
+        self,
+        powerStationId: str,
+        device: dict[str, Any],
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get EV charger telemetry, counters, mode settings, and charge state.
+
+        Each request is optional so one failing charger endpoint does not hide
+        the others or the station's inverter data. Failed requests are listed
+        in `unavailable_sources` so the entities they feed report unavailable.
+        """
+        serial_number = device["sn"]
+        unavailable_sources: set[str] = set()
+        charger: dict[str, Any] = {
+            **device,
+            "powerstation_id": powerStationId,
+            "factors": {},
+            "mode_info": {},
+            "charge_log": {},
+            "unavailable_sources": unavailable_sources,
+        }
+        for endpoint, name in (
+            (_WEB_TELEMETRY_ENDPOINT, "telemetry"),
+            (_WEB_TELECOUNTING_ENDPOINT, "telecounting"),
+        ):
+            try:
+                result = self._make_api_call(
+                    f"{endpoint.url_part.format(serial_number=serial_number)}"
+                    f"?deviceType=EV_CHARGER&pwId={powerStationId}",
+                    method="GET",
+                    renewToken=renewToken,
+                    maxTokenRetries=maxTokenRetries,
+                    operation_name=f"getWebEvCharger {name} API call",
+                    is_web=True,
+                    token_type=endpoint.token_type,
+                )
+            except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
+                _LOGGER.debug("SEMS EV charger %s unavailable: %s", name, err)
+                unavailable_sources.add(name)
+                continue
+            charger["factors"].update(
+                {
+                    code: {**factor, "source": name}
+                    for code, factor in self._web_factors_with_units(
+                        result if isinstance(result, list) else None
+                    ).items()
+                }
+            )
+
+        for key, url_part, operation_name in (
+            (
+                "mode_info",
+                _WEB_EV_CHARGER_MODE_INFO_ENDPOINT.url_part.format(
+                    serial_number=serial_number
+                ),
+                "getWebEvChargerModeInfo API call",
+            ),
+            (
+                "last_charge",
+                f"{_WEB_EV_CHARGER_LAST_CHARGE_ENDPOINT.url_part}"
+                f"?chargeSn={serial_number}&pwId={powerStationId}",
+                "getWebEvChargerLastCharge API call",
+            ),
+        ):
+            try:
+                result = self._make_api_call(
+                    url_part,
+                    method="GET",
+                    renewToken=renewToken,
+                    maxTokenRetries=maxTokenRetries,
+                    operation_name=operation_name,
+                    is_web=True,
+                    token_type="web",
+                )
+            except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
+                _LOGGER.debug("SEMS EV charger %s unavailable: %s", key, err)
+                unavailable_sources.add(key)
+                continue
+            if not isinstance(result, dict):
+                continue
+            if key == "last_charge":
+                charge_log = result.get("chargeLog")
+                charger["charge_log"] = (
+                    charge_log if isinstance(charge_log, dict) else {}
+                )
+            else:
+                charger[key] = result
+
+        # Current charge mode and "More Control" settings (Web UI evChargeInfo).
+        product_model = charger["mode_info"].get("productModel")
+        charger["detail"] = {}
+        if product_model:
+            try:
+                detail = self._make_api_call(
+                    _WEB_EV_CHARGER_COMMAND_URL_PART.format(command="detail"),
+                    data=json.dumps(
+                        {"sn": serial_number, "productModel": product_model}
+                    ),
+                    method="POST",
+                    renewToken=renewToken,
+                    maxTokenRetries=maxTokenRetries,
+                    operation_name="getWebEvChargerDetail API call",
+                    is_web=True,
+                    token_type="web",
+                )
+            except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
+                _LOGGER.debug("SEMS EV charger detail unavailable: %s", err)
+                unavailable_sources.add("detail")
+            else:
+                if isinstance(detail, dict):
+                    charger["detail"] = detail
+        elif "mode_info" in unavailable_sources:
+            # Without the model the settings can't be read either.
+            unavailable_sources.add("detail")
+        return charger
+
+    @staticmethod
+    def _web_factors_with_units(
+        response: list[dict[str, Any]] | None,
+    ) -> dict[str, dict[str, Any]]:
+        """Return numeric SEMS+ factors with their unit and alias by code."""
+        factors: dict[str, dict[str, Any]] = {}
+        for group in response or []:
+            if not isinstance(group, dict):
+                continue
+            for factor in group.get("factors", []):
+                if not isinstance(factor, dict):
+                    continue
+                code = factor.get("code")
+                try:
+                    value = float(factor["data"])
+                except KeyError, TypeError, ValueError:
+                    continue
+                if not isinstance(code, str):
+                    continue
+                factors[code] = {
+                    "value": value,
+                    "unit": factor.get("unit") or None,
+                    "alias": factor.get("alias") or code,
+                }
+        return factors
+
+    def _send_ev_charger_command(self, command: str, payload: dict[str, Any]) -> bool:
+        """Send an EV charger control command through SEMS+ Web."""
+        return (
+            self._make_api_call(
+                _WEB_EV_CHARGER_COMMAND_URL_PART.format(command=command),
+                method="POST",
+                data=json.dumps(payload),
+                operation_name=f"EV charger {command} API call",
+                is_web=True,
+                token_type="web",
+            )
+            is not None
+        )
+
+    def startEvCharging(
+        self, plant_id: str, serial_number: str, product_model: str, mode: int
+    ) -> bool:
+        """Start charging on an EV charger."""
+        return self._send_ev_charger_command(
+            "startCharge",
+            {
+                "sn": serial_number,
+                "plantId": plant_id,
+                "productModel": product_model,
+                "mode": mode,
+            },
+        )
+
+    def stopEvCharging(
+        self, plant_id: str, serial_number: str, product_model: str, mode: int
+    ) -> bool:
+        """Stop charging on an EV charger."""
+        return self._send_ev_charger_command(
+            "stopCharge",
+            {
+                "sn": serial_number,
+                "plantId": plant_id,
+                "productModel": product_model,
+                "mode": mode,
+            },
+        )
+
+    def setEvChargeMode(
+        self,
+        plant_id: str,
+        serial_number: str,
+        product_model: str,
+        mode: int,
+        detail: dict[str, Any] | None = None,
+    ) -> bool:
+        """Set the EV charge mode (0 fast, 1 PV, 2 PV and battery).
+
+        Like the Web UI, fast mode resends the configured maximum power.
+        """
+        payload: dict[str, Any] = {
+            "mode": mode,
+            "sn": serial_number,
+            "plantId": plant_id,
+            "productModel": product_model,
+        }
+        if mode == 0 and detail and detail.get("chargeMaxPower") is not None:
+            payload["chargeMaxPower"] = detail["chargeMaxPower"]
+            payload["chargePowerSetted"] = detail.get("chargePowerSetted") or 0
+        return self._send_ev_charger_command("set-mode", payload)
+
+    def setEvChargerConfig(
+        self,
+        plant_id: str,
+        serial_number: str,
+        product_model: str,
+        field: str,
+        value: float | int,
+    ) -> bool:
+        """Change one EV charger "More Control" setting (Web UI set-config)."""
+        return self._send_ev_charger_command(
+            "set-config",
+            {
+                "sn": serial_number,
+                "plantId": plant_id,
+                "productModel": product_model,
+                field: value,
+            },
+        )
 
     def getWebStationFlow(
         self,
@@ -1591,6 +1880,8 @@ class SemsApi:
             is_web=True,
             token_type=_WEB_DEVICE_STATUS_ENDPOINT.token_type,
         )
+        if result is None:
+            raise OutOfRetries("SEMS+ device discovery request failed")
         devices: list[dict[str, Any]] = []
         for device_group in (
             result.get("deviceDetailList", []) if isinstance(result, dict) else []

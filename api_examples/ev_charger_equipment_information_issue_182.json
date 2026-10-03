@@ -1,0 +1,30 @@
+{
+  "code": "00000",
+  "data": [
+    {
+      "code": "workStu",
+      "data": "6",
+      "alias": "status"
+    },
+    {
+      "code": "deviceName",
+      "data": "GW11K-HCA",
+      "alias": "name_1"
+    },
+    {
+      "code": "deviceType",
+      "data": "EV_CHARGER",
+      "alias": "type"
+    },
+    {
+      "code": "modelType",
+      "data": "GW11K-HCA",
+      "alias": "model"
+    },
+    {
+      "code": "charGunNum",
+      "data": "1",
+      "alias": "number_of_charging_ports"
+    }
+  ]
+}

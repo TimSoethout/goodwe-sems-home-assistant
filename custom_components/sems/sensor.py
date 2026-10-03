@@ -46,6 +46,7 @@ from .const import (
     redact_for_log,
 )
 from .device import device_info_for_inverter
+from .ev_charger import async_add_ev_charger_entities, ev_charger_sensors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,6 +91,8 @@ def _data_source_for_value_path(path: SemsValuePath) -> str | None:
     field = path[-1]
     if not isinstance(field, str):
         return None
+    if field == "status":
+        return "device_status"
     if field in _COUNTER_SENSOR_FIELDS:
         return "counters"
     if field in _TELEMETRY_SENSOR_FIELDS or field.startswith(
@@ -947,6 +950,9 @@ async def async_setup_entry(
             )
         )
     async_add_entities(sensors)
+    async_add_ev_charger_entities(
+        coordinator, config_entry, async_add_entities, ev_charger_sensors
+    )
 
 
 def _migrate_unique_ids(hass: HomeAssistant, migrations: dict[str, str]) -> None:

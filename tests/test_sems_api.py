@@ -1294,6 +1294,80 @@ class TestSemsApi:
             token_type="web",
         )
 
+    def test_get_web_data_reuses_cached_device_inventory_after_request_failure(self):
+        """Reuse recent discovery metadata, but never its stale device status."""
+        with (API_EXAMPLES_DIR / "all_status.json").open(encoding="utf-8") as file:
+            captured_devices = json.load(file)["data"]
+
+        with (
+            patch.object(
+                self.api, "_make_api_call", side_effect=[captured_devices, None]
+            ),
+            patch.object(
+                self.api, "getWebInverterTelemetry", return_value={"pac": 1200}
+            ),
+            patch.object(
+                self.api, "getWebInverterTelecounting", return_value={"etotal": 42}
+            ),
+            patch.object(self.api, "getWebStationFlow", return_value={}),
+            patch.object(self.api, "_get_web_energy_statistics", return_value=None),
+        ):
+            first = self.api.getWebData("station")
+            recovered = self.api.getWebData("station")
+
+        first_inverter = first["inverter"][0]["invert_full"]
+        recovered_inverter = recovered["inverter"][0]["invert_full"]
+        assert recovered_inverter["sn"] == first_inverter["sn"]
+        assert recovered_inverter["pac"] == 1200
+        assert "status" not in recovered_inverter
+        assert recovered["unavailable_data_sources"]["inverters"][
+            recovered_inverter["sn"]
+        ] == {"device_status"}
+
+    def test_get_web_data_does_not_reuse_inventory_after_successful_empty_response(
+        self,
+    ):
+        """A successful empty device list replaces the cached inventory."""
+        with (API_EXAMPLES_DIR / "all_status.json").open(encoding="utf-8") as file:
+            captured_devices = json.load(file)["data"]
+
+        with (
+            patch.object(
+                self.api,
+                "_make_api_call",
+                side_effect=[
+                    captured_devices,
+                    {"deviceDetailList": []},
+                    None,
+                ],
+            ),
+            patch.object(self.api, "getWebInverterTelemetry", return_value={}),
+            patch.object(self.api, "getWebInverterTelecounting", return_value={}),
+            patch.object(self.api, "getWebStationFlow", return_value={}),
+            patch.object(self.api, "_get_web_energy_statistics", return_value=None),
+        ):
+            self.api.getWebData("station")
+            result = self.api.getWebData("station")
+            with pytest.raises(OutOfRetries):
+                self.api.getWebData("station")
+
+        assert result["inverter"] == []
+        assert "unavailable_data_sources" not in result
+
+    def test_get_web_data_does_not_use_expired_device_inventory(self):
+        """Expired discovery metadata cannot hide an unavailable API."""
+        self.api._web_cache["devices:station"] = (
+            10.0,
+            [{"sn": "SN1", "deviceType": "INVERTER", "status": 1}],
+        )
+
+        with (
+            patch.object(self.api, "getWebInverterDevices", side_effect=OutOfRetries),
+            patch("custom_components.sems.sems_api.time.monotonic", return_value=3610),
+            pytest.raises(OutOfRetries),
+        ):
+            self.api.getWebData("station")
+
     @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
     @patch.object(SemsApi, "getWebStationFlow", return_value={})
     @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})

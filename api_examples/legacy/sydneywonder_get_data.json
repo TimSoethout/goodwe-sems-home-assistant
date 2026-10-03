@@ -1,0 +1,207 @@
+{
+  "info": {
+    "powerstation_id": "00000000-0000-4000-8000-000000000005",
+    "time": "05/30/2026 08: 23: 04",
+    "date_format": "MM.dd.yyyy",
+    "date_format_ym": "MM.yyyy",
+    "stationname": "Example Device",
+    "address": "Example Location",
+    "owner_name": "Example Device",
+    "owner_phone": null,
+    "owner_email": "test1@example.com",
+    "battery_capacity": 33.2,
+    "turnon_time": "05/27/2026 00: 00: 00",
+    "create_time": "05/27/2026 10: 18: 02",
+    "capacity": 10,
+    "longitude": 0.0,
+    "latitude": 0.0,
+    "powerstation_type": "Battery Storage",
+    "status": -1,
+    "is_stored": true,
+    "is_powerflow": true,
+    "charts_type": 4,
+    "has_pv": true,
+    "has_statistics_charts": false,
+    "only_bps": false,
+    "only_bpu": false,
+    "time_span": -10.0,
+    "pr_value": "",
+    "org_code": "Example Organization",
+    "org_name": "Example Organization"
+  },
+  "kpi": {
+    "month_generation": 0.0,
+    "pac": 0.0,
+    "power": 0.0,
+    "total_power": 0.0,
+    "day_income": 0.0,
+    "total_income": 0.0,
+    "yield_rate": 0.22,
+    "currency": "AUD"
+  },
+  "powercontrol_status": 0,
+  "images": [
+    "REDACTEDREDACTED"
+  ],
+  "weather": {
+    "HeWeather6": [
+      {
+        "basic": {
+          "cid": null,
+          "location": null,
+          "parent_city": null,
+          "admin_area": null,
+          "cnty": null,
+          "lat": null,
+          "lon": null,
+          "tz": null
+        },
+        "update": {
+          "loc": null,
+          "utc": null
+        },
+        "status": "ok",
+        "daily_forecast": [
+          {
+            "cond_code_d": "100",
+            "cond_code_n": "150",
+            "cond_txt_d": "Sunny",
+            "cond_txt_n": "Clear",
+            "date": "2026-05-30",
+            "hum": "64",
+            "pcpn": "0.0",
+            "pop": "4",
+            "pres": "1000",
+            "tmp_max": "20",
+            "tmp_min": "9",
+            "uv_index": "3",
+            "vis": "9",
+            "wind_deg": "260",
+            "wind_dir": "W",
+            "wind_sc": "1-3",
+            "wind_spd": "9"
+          }
+        ]
+      }
+    ]
+  },
+  "inverter": [
+    {
+      "sn": "GW0000SN0002TEST",
+      "dict": {
+        "left": [
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "dmDeviceType",
+            "value": "GW9.999K-ETA-G20",
+            "unit": "",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "serialNum",
+            "value": "<REDACTED>",
+            "unit": "",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "laCheckcode",
+            "value": "<redacted>",
+            "unit": "",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "capacity",
+            "value": "9.999",
+            "unit": "kW",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "laConnected",
+            "value": "05.27.2026 10: 18: 22",
+            "unit": "",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "InverterPowerOfPlantMonitor",
+            "value": "0",
+            "unit": "kW",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "acVacVol",
+            "value": "0/0/0",
+            "unit": "V",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "acCurrent",
+            "value": "0/0/0",
+            "unit": "A",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "acFrequency",
+            "value": "0",
+            "unit": "Hz",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          }
+        ],
+        "right": [
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "innerTemp",
+            "value": "0.0",
+            "unit": "℃",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "RSSI",
+            "value": "--",
+            "unit": "",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          },
+          {
+            "isHT": false,
+            "isStoreSkip": false,
+            "key": "dcVandC1",
+            "value": "0.0/0.0",
+            "unit": "V/A",
+            "isFaultMsg": 0,
+            "faultMsgCode": 0
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -3,10 +3,19 @@
 These sanitized JSON files document response shapes observed while testing the
 GoodWe SEMS and SEMS+ APIs. Credentials, tokens, trace IDs, station IDs, serial
 numbers, and names are replaced with placeholders or representative values.
-Legacy SEMS response examples are kept in [`legacy/`](./legacy/). See the
-repository [architecture plan](../ARCHITECTURE_PLAN.md) and
-[follow-up work](../TODO.md) for the current integration design and open
-coverage items.
+The machine-readable [`index.json`](./index.json) catalogs the committed
+examples, including file-backed fixtures under `tests/test-data/`, their
+provenance, and known test consumers. Sanitized examples with unverified
+capture context are explicitly labeled as such. Legacy SEMS response examples
+are kept in [`legacy/`](./legacy/). See the repository
+[architecture plan](../ARCHITECTURE_PLAN.md) and [follow-up work](../TODO.md)
+for the current integration design and open coverage items.
+
+[`openapi.yaml`](./openapi.yaml) is a partial, evidence-based OpenAPI 3.1
+description of selected endpoints. It is not an official or complete GoodWe
+contract. Captured responses are linked to their fixture files; reported and
+synthetic data is labeled separately and must not be treated as verified API
+behavior.
 
 ## Capturing a new endpoint or response
 
@@ -17,11 +26,12 @@ coverage items.
 3. Add the sanitized JSON response under this directory. Put legacy SEMS
    monitor responses in [`legacy/`](./legacy/); keep SEMS+ Web responses at the
    top level.
-4. Add the endpoint, request method, required token type, and important fields
-   to this README.
+4. Add it to [`index.json`](./index.json), including provenance and any test
+   consumers. Update the response reference below with its endpoint and field
+   details.
 5. Add or update a fixture-backed regression test before adding a production
-   mapping. Include units, device type, region, and any known limitations in
-   the fixture or test documentation.
+   mapping. Include units, device type, region, and known limitations in the
+   fixture or test documentation.
 
 Never commit credentials, cookies, authorization headers, signatures, live
 tokens, station IDs, serial numbers, trace IDs, or personal names. Replace
@@ -39,6 +49,7 @@ the relevant JSON response and sanitize it instead.
 | `device_start_stop.json` | `POST /web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus` and `POST /web/sems/sems-remote/api/v1/address/remote/setDeviceFunctionParameters` with address `80017` | SEMS+ Web token and `X-Signature` | Start/stop capability schema, request values, and successful response codes |
 | `station_flow.json` | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `id`, `name`, `status`, `pSystem`, `pAc`, `consumFlag`, `refreshTime` |
 | `station_flow_import.json` | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | Importing example with `pGrid`, `pConsum`, and flow direction |
+| [`station_flow_battery_directions.json`](./station_flow_battery_directions.json) | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | Four hybrid charge/discharge and import/export samples; `pBat` and `pGrid` are in kW |
 | `all_status.json` | `GET /web/sems/sems-plant/api/stations/device/all-status?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `deviceDetailList`, `statusDetailList`, `snList`, `detailMap` |
 | `smart_meter_all_status.json` | `GET /web/sems/sems-plant/api/stations/device/all-status?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `INVERTER` plus `SMART_METER` device discovery |
 | `telemetry.json` | `GET /web/sems/sems-plant/api/equipments/<sn>/telemetry?deviceType=INVERTER&pwId=<station_id>` | SEMS+ Web token and `X-Signature` | `sn`, `hTotal`, `Temperature`, `pAc`, `qAc`, `gridPF`, `Vac`, `Iac`, `Fac`, MPPT fields |
@@ -59,6 +70,11 @@ the relevant JSON response and sanitize it instead.
 
 The hybrid capture set and its observed units and device relationships are
 documented in [`semsplus_hybrid/README.md`](./semsplus_hybrid/README.md).
+The separate [`station_flow_battery_directions.json`](./station_flow_battery_directions.json)
+capture records the EU installation's reported flow signs in all four
+battery/grid operating states. It keeps the 19:31 portal observation, 19:32
+flow response, and the time-aligned 19:33 flow response with local sensor
+readings separate.
 
 ## Endpoint without a response fixture
 
@@ -151,3 +167,47 @@ body selects the corresponding battery function address and value.
 Do not add live API responses to this directory. Remove credentials, tokens,
 station identifiers, serial numbers, trace IDs, and personal names before
 adding or updating an example.
+
+## EV charger (HCA wallbox) endpoints
+
+Derived from the SEMS+ Web UI charger page. The integration was checked
+against a live HCA charger (values and every control). [A redacted HAR report
+in issue #182](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/182#issuecomment-4110082226)
+contains response excerpts for `detail`, `getLastCharge`, equipment
+information, and `getDevicesByType`; these are cataloged as `issue_report`,
+not complete API captures. The issue samples do not cover the `all-status`,
+telemetry, telecounting, `control-item-content-list`, or station-flow `pEvChar`
+responses used by this integration. In particular, `getDevicesByType` is not
+the `all-status` endpoint used for discovery. Tests still use hand-built
+responses for those uncovered shapes. Chargers are discovered as `EV_CHARGER`
+devices in `all-status`.
+
+The `detail` and `getLastCharge` excerpts are exercised by
+[`tests/test_ev_charger.py`](../tests/test_ev_charger.py); their reported
+fields are not evidence for fields absent from the excerpts.
+
+### Issue #182 response excerpts
+
+| File | Issue-reported endpoint | Fields shown |
+| --- | --- | --- |
+| [`ev_charger_detail_issue_182.json`](./ev_charger_detail_issue_182.json) | `/web/sems/sems-remote/api/ev-charger/detail` | `chargeMode`, `chargePower`, `chargePowerSetted`, `status`, `workState`, `schedule*` |
+| [`ev_charger_last_charge_issue_182.json`](./ev_charger_last_charge_issue_182.json) | `/web/sems/sems-plant/api/v1/chargePile/getLastCharge` | `chargeLog` values and a short `curveList` |
+| [`ev_charger_equipment_information_issue_182.json`](./ev_charger_equipment_information_issue_182.json) | `/web/sems/sems-plant/api/equipments/<sn>/information?deviceType=EV_CHARGER` | Equipment information factors |
+| [`ev_charger_device_list_issue_182.json`](./ev_charger_device_list_issue_182.json) | `/web/sems/sems-plant/api/web/device/station/getDevicesByType?deviceType=EV_CHARGER` | Device serial, name, type, status, and HEMS flag |
+
+### Current integration requests
+
+| Purpose | Request |
+| --- | --- |
+| Live values / counters | `GET /web/sems/sems-plant/api/equipments/<sn>/telemetry` and `.../telecounting` with `deviceType=EV_CHARGER&pwId=<station_id>` |
+| Mode settings | `GET /web/sems/sems-remote/api/ev-charger/control-item-content-list/<sn>` (`productModel`, `chargeMode`, `chargeMaxPower`) |
+| Charge state | `GET /web/sems/sems-plant/api/v1/chargePile/getLastCharge?chargeSn=<sn>&pwId=<station_id>`; `chargeLog.workStu`: 0 offline, 2 fault, 6 charging, 8/10 available, 9 maintenance; `chargeLog.status` = plug status |
+| Current mode and settings | `POST /web/sems/sems-remote/api/ev-charger/detail` with `{sn, productModel}`: `chargeMode`, `chargeMaxPower`, `ratedMaxiChargePower`, `buyPwrLimit`, `ensureMinimumChargingPower`, `gridControlLimitSwitch`/`gridControlLimitValue`, `dynamicLoad`/`currentLimit`, `phaseSwitch`, `lockChargingPlug`, `chargedNow` (plug and charge) |
+| Change a setting | `POST /web/sems/sems-remote/api/ev-charger/set-config` with `{sn, plantId, productModel, <field>: value}`; toggles are sent as 0/1; ranges come from the mode settings' `controlItemRanges` |
+| Live charging power | `stations/flow` field `pEvChar` (kW, station total) |
+| Last session | `getLastCharge` `chargeLog`: `currentChargeQuantity`, `greenElec`, `purElec` (kWh), `averCharP`, `maxCharP` (kW), `chargeTimeLength` (min), `chargeStartTime`, `chargeEndTime`, `chargeEndCauseDetail`, `mileage` |
+| Start / stop | `POST /web/sems/sems-remote/api/ev-charger/startCharge` or `stopCharge` with `{sn, plantId, productModel, mode}` |
+| Charge mode | `POST /web/sems/sems-remote/api/ev-charger/set-mode` with `{mode, sn, plantId, productModel}`; mode 0 fast (also sends `chargeMaxPower`, `chargePowerSetted`), 1 PV, 2 PV + battery |
+
+Also present in the UI but not implemented: `set-scheduled` / `cancel-charge` (scheduled charging), RFID
+`card/*`, and `chargePile/queryChargeLogList` (session history).

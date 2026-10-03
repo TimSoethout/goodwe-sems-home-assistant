@@ -20,6 +20,12 @@
       "problemMatcher": []
     },
     {
+      "label": "SEMS: sync Home Assistant version",
+      "type": "shell",
+      "command": "bash .devcontainer/sync-home-assistant.sh",
+      "problemMatcher": []
+    },
+    {
       "label": "SEMS: start Home Assistant",
       "type": "shell",
       "command": "bash .devcontainer/start-home-assistant && tail -f /tmp/home-assistant.log",
