@@ -1509,7 +1509,11 @@ class SemsApi:
                     cabinets = self.getEnergyStorageIntegratedCabinets(
                         powerStationId, serial_number, renewToken, maxTokenRetries
                     )
-                except (OutOfRetries, SemsRateLimitedError) as err:
+                except (
+                    OutOfRetries,
+                    SemsPermissionError,
+                    SemsRateLimitedError,
+                ) as err:
                     _LOGGER.debug(
                         "SEMS related storage devices unavailable for %s: %s",
                         serial_number,
@@ -2194,7 +2198,7 @@ class SemsApi:
                 telemetry = self.getBatterySystemTelemetry(
                     powerStationId, serial_number
                 )
-            except (OutOfRetries, SemsRateLimitedError) as err:
+            except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
                 _LOGGER.debug(
                     "SEMS BAT_SYS telemetry unavailable for %s: %s",
                     serial_number,
