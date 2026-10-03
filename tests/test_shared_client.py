@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+import requests
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -18,6 +19,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.sems import SemsDataUpdateCoordinator
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
 from custom_components.sems.sems_api import (
+    OutOfRetries,
     SemsApi,
     SemsAuthError,
     SemsRateLimitedError,
@@ -88,6 +90,40 @@ async def test_coordinator_passes_retry_after(hass: HomeAssistant) -> None:
     ):
         await coordinator._async_update_data()
     assert err.value.retry_after == 240
+
+
+@pytest.mark.parametrize(
+    "error",
+    [OutOfRetries("session rejected"), requests.ConnectionError("offline")],
+    ids=["api-error", "network-error"],
+)
+async def test_coordinator_api_errors_become_update_failed(
+    hass: HomeAssistant, error: Exception
+) -> None:
+    """API and network errors are reported as communication errors."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    api = SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD)
+    coordinator = SemsDataUpdateCoordinator(hass, api, entry)
+
+    with _mock_api(get_data=error), pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+
+async def test_coordinator_does_not_mask_programming_errors(
+    hass: HomeAssistant,
+) -> None:
+    """Unexpected exceptions surface instead of posing as API errors."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    api = SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD)
+    coordinator = SemsDataUpdateCoordinator(hass, api, entry)
+
+    with (
+        _mock_api(get_data=TypeError("bug")),
+        pytest.raises(TypeError, match="bug"),
+    ):
+        await coordinator._async_update_data()
 
 
 async def test_coordinator_requests_reauth(hass: HomeAssistant) -> None:

@@ -47,12 +47,18 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
         self.method = method
 
     @property
-    def native_value(self) -> float:
-        return float(
-            (self.coordinator.data.immediate_charging or {})
-            .get(self.serial_number, {})
-            .get(self.value_key, 0.0)
+    def available(self) -> bool:
+        """Return whether the immediate-charging state could be read."""
+        return super().available and self.serial_number in (
+            self.coordinator.data.immediate_charging or {}
         )
+
+    @property
+    def native_value(self) -> float | None:
+        state = (self.coordinator.data.immediate_charging or {}).get(self.serial_number)
+        if state is None:
+            return None
+        return float(state.get(self.value_key, 0.0))
 
     async def async_set_native_value(self, value: float) -> None:
         await self._async_set_value(self.method, value)
