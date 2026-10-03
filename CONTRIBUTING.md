@@ -22,7 +22,7 @@ This project adheres to a code of conduct that all contributors are expected to 
 
 ### Prerequisites
 
-- Python 3.13 or higher
+- Python 3.14
 - Git
 - A GitHub account
 - Basic understanding of Home Assistant custom components
@@ -93,7 +93,7 @@ For running tests and linting without a full Home Assistant setup:
 
 ### Branch Naming
 
-Create a descriptive branch name:
+Use a descriptive branch name. These are examples, not a required list:
 - `feature/add-xyz` - for new features
 - `fix/issue-123` - for bug fixes
 - `docs/update-readme` - for documentation changes
@@ -132,7 +132,7 @@ This project uses **Ruff** for linting and formatting, and **mypy** for type che
 ```bash
 ruff check custom_components/
 ruff format --check custom_components/
-mypy custom_components/ --ignore-missing-imports --python-version 3.13
+mypy custom_components/ --ignore-missing-imports --python-version 3.14
 ```
 
 **Fix linting issues automatically:**
@@ -149,52 +149,29 @@ ruff format custom_components/
 
 ### Documentation
 
-- Add docstrings to all public functions and classes
+- Document public APIs when needed to explain their behavior
 - Use clear, descriptive variable and function names
-- Update README.md if your changes affect user-facing features
+- Update README.md or other user-facing setup, usage, and configuration documentation when relevant
 - Update `strings.json` for any UI text changes
 
 ## Testing
 
 ### Running Tests
 
-**Run all tests:**
+Run all tests:
 ```bash
-pytest tests/ -v
+python -m pytest tests/ -v
 ```
 
-**Run with coverage:**
-```bash
-pytest tests/ --cov=custom_components.sems --cov-report=term-missing -v
-```
-
-**Run a specific test file:**
-```bash
-pytest tests/test_sems_api.py -v
-```
-
-**Run a specific test:**
-```bash
-pytest tests/test_sems_api.py::TestSemsApi::test_get_login_token_success -v
-```
+See [tests/README.md](tests/README.md) for targeted test, coverage, and Home Assistant Core workspace instructions.
 
 ### Writing Tests
 
-- Add tests for all new functionality
+- Add or update automated tests for behavior changes where appropriate, including integration/component tests when useful
 - Follow the existing test patterns in `tests/`
 - Use `requests-mock` for mocking HTTP calls
 - Ensure tests are isolated and don't depend on external services
-- Aim for high code coverage (ideally >80%)
-
-### Test Structure
-
-Tests are organized as follows:
-- `tests/test_sems_api.py` - API client tests
-- `tests/test_sensor_entities.py` - Home Assistant entity tests
-- `tests/fixtures.py` - Test data fixtures
-- `tests/conftest.py` - Pytest configuration
-
-See `tests/README.md` for more details.
+- There is no fixed coverage target; focus on exercising the changed behavior
 
 ## Submitting Changes
 
@@ -202,8 +179,8 @@ See `tests/README.md` for more details.
 
 1. **Update your fork:**
    ```bash
-   git checkout main
-   git pull upstream main
+   git checkout master
+   git pull upstream master
    ```
 
 2. **Create a feature branch:**
@@ -216,20 +193,11 @@ See `tests/README.md` for more details.
    - Add or update tests
    - Update documentation if needed
 
-4. **Verify your changes:**
-   ```bash
-   # Run linting
-   ruff check custom_components/
-   ruff format --check custom_components/
-   mypy custom_components/ --ignore-missing-imports --python-version 3.13
-   
-   # Run tests
-   pytest tests/ -v
-   ```
+4. **Verify your changes:** Run the applicable checks in Code Quality and Testing above.
 
 5. **Commit your changes:**
    ```bash
-   git add .
+   git add path/to/changed-files
    git commit -m "Add feature: your feature description"
    ```
 
@@ -251,11 +219,8 @@ Your PR should:
 
 - Have a clear, descriptive title
 - Include a detailed description of what changed and why
-- Reference any related issues (e.g., "Fixes #123")
-- Include tests for new functionality
-- Pass all CI checks (tests, linting, validation)
+- Link related issues when applicable; use `Closes #123` only when the PR closes the issue
 - Have a single, focused purpose (avoid mixing unrelated changes)
-- Update documentation if user-facing changes are made
 
 ## Commit Message Guidelines
 
@@ -279,6 +244,10 @@ Follow the [Conventional Commits](https://www.conventionalcommits.org/) specific
 - `test:` - Adding or updating tests
 - `chore:` - Maintenance tasks, dependency updates
 
+These are common types, not an exhaustive list; use another descriptive type when it better fits the change.
+
+The repository does not currently document a SemVer bump policy. Maintainers update the version in `custom_components/sems/manifest.json`; Conventional Commit types do not automate version bumps, and publishing a GitHub release triggers the packaging workflow.
+
 ### Examples
 
 ```
@@ -287,7 +256,7 @@ feat(api): add support for multiple power stations
 Add ability to configure and monitor multiple power stations
 from a single integration instance.
 
-Fixes #45
+Refs #45
 ```
 
 ```
@@ -314,14 +283,16 @@ with Home Assistant core.
 - You may be asked to make changes or clarifications
 - Be responsive to feedback and questions
 - Once approved, a maintainer will merge your PR
+- A PR with no activity for 90 days may be closed; it can be reopened when work resumes.
 
 ### Review Criteria
 
 Reviewers will check for:
 
 - Code quality and adherence to style guidelines
-- Test coverage and passing tests
-- Clear documentation and comments
+- The change meets the behavior requested in the issue or pull request
+- Tests exercise changed behavior where appropriate, and CI checks pass
+- Relevant user-facing documentation (such as README setup, usage, or configuration guidance) is updated; code comments explain non-obvious behavior only
 - No breaking changes (or properly documented/versioned if necessary)
 - Security considerations
 - Performance implications
