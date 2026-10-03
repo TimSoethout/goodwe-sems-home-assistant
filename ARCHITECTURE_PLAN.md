@@ -20,13 +20,18 @@ current user-facing setup and control behavior is documented in
 ## Runtime architecture
 
 1. **Config flow** authenticates and discovers station IDs. Each selected
-   station is represented by its own Home Assistant config entry.
+   station is represented by its own Home Assistant config entry. Entries for
+   the same account share one API client and session. The polling interval is
+   configured per account (60-3600 seconds) and applies to running coordinators
+   without reloading entries. Reauthentication is password-only and updates
+   all station entries for that account.
 2. **`SemsApi`** performs synchronous `requests` calls. Home Assistant calls
    it through the executor so network I/O does not block the event loop.
 3. **`SemsDataUpdateCoordinator`** refreshes one station on its configured
    scan interval. It converts the API response to `SemsData`, indexing
    inverter-like devices by serial number and retaining optional battery,
-   immediate-charging, HomeKit/power-flow, and currency data.
+   immediate-charging, HomeKit/power-flow, EV-charger, currency, and source
+   availability data.
 4. **Sensor and switch platforms** consume coordinator data. Sensors are
    declared with value paths; controls call `SemsApi` and request a coordinator
    refresh after a successful command.
@@ -58,6 +63,10 @@ changes; use the existing device and unique-ID migration helpers.
   authentication failure.
 - Bound token renewal and request retries. Surface the final failure rather
   than hiding it behind empty-success data or a retry loop.
+- The account-shared client serializes authentication, limits concurrent
+  requests, and uses a bounded cooldown after repeated failures. Its Web
+  response cache is synchronized and pruned so concurrent station refreshes
+  cannot race cache updates or grow date-keyed entries without bound.
 - Prefer bounded HTTPS polling. No supported third-party push/WebSocket
   contract has been established.
 
@@ -77,9 +86,10 @@ For a station refresh, the Web adapter uses the captured SEMS+ contracts to:
    data must remain absent when the endpoint or field is unavailable.
 
 Supported discovered device types include inverter-like devices, smart
-meters, battery racks, and dongles. Only device types with a defined entity
-mapping should create those entities; a dongle is not an inverter. The
-normalizer should preserve the reported device type for follow-up API calls.
+meters, battery racks, dongles, and EV chargers. EV chargers are modeled as
+separate devices. Only device types with a defined entity mapping should
+create those entities; a dongle is not an inverter. The normalizer should
+preserve the reported device type for follow-up API calls.
 
 Station statistics use the observed request/response contract in the hybrid
 fixtures: local timestamp boundaries are inclusive, `total` is rejected, and
@@ -90,11 +100,16 @@ fixture exists.
 ## Normalized data and entity contracts
 
 - Keep the coordinator's `SemsData` shape: inverter data keyed by serial
-  number, with optional batteries, immediate-charging state, HomeKit data, and
-  currency.
+  number, with optional batteries, immediate-charging state, HomeKit data,
+  EV-charger data, source availability, and currency. The inverter mapping may
+  be empty when power-flow data is available; a response with neither
+  supported inverter data nor HomeKit power-flow data is still a failure.
 - Add sensors through `sensor_options_for_data()` and explicit value paths.
   Preserve existing names, units, unique IDs, legacy aliases, and migrations.
 - Use `device_info_for_inverter()` for consistent device grouping.
+- HomeKit/power-flow devices and unique IDs are scoped to their station.
+  Migration changes the registry identifiers while preserving entity IDs and
+  recorder history.
 - Expose a value only when a supported field is actually present. Do not
   fabricate zeroes for missing telemetry or create healthy battery state from
   cabinet presence alone.
@@ -119,12 +134,24 @@ additional evidence.
 
 - Inverter start/stop uses the SEMS+ Web remote-control API when the account
   has permission, with legacy control retained as a compatibility fallback.
+  Do not create the Inverter Control switch for dongles or battery racks.
 - Battery immediate charging is a separate operation from stopping inverter
   generation. Continue using the captured function metadata and endpoints;
   do not conflate the two controls.
+- EV-charger controls use charger-specific SEMS+ endpoints and permissions;
+  keep them separate from inverter and battery controls.
+- Run blocking control calls through the coordinator's executor path. A
+  rejected account credential starts reauthentication; permission failures do
+  not.
 - Successful authentication does not imply write permission. Report control
   failures with useful endpoint/device context without exposing credentials,
   tokens, or private identifiers in logs.
+
+## Diagnostics
+
+Config-entry diagnostics redact credentials, account/station identifiers,
+serials, names, and model metadata. Replace serials recursively before
+redaction so they are also hidden when used as dictionary keys.
 
 ## API evidence and privacy
 

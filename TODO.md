@@ -42,23 +42,24 @@ evidence and fixture-backed regression coverage where practical.
 - [ ] Validate SEMS+ Web login and refresh across supported account roles and
   regions, including accounts that return `100004`, before removing legacy
   authentication fallback (#219).
-- [ ] Collect sanitized cases for expired Web tokens and `C0602`; confirm a
-  bounded renew-and-retry path and reduce duplicate error logging without
-  retrying permission or rate-limit failures (#192, #219).
+- [ ] Add sanitized cases for expired Web tokens and `C0602` to verify the
+  bounded renew-and-retry path without retrying permission or rate-limit
+  failures (#192, #219).
 - [ ] Investigate recurring telemetry `100025` separately from authentication
   failures. Record endpoint, region, device type, and account/station
   permission context from sanitized evidence (#219); do not add speculative
   fallback requests.
-- [ ] Measure repeated authentication and `GY0429` behavior across
-  multi-station setups. Reduce unnecessary token churn while preserving
-  endpoint-specific token profiles and a bounded retry policy (#192).
+- [ ] Measure authentication rejection, cooldown, and `GY0429` behavior across
+  multi-station setups. Tune the existing serialized login, request limit, and
+  bounded cooldown only when captures show they need adjustment (#192).
 - [ ] Validate and then consider removing legacy inverter-control fallback
   across older inverter models, regions, and permission levels. Keep
   monitoring and write permissions distinct (#195).
-- [ ] Complete compatibility evidence for existing battery immediate-charging
-  controls and identify any additional supported battery controls. Verify
-  write permissions and state transitions; keep these distinct from inverter
-  stop/start and add new controls only from captured request/response contracts
+- [ ] Complete compatibility evidence for battery immediate-charging controls
+  and identify any additional supported battery controls. State availability
+  and reauthentication on rejected credentials are implemented; still verify
+  write permissions and state transitions. Keep these distinct from inverter
+  stop/start and add controls only from captured request/response contracts
   (#191, #234).
 
 ## Energy counters and chart normalization
@@ -82,6 +83,10 @@ evidence and fixture-backed regression coverage where practical.
 
 ## Evidence and exploratory work
 
+- [ ] Validate HomeKit-only setup against a sanitized SEMS+ response with no
+  inverter-like devices but available station flow (#187, #257). The regression
+  test covers the coordinator boundary using the captured `station_flow.json`;
+  it does not prove the API returns this combination.
 - [ ] Add sanitized fixtures and focused tests for newly observed response
   codes and optional fields. Missing values must stay unavailable rather than
   becoming fabricated zeroes.
@@ -91,6 +96,8 @@ evidence and fixture-backed regression coverage where practical.
 - [ ] Investigate whether GoodWe exposes a supported cloud-push/MQTT/WebSocket
   contract before considering a second polling path. Retain bounded HTTPS
   polling unless a documented push contract proves more reliable (#184).
-- [ ] Investigate EV-charger discovery, telemetry, counters, and related
-  devices from a real station capture. Model a charger separately; do not
-  merge charger power into inverter power by default (#182).
+- [ ] Expand EV-charger validation with a full sanitized station capture for
+  discovery, telemetry, telecounting, settings, and station-flow charging
+  power. Current issue-reported samples do not cover all of these responses.
+  Keep chargers separate and do not merge charger power into inverter power by
+  default (#182, #240).
