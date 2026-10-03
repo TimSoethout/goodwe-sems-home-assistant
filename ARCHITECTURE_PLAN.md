@@ -20,7 +20,11 @@ current user-facing setup and control behavior is documented in
 ## Runtime architecture
 
 1. **Config flow** authenticates and discovers station IDs. Each selected
-   station is represented by its own Home Assistant config entry.
+   station is represented by its own Home Assistant config entry. Entries for
+   the same account share one API client and session. The polling interval is
+   configured per account (60-3600 seconds) and updates running coordinators
+   without reloading entries; reauthentication updates the account password
+   across its station entries.
 2. **`SemsApi`** performs synchronous `requests` calls. Home Assistant calls
    it through the executor so network I/O does not block the event loop.
 3. **`SemsDataUpdateCoordinator`** refreshes one station on its configured
@@ -91,7 +95,9 @@ fixture exists.
 
 - Keep the coordinator's `SemsData` shape: inverter data keyed by serial
   number, with optional batteries, immediate-charging state, HomeKit data, and
-  currency.
+  currency. The inverter mapping may be empty when power-flow data is
+  available; a response with neither supported inverter data nor HomeKit
+  power-flow data is still a failure.
 - Add sensors through `sensor_options_for_data()` and explicit value paths.
   Preserve existing names, units, unique IDs, legacy aliases, and migrations.
 - Use `device_info_for_inverter()` for consistent device grouping.

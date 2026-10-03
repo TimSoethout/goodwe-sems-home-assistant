@@ -7,6 +7,10 @@ evidence and fixture-backed regression coverage where practical.
 
 ## SEMS+ behavior and entity coverage
 
+- [ ] Validate HomeKit-only setup against a sanitized SEMS+ response with no
+  inverter-like devices but available station flow (#187, #257). The current
+  regression test covers the coordinator boundary using the captured
+  `station_flow.json`; it does not prove the API returns this combination.
 - [ ] Validate a multi-inverter station end to end (#215). Capture at least two
   devices with distinct output/model/status and assert unique entities,
   metadata, per-device requests, and independent counters. One idle or
