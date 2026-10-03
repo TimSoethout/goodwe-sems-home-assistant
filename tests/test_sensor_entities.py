@@ -1160,6 +1160,35 @@ async def test_no_inverter_or_powerflow_data_fails_setup(
     assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
+async def test_invalid_inverter_data_fails_setup(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Reject malformed inverter data even when powerflow is available."""
+    del enable_custom_integrations
+    payload = {
+        "inverter": "invalid",
+        "hasPowerflow": True,
+        "powerflow": {},
+    }
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with _mock_no_battery_api(payload):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
 def _build_homekit_test_data(
     inverter_status: int = 1,
     inverter_pac: int = 500,

@@ -603,11 +603,12 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
 
             inverters = data_result.get("inverter")
             inverters_by_sn: dict[str, dict[str, Any]] = {}
-            if inverters is not None and not isinstance(inverters, list):
+            if inverters is None:
+                inverters = []
+            elif not isinstance(inverters, list):
                 raise UpdateFailed(
                     "Error communicating with API: invalid inverter data. See debug logs."
                 )
-            inverters = inverters or []
 
             unavailable_data_sources = data_result.get("unavailable_data_sources", {})
             if not isinstance(unavailable_data_sources, dict):
