@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "SEMS: test",
+      "type": "shell",
+      "command": "python -m pytest tests/",
+      "problemMatcher": []
+    },
+    {
+      "label": "SEMS: lint",
+      "type": "shell",
+      "command": "ruff check custom_components/ tests/ && ruff format --check custom_components/ tests/",
+      "problemMatcher": []
+    },
+    {
+      "label": "SEMS: set up Home Assistant",
+      "type": "shell",
+      "command": "bash .devcontainer/setup.sh",
+      "problemMatcher": []
+    },
+    {
+      "label": "SEMS: sync Home Assistant version",
+      "type": "shell",
+      "command": "bash .devcontainer/sync-home-assistant.sh",
+      "problemMatcher": []
+    },
+    {
+      "label": "SEMS: start Home Assistant",
+      "type": "shell",
+      "command": "bash .devcontainer/start-home-assistant && tail -f /tmp/home-assistant.log",
+      "problemMatcher": []
+    }
+  ]
+}

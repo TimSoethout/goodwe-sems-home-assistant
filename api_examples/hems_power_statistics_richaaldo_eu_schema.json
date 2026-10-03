@@ -1,0 +1,96 @@
+{
+  "_fixture_note": "Sanitized response schema reported from the EU SEMS+ Web UI by Richaaldo. Placeholder strings intentionally represent redacted values, not measured data.",
+  "endpoint": "POST /web/sems/sems-plant/api/v1/hems/power/statisticsAndPreV2",
+  "request": {
+    "stationId": "<redacted>",
+    "items": [
+      "pSystem",
+      "soc",
+      "pBat",
+      "pConsum",
+      "pGrid"
+    ],
+    "timeScale": 1,
+    "timeZone": "<number>",
+    "startTime": "<string>",
+    "endTime": "<string>"
+  },
+  "response": {
+    "data": {
+      "dataList": [
+        {
+          "item": "pSystem",
+          "statisticsList": [
+            {
+              "tp": "<string>",
+              "power": "<number>"
+            }
+          ]
+        },
+        {
+          "item": "pConsum",
+          "statisticsList": [
+            {
+              "tp": "<string>",
+              "power": "<number>"
+            }
+          ]
+        },
+        {
+          "item": "pBat",
+          "statisticsList": [
+            {
+              "tp": "<string>",
+              "power": "<number>"
+            }
+          ]
+        },
+        {
+          "item": "pGrid",
+          "statisticsList": [
+            {
+              "tp": "<string>",
+              "power": "<number>"
+            }
+          ]
+        },
+        {
+          "item": "sell",
+          "statisticsList": [
+            {
+              "tp": "<string>",
+              "power": "<number>"
+            }
+          ]
+        },
+        {
+          "item": "buy",
+          "statisticsList": [
+            {
+              "tp": "<string>",
+              "power": "<number>"
+            }
+          ]
+        },
+        {
+          "item": "soc",
+          "statisticsList": [
+            {
+              "tp": "<string>",
+              "power": "<number>"
+            }
+          ]
+        },
+        {
+          "item": "charge",
+          "statisticsList": [
+            {
+              "tp": "<string>",
+              "power": "<number>"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

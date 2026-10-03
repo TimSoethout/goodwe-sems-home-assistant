@@ -1,0 +1,161 @@
+{
+  "code": "00000",
+  "description": "\u6210\u529f",
+  "traceId": "<trace_id>",
+  "data": [
+    {
+      "code": "system",
+      "alias": "system_parameters",
+      "factors": [
+        {
+          "code": "sn",
+          "data": "<inverter_serial>",
+          "dataType": "STRING",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "alias": "serial_number_1",
+          "supportCurve": false
+        },
+        {
+          "code": "hTotal",
+          "data": "30353",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "H",
+          "alias": "total_worke_time",
+          "supportCurve": false
+        },
+        {
+          "code": "Temperature",
+          "data": "29.2",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "\u2103",
+          "alias": "chamber_temperature",
+          "supportCurve": false
+        }
+      ]
+    },
+    {
+      "code": "ac",
+      "alias": "ac_parameters",
+      "factors": [
+        {
+          "code": "pAc",
+          "data": "1.064",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kW",
+          "alias": "active_power",
+          "supportCurve": true
+        },
+        {
+          "code": "qAc",
+          "data": "-0.001",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kVar",
+          "alias": "reactive_power",
+          "supportCurve": true
+        },
+        {
+          "code": "gridPF",
+          "data": "-0.001",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "alias": "power_factor",
+          "supportCurve": false
+        },
+        {
+          "code": "Vac",
+          "data": "233.3",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "V",
+          "alias": "single_phase_volt",
+          "supportCurve": true
+        },
+        {
+          "code": "Iac",
+          "data": "4.3",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "A",
+          "alias": "single_phase_current",
+          "supportCurve": true
+        },
+        {
+          "code": "Fac",
+          "data": "49.95",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "Hz",
+          "alias": "grid_freq",
+          "supportCurve": true
+        }
+      ]
+    },
+    {
+      "code": "pv",
+      "alias": "pv_parameters",
+      "factors": [
+        {
+          "code": "ISOLimit",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kOhm",
+          "alias": "insulation_resistance",
+          "supportCurve": true
+        },
+        {
+          "code": "LeakageCurrent",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "A",
+          "alias": "leakage_cur",
+          "supportCurve": true
+        },
+        {
+          "code": "MPPT-1:Ppv",
+          "data": "0.99138",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kW",
+          "alias": "power",
+          "supportCurve": false
+        },
+        {
+          "code": "MPPT-1:Vpv",
+          "data": "319.8",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "V",
+          "alias": "volt",
+          "supportCurve": false
+        },
+        {
+          "code": "MPPT-1:Ipv",
+          "data": "3.1",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "A",
+          "alias": "cur",
+          "supportCurve": false
+        }
+      ]
+    }
+  ]
+}

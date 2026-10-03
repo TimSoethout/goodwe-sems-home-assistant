@@ -1,0 +1,18 @@
+{
+  "code": "00000",
+  "description": "success",
+  "traceId": "<trace_id>",
+  "data": [
+    {
+      "sn": "<battery_system_serial>",
+      "no": "1",
+      "name": "BAT1",
+      "translateCode": "mppt1_battery",
+      "type": "BAT_SYS",
+      "status": 7,
+      "soc": 99,
+      "isConnected": true,
+      "pbat": 0.79608
+    }
+  ]
+}

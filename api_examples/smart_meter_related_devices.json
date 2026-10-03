@@ -1,0 +1,14 @@
+{
+  "inverter": {
+    "code": "00000",
+    "description": "成功",
+    "traceId": "<TRACE_ID>",
+    "data": []
+  },
+  "smart_meter": {
+    "code": "00000",
+    "description": "成功",
+    "traceId": "<TRACE_ID>",
+    "data": []
+  }
+}

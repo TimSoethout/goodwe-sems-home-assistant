@@ -1,0 +1,136 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "El dispositivo ya está configurado",
+            "reauth_successful": "La reautenticación se realizó correctamente"
+        },
+        "error": {
+            "cannot_connect": "No se pudo conectar",
+            "invalid_auth": "Autenticación no válida",
+            "unknown": "Error inesperado",
+            "no_stations_found": "No se encontraron plantas de energía para esta cuenta",
+            "rate_limited": "SEMS está limitando las solicitudes de esta cuenta. Inténtelo de nuevo en {retry_after} segundos."
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "password": "Contraseña",
+                    "username": "Nombre de usuario",
+                    "scan_interval": "Intervalo de actualización (segundos)"
+                }
+            },
+            "reauth_confirm": {
+                "title": "Volver a autenticar la integración",
+                "description": "SEMS rechazó las credenciales de {username}. Introduzca la contraseña actual; se actualizarán todas las plantas de esta cuenta.",
+                "data": {
+                    "password": "Contraseña"
+                }
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Intervalo de actualización",
+                "description": "Las {station_count} planta(s) de esta cuenta comparten una sesión de SEMS y todas usan este intervalo. Cada actualización realiza varias solicitudes por planta, así que elija un intervalo más largo para cuentas con muchas plantas. Mínimo: {min_interval} segundos.",
+                "data": {
+                    "scan_interval": "Intervalo de actualización (segundos)"
+                }
+            }
+        }
+    },
+    "title": "FV GoodWe SEMS API",
+    "entity": {
+        "sensor": {
+            "ev_status": {
+                "name": "Estado",
+                "state": {
+                    "available": "Disponible",
+                    "charging": "Cargando",
+                    "fault": "Fallo",
+                    "maintenance": "Mantenimiento",
+                    "offline": "Desconectado",
+                    "unknown": "Desconocido"
+                }
+            },
+            "ev_plug": {
+                "name": "Conector",
+                "state": {
+                    "connected": "Conectado",
+                    "disconnected": "Desconectado"
+                }
+            },
+            "ev_charging_power": {
+                "name": "Potencia de carga"
+            },
+            "ev_session_energy": {
+                "name": "Energía de la sesión"
+            },
+            "ev_session_pv_energy": {
+                "name": "Energía FV de la sesión"
+            },
+            "ev_session_grid_energy": {
+                "name": "Energía de red de la sesión"
+            },
+            "ev_session_average_power": {
+                "name": "Potencia media de la sesión"
+            },
+            "ev_session_max_power": {
+                "name": "Potencia máxima de la sesión"
+            },
+            "ev_session_duration": {
+                "name": "Duración de la sesión"
+            },
+            "ev_session_range_added": {
+                "name": "Autonomía añadida en la sesión"
+            }
+        },
+        "select": {
+            "ev_charge_mode": {
+                "name": "Modo de carga",
+                "state": {
+                    "fast": "Rápido",
+                    "pv": "FV",
+                    "pv_battery": "FV + batería"
+                }
+            }
+        },
+        "switch": {
+            "ev_start_charging": {
+                "name": "Iniciar carga"
+            },
+            "ev_plug_and_charge": {
+                "name": "Enchufar y cargar"
+            },
+            "ev_min_charging_power": {
+                "name": "Potencia mínima de carga"
+            },
+            "ev_grid_compliance_limit": {
+                "name": "Límite de cumplimiento de red"
+            },
+            "ev_dynamic_load_management": {
+                "name": "Gestión dinámica de carga"
+            },
+            "ev_phase_switching": {
+                "name": "Conmutación monofásica/trifásica"
+            },
+            "ev_lock_charging_plug": {
+                "name": "Bloquear conector de carga"
+            }
+        },
+        "number": {
+            "ev_output_power_limit": {
+                "name": "Límite de potencia de salida"
+            },
+            "ev_max_import_power_limit": {
+                "name": "Límite máximo de potencia importada"
+            },
+            "ev_grid_compliance_limit_value": {
+                "name": "Valor del límite de cumplimiento de red"
+            },
+            "ev_dynamic_load_import_current_limit": {
+                "name": "Límite de corriente importada (carga dinámica)"
+            }
+        }
+    }
+}

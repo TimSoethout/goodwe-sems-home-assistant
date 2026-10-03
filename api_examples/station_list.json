@@ -1,0 +1,32 @@
+{
+  "code": "00000",
+  "description": "success",
+  "traceId": "<trace_id>",
+  "data": {
+    "dataList": [
+      {
+        "id": "<station_id>",
+        "name": "<station_name>",
+        "status": "1",
+        "googleAddress": "<address>",
+        "installedPower": 3,
+        "isCollected": false,
+        "isShared": false,
+        "powerStationTypeWeb": 1,
+        "pvInstallP": 3,
+        "createTime": "<timestamp>",
+        "remark": "",
+        "productionToday": 1.2,
+        "productionTotal": 21.852,
+        "pSystem": 0.99,
+        "fullHourToday": 0.4,
+        "specificYield": 0.37,
+        "timeZone": "Europe/Amsterdam"
+      }
+    ],
+    "size": 15,
+    "current": 1,
+    "total": 1,
+    "extras": {}
+  }
+}

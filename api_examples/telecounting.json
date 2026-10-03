@@ -1,0 +1,114 @@
+{
+  "code": "00000",
+  "description": "\u6210\u529f",
+  "traceId": "<trace_id>",
+  "data": [
+    {
+      "code": "telecounting_real",
+      "alias": "realtime_data",
+      "factors": [
+        {
+          "code": "pAc",
+          "data": "1.064",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kW",
+          "alias": "active_power",
+          "supportCurve": true
+        },
+        {
+          "code": "ratedPower",
+          "data": "5",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kW",
+          "alias": "rated_power",
+          "supportCurve": false,
+          "frontendConfig": {}
+        }
+      ]
+    },
+    {
+      "code": "telecounting_today",
+      "alias": "day",
+      "factors": [
+        {
+          "code": "proPvStatsToday",
+          "data": "12.34",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "today_pv_generation",
+          "supportCurve": false
+        }
+      ]
+    },
+    {
+      "code": "telecounting_week",
+      "alias": "week",
+      "factors": [
+        {
+          "code": "proPvStatsWeek",
+          "data": "56.78",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "week_pv_generation",
+          "supportCurve": false
+        }
+      ]
+    },
+    {
+      "code": "telecounting_month",
+      "alias": "month",
+      "factors": [
+        {
+          "code": "proPvStatsMonth",
+          "data": "123.45",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "month_pv_generation",
+          "supportCurve": false
+        }
+      ]
+    },
+    {
+      "code": "telecounting_year",
+      "alias": "year",
+      "factors": [
+        {
+          "code": "proPvStatsYear",
+          "data": "2345.67",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "year_pv_generation",
+          "supportCurve": false
+        }
+      ]
+    },
+    {
+      "code": "telecounting_lifetime",
+      "alias": "total",
+      "factors": [
+        {
+          "code": "proPvStatsTotal",
+          "data": "12345.67",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "total_pv_generation",
+          "supportCurve": false
+        }
+      ]
+    }
+  ]
+}

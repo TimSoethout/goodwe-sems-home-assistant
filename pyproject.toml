@@ -4,7 +4,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py314"
 extend-exclude = [
 	".venv",
 ]
@@ -31,7 +31,7 @@ ignore = [
 known-first-party = ["custom_components.sems"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 show_error_codes = true
 warn_redundant_casts = true
 warn_unused_ignores = true

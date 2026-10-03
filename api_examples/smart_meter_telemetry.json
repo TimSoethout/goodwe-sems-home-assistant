@@ -1,0 +1,113 @@
+{
+  "code": "00000",
+  "description": "成功",
+  "traceId": "<TRACE_ID>",
+  "data": [
+    {
+      "code": "runtime",
+      "alias": "operating_param",
+      "factors": [
+        {
+          "code": "totalPac",
+          "data": "-1.154",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kW",
+          "alias": "total_active_power_1",
+          "supportCurve": true
+        },
+        {
+          "code": "PHASE-A:pAc",
+          "data": "-0.515",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kW",
+          "alias": "power",
+          "supportCurve": true
+        },
+        {
+          "code": "PHASE-B:pAc",
+          "data": "-0.422",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kW",
+          "alias": "power",
+          "supportCurve": true
+        },
+        {
+          "code": "PHASE-C:pAc",
+          "data": "-0.217",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "kW",
+          "alias": "power",
+          "supportCurve": true
+        },
+        {
+          "code": "PHASE-A:voltage",
+          "data": "240",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "V",
+          "alias": "volt",
+          "supportCurve": true
+        },
+        {
+          "code": "PHASE-B:voltage",
+          "data": "234.3",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "V",
+          "alias": "volt",
+          "supportCurve": true
+        },
+        {
+          "code": "PHASE-C:voltage",
+          "data": "240.4",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "V",
+          "alias": "volt",
+          "supportCurve": true
+        },
+        {
+          "code": "PHASE-A:current",
+          "data": "2.52",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "A",
+          "alias": "cur",
+          "supportCurve": true
+        },
+        {
+          "code": "PHASE-B:current",
+          "data": "2.64",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "A",
+          "alias": "cur",
+          "supportCurve": true
+        },
+        {
+          "code": "PHASE-C:current",
+          "data": "2.02",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "unit": "A",
+          "alias": "cur",
+          "supportCurve": true
+        }
+      ]
+    }
+  ]
+}

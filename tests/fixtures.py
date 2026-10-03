@@ -31,13 +31,6 @@ def _load_json_fixture(relative_path: str) -> dict[str, Any]:
     return json.loads(fixture_path.read_text(encoding="utf-8"))
 
 
-def load_json_fixture(relative_path: str) -> dict[str, Any]:
-    """Public helper for loading JSON fixtures from the test data directory.
-
-    This wraps the internal `_load_json_fixture` so that other test modules
-    can import and reuse a single canonical implementation.
-    """
-    return _load_json_fixture(relative_path)
 # Anonymized login response based on SEMS API structure
 MOCK_LOGIN_RESPONSE = {
     "language": "en",
@@ -366,6 +359,7 @@ MOCK_GET_DATA_RESPONSE = {
 # - `result["kpi"]`: dict with optional `currency`
 # - `result["hasPowerflow"]` and `result["hasEnergeStatisticsCharts"]`
 MOCK_GET_DATA_RESULT_MINIMAL = {
+    "info": {"is_stored": True},
     "inverter": [
         {
             "invert_full": {
@@ -445,6 +439,10 @@ MOCK_HOMEKIT_GET_DATA = {
 
 MOCK_GET_DATA_ACTUAL_JSON: dict[str, Any] = _load_json_fixture(
     "tests/test-data/20260110_singleInverter_getData.json"
+)
+
+MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON: dict[str, Any] = _load_json_fixture(
+    "tests/test-data/20250623_homekit_getData.json"
 )
 
 # Anonymized inverter serial number for testing

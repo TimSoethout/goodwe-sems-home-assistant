@@ -4,23 +4,133 @@
     "step": {
       "user": {
         "data": {
-          "powerstation_id": "[%key:common::config_flow::data::powerstation_id%]",
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]",
-          "scan_interval": "[%key:common::config_flow::data::scan_interval%]"
-        },
-        "data_description": {
-          "powerstation_id": "[%key:common::config_flow::data_description::powerstation_id%]"
+          "scan_interval": "Update Interval (seconds)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "[%key:common::config_flow::title::reauth%]",
+        "description": "SEMS rejected the credentials for {username}. Enter the current password; all stations of this account are updated.",
+        "data": {
+          "password": "[%key:common::config_flow::data::password%]"
         }
       }
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-      "unknown": "[%key:common::config_flow::error::unknown%]"
+      "unknown": "[%key:common::config_flow::error::unknown%]",
+      "no_stations_found": "No power stations found for this account",
+      "rate_limited": "SEMS is limiting requests from this account. Try again in {retry_after} seconds."
     },
     "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "ev_status": {
+        "name": "Status",
+        "state": {
+          "available": "Available",
+          "charging": "Charging",
+          "fault": "Fault",
+          "maintenance": "Maintenance",
+          "offline": "Offline",
+          "unknown": "Unknown"
+        }
+      },
+      "ev_plug": {
+        "name": "Plug",
+        "state": {
+          "connected": "Connected",
+          "disconnected": "Disconnected"
+        }
+      },
+      "ev_charging_power": {
+        "name": "Charging Power"
+      },
+      "ev_session_energy": {
+        "name": "Session Energy"
+      },
+      "ev_session_pv_energy": {
+        "name": "Session PV Energy"
+      },
+      "ev_session_grid_energy": {
+        "name": "Session Grid Energy"
+      },
+      "ev_session_average_power": {
+        "name": "Session Average Power"
+      },
+      "ev_session_max_power": {
+        "name": "Session Max Power"
+      },
+      "ev_session_duration": {
+        "name": "Session Duration"
+      },
+      "ev_session_range_added": {
+        "name": "Session Range Added"
+      }
+    },
+    "select": {
+      "ev_charge_mode": {
+        "name": "Charge Mode",
+        "state": {
+          "fast": "Fast",
+          "pv": "PV",
+          "pv_battery": "PV + battery"
+        }
+      }
+    },
+    "switch": {
+      "ev_start_charging": {
+        "name": "Start Charging"
+      },
+      "ev_plug_and_charge": {
+        "name": "Plug and Charge"
+      },
+      "ev_min_charging_power": {
+        "name": "Min Charging Power"
+      },
+      "ev_grid_compliance_limit": {
+        "name": "Grid Compliance Limit"
+      },
+      "ev_dynamic_load_management": {
+        "name": "Dynamic Load Management"
+      },
+      "ev_phase_switching": {
+        "name": "Single/Three-phase Switching"
+      },
+      "ev_lock_charging_plug": {
+        "name": "Lock Charging Plug"
+      }
+    },
+    "number": {
+      "ev_output_power_limit": {
+        "name": "Output Power Limit"
+      },
+      "ev_max_import_power_limit": {
+        "name": "Max Import Power Limit"
+      },
+      "ev_grid_compliance_limit_value": {
+        "name": "Grid Compliance Limit Value"
+      },
+      "ev_dynamic_load_import_current_limit": {
+        "name": "Dynamic Load Import Current Limit"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update interval",
+        "description": "The {station_count} station(s) of this account share one SEMS session and all use this interval. Each update makes several requests per station, so choose a longer interval for accounts with many stations. Minimum: {min_interval} seconds.",
+        "data": {
+          "scan_interval": "Update Interval (seconds)"
+        }
+      }
     }
   }
 }

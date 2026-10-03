@@ -3,100 +3,235 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
+import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import CONF_STATION_ID, DOMAIN, SEMS_CONFIG_SCHEMA
-from .sems_api import SemsApi
+from .const import (
+    CONF_STATION_ID,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    MAX_SCAN_INTERVAL,
+    MIN_SCAN_INTERVAL,
+    account_key,
+    redact_for_log,
+    scan_interval_seconds,
+)
+from .sems_api import SemsApi, SemsRateLimitedError
 
 _LOGGER = logging.getLogger(__name__)
 
+SCAN_INTERVAL_VALIDATOR = vol.All(
+    vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
+)
+STEP_USER_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): str,
+        vol.Optional(
+            CONF_SCAN_INTERVAL, description={"suggested_value": DEFAULT_SCAN_INTERVAL}
+        ): SCAN_INTERVAL_VALIDATOR,
+    }
+)
+STEP_REAUTH_DATA_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
 
-def mask_password(user_input: dict[str, Any]) -> dict[str, Any]:
-    """Mask password in user input for logging."""
-    masked_input = user_input.copy()
-    if CONF_PASSWORD in masked_input:
-        masked_input[CONF_PASSWORD] = "<masked>"
-    return masked_input
+
+@callback
+def _account_entries(
+    hass: HomeAssistant, username: str
+) -> list[config_entries.ConfigEntry]:
+    """Return the config entries (stations) of one SEMS account."""
+    key = account_key(username)
+    return [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if account_key(entry.data.get(CONF_USERNAME, "")) == key
+    ]
 
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect.
+def _normalize_station_ids(raw: Any) -> list[str]:
+    """Normalize a getPowerStationIds result to a list of station ID strings."""
+    if isinstance(raw, str) and raw:
+        return [raw]
+    if isinstance(raw, list):
+        return [str(item) for item in raw if item]
+    return []
 
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
-    """
 
+async def validate_credentials(hass: HomeAssistant, data: dict[str, Any]) -> SemsApi:
+    """Validate credentials and return an authenticated API client."""
     _LOGGER.debug(
-        "SEMS - Start validation config flow user input, with input data: %s",
-        mask_password(data),
+        "SEMS - Validating credentials for user: %s",
+        redact_for_log(data.get(CONF_USERNAME, "")),
     )
     api = SemsApi(hass, data[CONF_USERNAME], data[CONF_PASSWORD])
-
     authenticated = await hass.async_add_executor_job(api.test_authentication)
-    # If you cannot connect:
-    # throw CannotConnect
-    # If the authentication is wrong:
-    # InvalidAuth
     if not authenticated:
         raise InvalidAuth
-
-    # If optional station ID is not provided, query the SEMS API for the first found
-    if CONF_STATION_ID not in data:
-        _LOGGER.debug(
-            "SEMS - No station ID provided, query SEMS API, using first found"
-        )
-        powerStationId = await hass.async_add_executor_job(api.getPowerStationIds)
-        _LOGGER.debug("SEMS - Found power station IDs: %s", powerStationId)
-
-        data[CONF_STATION_ID] = powerStationId
-
-    # Return info that you want to store in the config entry.
-    _LOGGER.debug("SEMS - validate_input Returning data: %s", mask_password(data))
-    return data
+    return api
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for sems."""
 
-    _LOGGER.debug("SEMS - new config flow")
-
-    VERSION = 1
-    # CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
+    VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Handle the initial step."""
         if user_input is None:
-            return self.async_show_form(step_id="user", data_schema=SEMS_CONFIG_SCHEMA)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=STEP_USER_DATA_SCHEMA,
+            )
 
-        errors = {}
+        errors: dict[str, str] = {}
+        placeholders: dict[str, str] = {}
 
         try:
-            info = await validate_input(self.hass, user_input)
+            api = await validate_credentials(self.hass, user_input)
+
+            _LOGGER.debug("SEMS - Credentials valid, fetching station IDs")
+            raw_ids = await self.hass.async_add_executor_job(api.getPowerStationIds)
+            _LOGGER.debug("SEMS - Found power station IDs: %s", redact_for_log(raw_ids))
+
+            station_ids = _normalize_station_ids(raw_ids)
+
+            if not station_ids:
+                errors["base"] = "no_stations_found"
+            else:
+                flow_data = dict(user_input)
+                if account_entries := _account_entries(
+                    self.hass, user_input[CONF_USERNAME]
+                ):
+                    flow_data[CONF_SCAN_INTERVAL] = scan_interval_seconds(
+                        account_entries[0].data, account_entries[0].options
+                    )
+                # Schedule flows for any additional stations so all are auto-added.
+                # Users can disable individual entities or devices via the HA UI after setup.
+                for station_id in station_ids[1:]:
+                    self.hass.async_create_task(
+                        self.hass.config_entries.flow.async_init(
+                            DOMAIN,
+                            context={"source": config_entries.SOURCE_IMPORT},
+                            data={**flow_data, CONF_STATION_ID: station_id},
+                        )
+                    )
+                station_id = station_ids[0]
+                await self.async_set_unique_id(station_id)
+                self._abort_if_unique_id_configured()
+                _LOGGER.debug(
+                    "SEMS - Creating entry for station %s",
+                    redact_for_log(station_id),
+                )
+                return self.async_create_entry(
+                    title=f"Inverter {station_id}",
+                    data={**flow_data, CONF_STATION_ID: station_id},
+                )
+
         except CannotConnect:
             errors["base"] = "cannot_connect"
         except InvalidAuth:
             errors["base"] = "invalid_auth"
+        except SemsRateLimitedError as err:
+            errors["base"] = "rate_limited"
+            placeholders["retry_after"] = str(err.retry_after)
+        except AbortFlow:
+            raise
+        except HomeAssistantError:
+            errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
-        else:
-            _LOGGER.debug(
-                "Creating config entry for %s with data: %s",
-                info[CONF_STATION_ID],
-                mask_password(info),
-            )
-            return self.async_create_entry(
-                title=f"Inverter {info[CONF_STATION_ID]}", data=info
-            )
 
         return self.async_show_form(
-            step_id="user", data_schema=SEMS_CONFIG_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
+            description_placeholders=placeholders,
+        )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """Handle rejected credentials."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Ask for the new password of the account."""
+        reauth_entry = self._get_reauth_entry()
+        username = reauth_entry.data[CONF_USERNAME]
+        errors: dict[str, str] = {}
+        placeholders: dict[str, str] = {"username": username}
+
+        if user_input is not None:
+            password = user_input[CONF_PASSWORD]
+            try:
+                await validate_credentials(
+                    self.hass, {CONF_USERNAME: username, CONF_PASSWORD: password}
+                )
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except SemsRateLimitedError as err:
+                errors["base"] = "rate_limited"
+                placeholders["retry_after"] = str(err.retry_after)
+            except HomeAssistantError:
+                errors["base"] = "cannot_connect"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                # All stations of the account share one client, so update them
+                # together.
+                for entry in _account_entries(self.hass, username):
+                    if entry.entry_id == reauth_entry.entry_id:
+                        continue
+                    self.hass.config_entries.async_update_entry(
+                        entry, data={**entry.data, CONF_PASSWORD: password}
+                    )
+                    self.hass.config_entries.async_schedule_reload(entry.entry_id)
+                return self.async_update_reload_and_abort(
+                    reauth_entry, data_updates={CONF_PASSWORD: password}
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=STEP_REAUTH_DATA_SCHEMA,
+            description_placeholders=placeholders,
+            errors=errors,
+        )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> SemsOptionsFlow:
+        """Return the options flow."""
+        return SemsOptionsFlow()
+
+    async def async_step_import(
+        self, import_data: dict[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """Auto-create an entry for an additional discovered station."""
+        station_id = str(import_data.get(CONF_STATION_ID, ""))
+        await self.async_set_unique_id(station_id)
+        self._abort_if_unique_id_configured()
+        _LOGGER.debug(
+            "SEMS - Auto-adding station %s from multi-station discovery",
+            redact_for_log(station_id),
+        )
+        return self.async_create_entry(
+            title=f"Inverter {station_id}",
+            data=import_data,
         )
 
 
@@ -106,3 +241,47 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
+
+
+class SemsOptionsFlow(config_entries.OptionsFlow):
+    """Change the update interval of a SEMS account.
+
+    All stations of an account share one client and SEMS+ session, so the
+    request budget belongs to the account. The interval is therefore stored on
+    every entry of the account, not only on the one being edited.
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Manage the update interval."""
+        entry = self.config_entry
+        stations = _account_entries(self.hass, entry.data.get(CONF_USERNAME, ""))
+
+        if user_input is not None:
+            scan_interval = user_input[CONF_SCAN_INTERVAL]
+            for other in stations:
+                if other.entry_id == entry.entry_id:
+                    continue
+                self.hass.config_entries.async_update_entry(
+                    other, options={**other.options, CONF_SCAN_INTERVAL: scan_interval}
+                )
+            return self.async_create_entry(
+                data={**entry.options, CONF_SCAN_INTERVAL: scan_interval}
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_SCAN_INTERVAL,
+                        default=scan_interval_seconds(entry.data, entry.options),
+                    ): SCAN_INTERVAL_VALIDATOR,
+                }
+            ),
+            description_placeholders={
+                "station_count": str(max(len(stations), 1)),
+                "min_interval": str(MIN_SCAN_INTERVAL),
+            },
+        )

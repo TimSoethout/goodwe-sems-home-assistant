@@ -1,0 +1,27 @@
+{
+  "_fixture_note": "Sanitized response schema reported from the EU SEMS+ Web UI by Richaaldo. Placeholder strings intentionally represent redacted values, not measured data.",
+  "endpoint": "GET /web/sems/sems-plant/api/stations/flow?stationId=<redacted>",
+  "response": {
+    "code": "00000",
+    "data": {
+      "pSystem": "<number>",
+      "pAc": "<number>",
+      "pBat": "<number>",
+      "pGrid": "<number>",
+      "soc": "<number>",
+      "pConsum": "<number>",
+      "flows": {
+        "pBat": [
+          "<string>"
+        ]
+      },
+      "refreshTime": "<string>"
+    }
+  },
+  "device_groups": [
+    "INVERTER",
+    "BATTERY_RACK",
+    "DONGLE"
+  ],
+  "missing_device_group": "SMART_METER"
+}

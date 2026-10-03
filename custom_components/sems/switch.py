@@ -9,20 +9,186 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
+from homeassistant.components.switch import (
+    SwitchDeviceClass,
+    SwitchEntity,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
-from .device import device_info_for_inverter
+from .const import CONF_STATION_ID, DOMAIN, INVERTER_ON_STATUSES
+from .device import device_info_for_inverter, is_inverter
+from .ev_charger import async_add_ev_charger_entities, ev_charger_switches
 
 _LOGGER = logging.getLogger(__name__)
 
-_INVERTER_STATUS_ON = 1
 _COMMAND_TURN_OFF = 2
 _COMMAND_TURN_ON = 4
+
+
+class SemsSwitchBase(CoordinatorEntity[SemsCoordinator], SwitchEntity):
+    _attr_has_entity_name = True
+    _attr_device_class = SwitchDeviceClass.SWITCH
+
+    def __init__(
+        self,
+        coordinator: SemsCoordinator,
+        serial_number: str,
+        function_name: str,
+        name: str,
+    ) -> None:
+        super().__init__(coordinator)
+        inverter_data = coordinator.data.inverters.get(serial_number, {})
+        self._attr_device_info = device_info_for_inverter(serial_number, inverter_data)
+        self._attr_unique_id = f"{serial_number}-{function_name}"
+        self._attr_name = name
+        self.serial_number = serial_number
+
+    async def _async_execute(self, method: Any, *args: Any) -> None:
+        """Execute a blocking API method and refresh coordinator data."""
+        if self.coordinator.data is None:
+            raise HomeAssistantError(
+                f"Unable to update {self.entity_id}: no coordinator data"
+            )
+
+        await self.coordinator.async_control(method, *args)
+        await self.coordinator.async_request_refresh()
+
+
+class SemsInverterSwitch(SemsSwitchBase):
+    """Switch controlling an inverter's operating status."""
+
+    FUNCTION_NAME = "switch"
+
+    def __init__(self, coordinator: SemsCoordinator, serial_number: str) -> None:
+        super().__init__(
+            coordinator, serial_number, self.FUNCTION_NAME, "Inverter Control"
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        return (
+            self.coordinator.data.inverters.get(self.serial_number, {}).get("status")
+            in INVERTER_ON_STATUSES
+        )
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._async_execute(
+            self.coordinator.sems_api.change_status,
+            self.serial_number,
+            _COMMAND_TURN_ON,
+            self.coordinator.station_id,
+            self.coordinator.data.inverters[self.serial_number].get(
+                "name", self.serial_number
+            ),
+        )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._async_execute(
+            self.coordinator.sems_api.change_status,
+            self.serial_number,
+            _COMMAND_TURN_OFF,
+            self.coordinator.station_id,
+            self.coordinator.data.inverters[self.serial_number].get(
+                "name", self.serial_number
+            ),
+        )
+
+
+class SemsBatteryImmediateChargingSwitch(SemsSwitchBase):
+    """Switch controlling a battery's immediate charging mode."""
+
+    def __init__(
+        self,
+        coordinator: SemsCoordinator,
+        plant_id: str,
+        serial_number: str,
+        battery_id: str,
+        battery_name: str,
+        functions: dict[str, dict[str, str]],
+    ) -> None:
+        super().__init__(
+            coordinator,
+            serial_number,
+            f"{battery_id}-battery_immediate_charging",
+            f"Battery {battery_name} Immediate Charging",
+        )
+        self.plant_id = plant_id
+        self.battery_id = battery_id
+        self.functions = functions
+
+    @property
+    def available(self) -> bool:
+        """Return whether the immediate-charging state could be read."""
+        return super().available and self.serial_number in (
+            self.coordinator.data.immediate_charging or {}
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        state = (self.coordinator.data.immediate_charging or {}).get(self.serial_number)
+        if state is None:
+            return None
+        return bool(state.get("enabled", False))
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        function = self.functions["immediate_charge"]
+        await self._async_execute(
+            self.coordinator.sems_api.startImmediateCharging,
+            self.plant_id,
+            self.serial_number,
+            self.battery_id,
+            function["address"],
+            function["id"],
+        )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        function = self.functions["stop_charging"]
+        await self._async_execute(
+            self.coordinator.sems_api.stopImmediateCharging,
+            self.plant_id,
+            self.serial_number,
+            self.battery_id,
+            function["address"],
+            function["id"],
+        )
+
+
+def _async_remove_non_inverter_switches(
+    hass: HomeAssistant, config_entry: ConfigEntry, serial_numbers: list[str]
+) -> None:
+    """Remove inverter switches that earlier versions created for non-inverters.
+
+    Only devices that SEMS+ currently reports as non-inverters are cleaned up,
+    so a temporarily missing inverter keeps its switch.
+    """
+    ent_reg = er.async_get(hass)
+    removed = 0
+    for serial_number in serial_numbers:
+        entity_id = ent_reg.async_get_entity_id(
+            Platform.SWITCH,
+            DOMAIN,
+            f"{serial_number}-{SemsInverterSwitch.FUNCTION_NAME}",
+        )
+        if entity_id is None:
+            continue
+        entry = ent_reg.async_get(entity_id)
+        if entry is None or entry.config_entry_id != config_entry.entry_id:
+            continue
+        ent_reg.async_remove(entity_id)
+        removed += 1
+    if removed:
+        # Entity IDs can contain serial numbers, so only log the count.
+        _LOGGER.info(
+            "Removed %s Inverter Control switch(es) of dongles or battery racks",
+            removed,
+        )
 
 
 async def async_setup_entry(
@@ -33,58 +199,33 @@ async def async_setup_entry(
     """Set up SEMS switches from a config entry."""
     coordinator = config_entry.runtime_data.coordinator
 
-    async_add_entities(
-        SemsStatusSwitch(coordinator, sn) for sn in coordinator.data.inverters
+    switch_entities: list[SwitchEntity] = []
+
+    non_inverters: list[str] = []
+    for sn, inverter_data in coordinator.data.inverters.items():
+        # Dongles and battery racks do not accept inverter start/stop commands.
+        if is_inverter(inverter_data):
+            switch_entities.append(SemsInverterSwitch(coordinator, sn))
+        else:
+            non_inverters.append(sn)
+    _async_remove_non_inverter_switches(hass, config_entry, non_inverters)
+
+    for sn, bats in (coordinator.data.batteries or {}).items():
+        for bat_id, bat_data in bats.items():
+            functions = bat_data["functions"]
+            if {"immediate_charge", "stop_charging"} <= functions.keys():
+                switch_entities.append(
+                    SemsBatteryImmediateChargingSwitch(
+                        coordinator,
+                        config_entry.data[CONF_STATION_ID],
+                        sn,
+                        bat_id,
+                        bat_data["name"],
+                        functions,
+                    )
+                )
+
+    async_add_entities(switch_entities)
+    async_add_ev_charger_entities(
+        coordinator, config_entry, async_add_entities, ev_charger_switches
     )
-
-
-class SemsStatusSwitch(CoordinatorEntity[SemsCoordinator], SwitchEntity):
-    """Switch to control inverter status, backed by the SEMS coordinator."""
-
-    # Sensor has device name (e.g. Inverter 123456 Power)
-    _attr_has_entity_name = True
-    _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(self, coordinator: SemsCoordinator, sn: str) -> None:
-        """Initialize the SemsStatusSwitch.
-
-        Args:
-            coordinator: The data update coordinator for managing updates.
-            sn: The serial number of the inverter.
-
-        """
-        _LOGGER.debug("Try create SemsStatusSwitch for inverter %s", sn)
-        super().__init__(coordinator)
-        self._sn = sn
-        inverter_data = coordinator.data.inverters.get(sn, {})
-        self._attr_device_info = device_info_for_inverter(sn, inverter_data)
-        self._attr_unique_id = f"{self._sn}-switch"
-        # somehow needed, no default naming
-        self._attr_name = "Switch"
-        _LOGGER.debug("Creating SemsStatusSwitch for Inverter %s", self._sn)
-
-    @property
-    def is_on(self) -> bool:
-        """Return entity status."""
-        status = self.coordinator.data.inverters.get(self._sn, {}).get("status")
-        return status == _INVERTER_STATUS_ON
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the inverter."""
-        _LOGGER.debug("Inverter %s set to off", self._sn)
-        await self.hass.async_add_executor_job(
-            self.coordinator.sems_api.change_status,
-            self._sn,
-            _COMMAND_TURN_OFF,
-        )
-        await self.coordinator.async_request_refresh()
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the inverter."""
-        _LOGGER.debug("Inverter %s set to on", self._sn)
-        await self.hass.async_add_executor_job(
-            self.coordinator.sems_api.change_status,
-            self._sn,
-            _COMMAND_TURN_ON,
-        )
-        await self.coordinator.async_request_refresh()

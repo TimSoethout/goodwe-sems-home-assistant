@@ -1,0 +1,207 @@
+{
+  "hasError": false,
+  "code": 0,
+  "msg": "Success",
+  "data": {
+    "record": 4,
+    "messageKey": null,
+    "list": [
+      {
+        "powerstation_id": "00000000-0000-4000-8000-000000000002",
+        "powercontrol_status": 0,
+        "stationname": "Example Device",
+        "first_letter": "",
+        "adcode": "REDACTED",
+        "location": "Example Location",
+        "status": 1,
+        "pac": 0.0,
+        "capacity": 5.8,
+        "eday": 23.0,
+        "emonth": 237.0,
+        "eday_income": 3.68,
+        "etotal": 1973.7,
+        "powerstation_type": "Hybrid/Offgrid",
+        "pre_org_id": null,
+        "org_id": null,
+        "longitude": "REDACTED",
+        "latitude": "REDACTED",
+        "pac_kw": 0.0,
+        "to_hour": 3.9655172413793105,
+        "weather": {
+          "HeWeather6": [
+            {
+              "basic": {
+                "cid": null,
+                "location": null,
+                "parent_city": null,
+                "admin_area": null,
+                "cnty": null,
+                "lat": null,
+                "lon": null,
+                "tz": null
+              },
+              "update": {
+                "loc": null,
+                "utc": null
+              },
+              "status": "ok",
+              "now": {
+                "cloud": "17",
+                "cond_code": "150",
+                "cond_txt": "Clear",
+                "fl": "2",
+                "hum": "89",
+                "pcpn": "0.0",
+                "pres": "1027",
+                "tmp": "5",
+                "vis": "24",
+                "wind_deg": "0",
+                "wind_dir": "N",
+                "wind_sc": "2",
+                "wind_spd": "8"
+              }
+            }
+          ]
+        },
+        "currency": "EUR",
+        "yield_rate": 0.16,
+        "is_stored": true,
+        "org_code": "Example Organization",
+        "org_name": "Example Organization"
+      },
+      {
+        "powerstation_id": "00000000-0000-4000-8000-000000000003",
+        "powercontrol_status": 0,
+        "stationname": "Example Device",
+        "first_letter": "",
+        "adcode": "REDACTED",
+        "location": "Example Location",
+        "status": 1,
+        "pac": 0.0,
+        "capacity": 5.6,
+        "eday": 17.3,
+        "emonth": 225.70000000000002,
+        "eday_income": 2.7680000000000002,
+        "etotal": 21750.0,
+        "powerstation_type": "Hybrid/Offgrid",
+        "pre_org_id": null,
+        "org_id": null,
+        "longitude": "REDACTED",
+        "latitude": "REDACTED",
+        "pac_kw": 0.0,
+        "to_hour": 3.0892857142857144,
+        "weather": {
+          "HeWeather6": [
+            {
+              "basic": {
+                "cid": null,
+                "location": null,
+                "parent_city": null,
+                "admin_area": null,
+                "cnty": null,
+                "lat": null,
+                "lon": null,
+                "tz": null
+              },
+              "update": {
+                "loc": null,
+                "utc": null
+              },
+              "status": "ok",
+              "now": {
+                "cloud": "17",
+                "cond_code": "150",
+                "cond_txt": "Clear",
+                "fl": "2",
+                "hum": "89",
+                "pcpn": "0.0",
+                "pres": "1027",
+                "tmp": "5",
+                "vis": "24",
+                "wind_deg": "0",
+                "wind_dir": "N",
+                "wind_sc": "2",
+                "wind_spd": "8"
+              }
+            }
+          ]
+        },
+        "currency": "EUR",
+        "yield_rate": 0.16,
+        "is_stored": true,
+        "org_code": "Example Organization",
+        "org_name": "Example Organization"
+      },
+      {
+        "powerstation_id": "00000000-0000-4000-8000-000000000004",
+        "powercontrol_status": 0,
+        "stationname": "Example Device",
+        "first_letter": "",
+        "adcode": "REDACTED",
+        "location": "Example Location",
+        "status": 1,
+        "pac": 0.0,
+        "capacity": 6.5,
+        "eday": 19.5,
+        "emonth": 234.4,
+        "eday_income": 3.12,
+        "etotal": 39650.2,
+        "powerstation_type": "Hybrid/Offgrid",
+        "pre_org_id": null,
+        "org_id": null,
+        "longitude": "REDACTED",
+        "latitude": "REDACTED",
+        "pac_kw": 0.0,
+        "to_hour": 3.0,
+        "weather": {
+          "HeWeather6": [
+            {
+              "basic": {
+                "cid": null,
+                "location": null,
+                "parent_city": null,
+                "admin_area": null,
+                "cnty": null,
+                "lat": null,
+                "lon": null,
+                "tz": null
+              },
+              "update": {
+                "loc": null,
+                "utc": null
+              },
+              "status": "ok",
+              "now": {
+                "cloud": "17",
+                "cond_code": "150",
+                "cond_txt": "Clear",
+                "fl": "2",
+                "hum": "89",
+                "pcpn": "0.0",
+                "pres": "1027",
+                "tmp": "5",
+                "vis": "24",
+                "wind_deg": "0",
+                "wind_dir": "N",
+                "wind_sc": "2",
+                "wind_spd": "8"
+              }
+            }
+          ]
+        },
+        "currency": "EUR",
+        "yield_rate": 0.16,
+        "is_stored": true,
+        "org_code": "Example Organization",
+        "org_name": "Example Organization"
+      }
+    ]
+  },
+  "translationCode": "code_0",
+  "components": {
+    "para": null,
+    "langVer": 299,
+    "timeSpan": 0,
+    "msgSocketAdr": ""
+  }
+}

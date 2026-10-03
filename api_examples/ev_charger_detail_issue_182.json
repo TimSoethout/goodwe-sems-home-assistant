@@ -1,0 +1,19 @@
+{
+  "code": "00000",
+  "data": {
+    "currentLimit": 0,
+    "dynamicLoad": 0,
+    "chargeMode": 0,
+    "chargePower": 11.0,
+    "scheduleChargeMode": 0,
+    "scheduleMode": 0,
+    "scheduleTime": "2026-xx-xx xx:xx:xx",
+    "scheduleTotalMinute": 480,
+    "status": "available",
+    "workState": "available_gun_no_insered",
+    "chargePowerSetted": 11.0,
+    "startStatus": false,
+    "unit": 0,
+    "mileage": 5.0
+  }
+}

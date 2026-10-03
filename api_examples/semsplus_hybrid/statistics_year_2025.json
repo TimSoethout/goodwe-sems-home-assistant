@@ -1,0 +1,75 @@
+{
+  "code": "00000",
+  "description": "success",
+  "traceId": "<trace_id>",
+  "data": {
+    "proSelfConsum": 537.03,
+    "production": 645.1,
+    "proGrid": 108.07,
+    "proConsum": 715.09,
+    "proPurchase": 193.66,
+    "dataList": [
+      {
+        "item": "proConsumStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2025",
+            "val": 715.09
+          }
+        ]
+      },
+      {
+        "item": "proCharStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2025",
+            "val": 0
+          }
+        ]
+      },
+      {
+        "item": "proDischarStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2025",
+            "val": 0
+          }
+        ]
+      },
+      {
+        "item": "proGridStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2025",
+            "val": 108.07
+          }
+        ]
+      },
+      {
+        "item": "proPurchaseStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2025",
+            "val": 193.66
+          }
+        ]
+      },
+      {
+        "item": "proSelfConsumStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2025",
+            "val": 537.03
+          }
+        ]
+      }
+    ],
+    "hasProfit": false
+  }
+}

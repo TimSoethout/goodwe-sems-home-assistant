@@ -1,0 +1,137 @@
+{
+  "code": "00000",
+  "description": "成功",
+  "traceId": "<TRACE_ID>",
+  "data": [
+    {
+      "code": "telecounting_today",
+      "alias": "day",
+      "factors": [
+        {
+          "code": "proGridStatsToday",
+          "data": "36.77",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "grid_energy_1",
+          "supportCurve": false
+        },
+        {
+          "code": "proPurchaseStatsToday",
+          "data": "12.84",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "purchased_electricity",
+          "supportCurve": false
+        }
+      ]
+    },
+    {
+      "code": "telecounting_week",
+      "alias": "week",
+      "factors": [
+        {
+          "code": "proGridStatsWeek",
+          "data": "174",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "grid_energy_1",
+          "supportCurve": false
+        },
+        {
+          "code": "proPurchaseStatsWeek",
+          "data": "70.16",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "purchased_electricity",
+          "supportCurve": false
+        }
+      ]
+    },
+    {
+      "code": "telecounting_month",
+      "alias": "month",
+      "factors": [
+        {
+          "code": "proGridStatsMonth",
+          "data": "979.56",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "grid_energy_1",
+          "supportCurve": false
+        },
+        {
+          "code": "proPurchaseStatsMonth",
+          "data": "406.72",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "purchased_electricity",
+          "supportCurve": false
+        }
+      ]
+    },
+    {
+      "code": "telecounting_year",
+      "alias": "year",
+      "factors": [
+        {
+          "code": "proGridStatsYear",
+          "data": "8761.2",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "grid_energy_1",
+          "supportCurve": false
+        },
+        {
+          "code": "proPurchaseStatsYear",
+          "data": "4506.88",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "purchased_electricity",
+          "supportCurve": false
+        }
+      ]
+    },
+    {
+      "code": "telecounting_lifetime",
+      "alias": "total",
+      "factors": [
+        {
+          "code": "proGridStatsTotal",
+          "data": "38846.49",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "grid_energy_1",
+          "supportCurve": false
+        },
+        {
+          "code": "proPurchaseStatsTotal",
+          "data": "20314.77",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "unit": "kWh",
+          "alias": "purchased_electricity",
+          "supportCurve": false
+        }
+      ]
+    }
+  ]
+}

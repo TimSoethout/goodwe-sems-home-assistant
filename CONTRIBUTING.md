@@ -22,7 +22,7 @@ This project adheres to a code of conduct that all contributors are expected to 
 
 ### Prerequisites
 
-- Python 3.13 or higher
+- Python 3.14
 - Git
 - A GitHub account
 - Basic understanding of Home Assistant custom components
@@ -39,33 +39,9 @@ This project adheres to a code of conduct that all contributors are expected to 
 
 There are two ways to set up your development environment:
 
-### Option 1: Home Assistant Core Development Environment (Recommended)
+### Option 1: Home Assistant Core Dev Container (Recommended)
 
-This is the recommended approach for developing Home Assistant custom components:
-
-1. **Set up Home Assistant Core development environment:**
-   ```bash
-   # Follow the official guide:
-   # https://developers.home-assistant.io/docs/development_environment
-   ```
-
-2. **Clone this repository in the config directory:**
-   ```bash
-   cd core/config
-   git clone https://github.com/TimSoethout/goodwe-sems-home-assistant.git
-   ```
-
-3. **Create a symbolic link:**
-   ```bash
-   cd core/config/custom_components
-   ln -s ../goodwe-sems-home-assistant/custom_components/sems sems
-   ```
-
-4. **Install development dependencies:**
-   ```bash
-   pip install -r requirements.test.txt
-   pip install ruff mypy
-   ```
+Follow the [Development setup](README.md#development-setup) in the README. The Dev Container installs dependencies, checks out Home Assistant Core, and links the integration.
 
 ### Option 2: Standalone Testing Environment
 
@@ -132,7 +108,7 @@ This project uses **Ruff** for linting and formatting, and **mypy** for type che
 ```bash
 ruff check custom_components/
 ruff format --check custom_components/
-mypy custom_components/ --ignore-missing-imports --python-version 3.13
+mypy custom_components/ --ignore-missing-imports --python-version 3.14
 ```
 
 **Fix linting issues automatically:**

@@ -1,0 +1,164 @@
+{
+  "code": "00000",
+  "description": "success",
+  "traceId": "<trace_id>",
+  "data": [
+    {
+      "code": "system",
+      "alias": "system_parameters",
+      "factors": [
+        {
+          "code": "sn",
+          "data": "<inverter_serial>",
+          "dataType": "STRING",
+          "unit": null,
+          "alias": "serial_number_1"
+        },
+        {
+          "code": "Temperature",
+          "data": "53.7",
+          "dataType": "NUMERIC",
+          "unit": "℃",
+          "alias": "chamber_temperature"
+        },
+        {
+          "code": "hTotal",
+          "data": "6759",
+          "dataType": "NUMERIC",
+          "unit": "H",
+          "alias": "total_worke_time"
+        }
+      ]
+    },
+    {
+      "code": "ac",
+      "alias": "ac_parameters",
+      "factors": [
+        {
+          "code": "pAc",
+          "data": "0.897",
+          "dataType": "NUMERIC",
+          "unit": "kW",
+          "alias": "active_power"
+        },
+        {
+          "code": "qAc",
+          "data": "1.163",
+          "dataType": "NUMERIC",
+          "unit": "kVar",
+          "alias": "reactive_power"
+        },
+        {
+          "code": "storagePF",
+          "data": "0.03",
+          "dataType": "NUMERIC",
+          "unit": null,
+          "alias": "power_factor"
+        },
+        {
+          "code": "Vac",
+          "data": "244.1",
+          "dataType": "NUMERIC",
+          "unit": "V",
+          "alias": "single_phase_volt"
+        },
+        {
+          "code": "Iac",
+          "data": "6",
+          "dataType": "NUMERIC",
+          "unit": "A",
+          "alias": "single_phase_current"
+        }
+      ]
+    },
+    {
+      "code": "backup",
+      "alias": "backup_parameters",
+      "factors": [
+        {
+          "code": "pBackup",
+          "data": "0",
+          "dataType": "NUMERIC",
+          "unit": "kW",
+          "alias": "power"
+        },
+        {
+          "code": "vBackupPhA",
+          "data": "243.5",
+          "dataType": "NUMERIC",
+          "unit": "V",
+          "alias": "volt"
+        },
+        {
+          "code": "aBackupPhA",
+          "data": "0.5",
+          "dataType": "NUMERIC",
+          "unit": "A",
+          "alias": "cur"
+        }
+      ]
+    },
+    {
+      "code": "pv",
+      "alias": "pv_parameters",
+      "factors": [
+        {
+          "code": "pDc",
+          "data": "0.0776",
+          "dataType": "NUMERIC",
+          "unit": "kW",
+          "alias": "dc_input_total_power"
+        },
+        {
+          "code": "ISOLimit",
+          "data": null,
+          "dataType": "NUMERIC",
+          "unit": "kΩ",
+          "alias": "insulation_resistance"
+        },
+        {
+          "code": "MPPT-1:Ppv",
+          "data": "0",
+          "dataType": "NUMERIC",
+          "unit": "kW",
+          "alias": "power"
+        },
+        {
+          "code": "MPPT-2:Ppv",
+          "data": "0.0776",
+          "dataType": "NUMERIC",
+          "unit": "kW",
+          "alias": "power"
+        },
+        {
+          "code": "MPPT-1:Vpv",
+          "data": "131.7",
+          "dataType": "NUMERIC",
+          "unit": "V",
+          "alias": "volt"
+        },
+        {
+          "code": "MPPT-2:Vpv",
+          "data": "194",
+          "dataType": "NUMERIC",
+          "unit": "V",
+          "alias": "volt"
+        },
+        {
+          "code": "MPPT-1:Ipv",
+          "data": "0",
+          "dataType": "NUMERIC",
+          "unit": "A",
+          "alias": "cur"
+        },
+        {
+          "code": "MPPT-2:Ipv",
+          "data": "0.4",
+          "dataType": "NUMERIC",
+          "unit": "A",
+          "alias": "cur"
+        }
+      ]
+    }
+  ]
+}

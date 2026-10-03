@@ -7,21 +7,29 @@ This directory contains comprehensive tests for the SEMS API module.
 - `test_sems_api.py` - Main comprehensive test suite with full coverage of all SEMS API functionality
 - `test_sems_api_clean.py` - Clean integration test suite with realistic JSON data structures
 - `test_sensor_entities.py` - Home Assistant entity tests (config entry + entity registry)
+- `test_api_example_index.py` - Validates the shared API-example catalog and fixture files
+- `test_openapi_spec.py` - Validates the observed OpenAPI document and linked fixtures
 - `fixtures.py` - Anonymized SEMS API response data for test fixtures
 - `__init__.py` - Package initialization for tests
 - `requirements.txt` - Test dependencies
 
 ## Running Tests
 
+Run the test suite with Python 3.14, the only supported runtime.
+
 To run all tests:
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/ \
+  --cov=custom_components.sems \
+  --cov-report=term-missing \
+  --cov-fail-under=80 -v
 ```
 
 If you are running these tests inside the Home Assistant core repository workspace (where `/workspaces/home-assistant/pyproject.toml` exists), pytest may try to load Home Assistant's own `tests/conftest.py` and fail. In that case, run with `--confcutdir`:
 
 ```bash
-python -m pytest config/goodwe-sems-home-assistant/tests/ -v --confcutdir=config/goodwe-sems-home-assistant
+pip install -r config/goodwe-sems-home-assistant/requirements.test.txt
+python -m pytest config/goodwe-sems-home-assistant/tests/ -v --confcutdir=config/goodwe-sems-home-assistant # run from /workspaces/home-assistant in HA dev-container
 ```
 
 To run a specific test file:

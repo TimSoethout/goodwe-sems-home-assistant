@@ -1,0 +1,21 @@
+{
+  "code": "00000",
+  "description": "成功",
+  "traceId": "<TRACE_ID>",
+  "data": {
+    "id": "<STATION_ID>",
+    "name": "<PLANT_NAME>",
+    "status": "0",
+    "isGoodweInverter": true,
+    "flows": {
+      "pGrid": [
+        "pConsum"
+      ]
+    },
+    "pAc": 0,
+    "pGrid": -1.351,
+    "pConsum": 1.351,
+    "consumFlag": false,
+    "refreshTime": "2026-09-24T21:19:00"
+  }
+}

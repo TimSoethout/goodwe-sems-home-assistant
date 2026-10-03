@@ -11,57 +11,68 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.13']
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python 3.14
       uses: actions/setup-python@v6
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: "3.14"
         cache: 'pip'
         cache-dependency-path: '**/requirements.test.txt'
 
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.test.txt
+      run: python -m pip install -r requirements.test.txt
 
     - name: Run tests with coverage
       run: |
-        pytest tests/ --cov=custom_components.sems --cov-report=xml --cov-report=term-missing -v
+        pytest tests/ --cov=custom_components.sems \
+          --cov-report=xml --cov-report=term-missing \
+          --cov-fail-under=80 --junitxml=./junit.xml -v
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
+      if: ${{ !cancelled() }}
       with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+        files: ./coverage.xml
+        fail_ci_if_error: true
+        use_oidc: true
+        verbose: true
+
+    - name: Upload test results to Codecov
+      uses: codecov/codecov-action@v7
+      if: ${{ !cancelled() }}
+      with:
+        files: ./junit.xml
+        report_type: test_results
+        fail_ci_if_error: true
+        use_oidc: true
         verbose: true
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.13"
+        python-version: "3.14"
         cache: 'pip'
         cache-dependency-path: '**/requirements.test.txt'
 
     - name: Install linting dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.test.txt
-        pip install ruff mypy
+        python -m pip install -r requirements.test.txt \
+          ruff mypy
 
     - name: Run ruff (lint)
       run: ruff check custom_components/
@@ -70,19 +81,17 @@ jobs:
       run: ruff format --check custom_components/
 
     - name: Run mypy (check)
-      run: mypy custom_components/ --ignore-missing-imports --python-version 3.13
+      run: mypy custom_components/ --ignore-missing-imports --python-version 3.14
 
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Validate with hassfest
       uses: home-assistant/actions/hassfest@master
-      with:
-        path: './custom_components'
 
     - name: Validate with HACS
       uses: hacs/action@main

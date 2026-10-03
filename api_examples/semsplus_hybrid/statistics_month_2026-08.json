@@ -1,0 +1,87 @@
+{
+  "code": "00000",
+  "description": "success",
+  "traceId": "<trace_id>",
+  "data": {
+    "proSelfConsum": 650.0,
+    "production": 700.0,
+    "proGrid": 50.0,
+    "proConsum": 1200.0,
+    "proPurchase": 800.0,
+    "contributionRate": 54.17,
+    "proSelfConsumRate": 92.86,
+    "dataList": [
+      {
+        "item": "proSystemTotalStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2026-08",
+            "val": 640.5
+          }
+        ]
+      },
+      {
+        "item": "proConsumStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2026-08",
+            "val": 1200.0
+          }
+        ]
+      },
+      {
+        "item": "proCharStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2026-08",
+            "val": 600.0
+          }
+        ]
+      },
+      {
+        "item": "proDischarStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2026-08",
+            "val": 580.0
+          }
+        ]
+      },
+      {
+        "item": "proGridStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2026-08",
+            "val": 50.0
+          }
+        ]
+      },
+      {
+        "item": "proPurchaseStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2026-08",
+            "val": 800.0
+          }
+        ]
+      },
+      {
+        "item": "proSelfConsumStats",
+        "unit": "kWh",
+        "statisticsList": [
+          {
+            "date": "2026-08",
+            "val": 650.0
+          }
+        ]
+      }
+    ],
+    "hasProfit": false
+  }
+}
