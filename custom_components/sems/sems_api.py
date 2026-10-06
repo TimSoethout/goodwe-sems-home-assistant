@@ -2117,12 +2117,19 @@ class SemsApi:
             "etotal",
             "eChargeDay",
             "eDischargeDay",
+            "echarge_total",
+            "edischarge_total",
         ):
             value = counters.get(key)
             if value is None:
                 continue
             old_value = previous.get(key)
-            same_period = key == "etotal" or (
+            if key == "etotal" and value <= 0 and old_value is None:
+                # The PV lifetime total of a commissioned inverter is never 0.
+                # Without a cached value (after a restart) publish nothing.
+                del counters[key]
+                continue
+            same_period = key not in counter_periods or (
                 previous_periods.get(key) == counter_periods.get(key)
             )
             if (

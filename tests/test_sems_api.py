@@ -1928,6 +1928,67 @@ class TestSemsApi:
             "etotal": 12346.1
         }
 
+    @patch.object(SemsApi, "_make_api_call")
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_get_web_inverter_telecounting_ignores_battery_lifetime_reset(
+        self, mock_now, mock_api_call
+    ):
+        """Test transient zero battery lifetime counters are not published (#249)."""
+        mock_now.return_value = datetime(2026, 9, 29, 16, 51)
+
+        def poll(charge: str, discharge: str) -> dict:
+            mock_api_call.return_value = [
+                {
+                    "code": "telecounting_lifetime",
+                    "factors": [
+                        {"code": "proCharStatsTotal", "data": charge},
+                        {"code": "proDischarStatsTotal", "data": discharge},
+                    ],
+                }
+            ]
+            return self.api.getWebInverterTelecounting("station", "SN1")
+
+        expected = {"echarge_total": 7720.0, "edischarge_total": 7436.0}
+        assert poll("7720", "7436") == expected
+        assert poll("0", "0") == expected
+        assert poll("7719", "7435") == expected
+        assert poll("7721", "7437") == {
+            "echarge_total": 7721.0,
+            "edischarge_total": 7437.0,
+        }
+
+    @patch.object(SemsApi, "_make_api_call")
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_get_web_inverter_telecounting_skips_zero_lifetime_without_history(
+        self, mock_now, mock_api_call
+    ):
+        """Test a zero PV lifetime counter on the first poll is not published (#249)."""
+        mock_now.return_value = datetime(2026, 9, 29, 16, 51)
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting",
+                "factors": [
+                    {"code": "proPvStatsToday", "data": "0"},
+                    {"code": "proPvStatsTotal", "data": "0"},
+                ],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {"eday": 0.0}
+
+        mock_api_call.return_value = [
+            {
+                "code": "telecounting",
+                "factors": [
+                    {"code": "proPvStatsToday", "data": "12.5"},
+                    {"code": "proPvStatsTotal", "data": "7610"},
+                ],
+            }
+        ]
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 12.5,
+            "etotal": 7610.0,
+        }
+
     @patch("custom_components.sems.sems_api.dt_util.now")
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telecounting_preserves_period_counters(
