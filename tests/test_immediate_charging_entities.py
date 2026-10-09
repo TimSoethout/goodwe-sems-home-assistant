@@ -78,7 +78,7 @@ STATES = {"sn": INVERTER_SERIAL, "data": {"47545": 1, "47546": 75, "47603": 65}}
 async def _setup_entry(
     hass: HomeAssistant,
     *,
-    cabinets: list[dict[str, Any]] = CABINETS,
+    cabinets: list[Any] = CABINETS,
     functions: dict = FUNCTIONS,
     get_data: dict = MOCK_GET_DATA_RESULT_MINIMAL,
 ) -> MockConfigEntry:
@@ -246,6 +246,20 @@ async def test_entities_require_supported_functions(hass: HomeAssistant) -> None
             )
             is None
         )
+
+
+async def test_malformed_cabinet_entries_are_ignored(hass: HomeAssistant) -> None:
+    """Ignore cabinet entries without a battery ID next to a valid battery."""
+    entry = await _setup_entry(
+        hass, cabinets=["unexpected", {"no": "2", "name": "BAT2"}, *CABINETS]
+    )
+
+    assert list(entry.runtime_data.coordinator.data.batteries[INVERTER_SERIAL]) == [
+        BATTERY_ID
+    ]
+    assert hass.states.get(
+        _entity_id(hass, Platform.SWITCH, "battery_immediate_charging")
+    )
 
 
 async def test_unconnected_battery_slot_is_skipped(hass: HomeAssistant) -> None:

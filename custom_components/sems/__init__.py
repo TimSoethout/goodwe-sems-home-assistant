@@ -520,7 +520,8 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                                         for cabinet in energy_storage_cabinets.get(
                                             sn, []
                                         )
-                                        if cabinet.get("translateCode") == bat_id
+                                        if isinstance(cabinet, dict)
+                                        and cabinet.get("translateCode") == bat_id
                                     ),
                                     "",
                                 ),
