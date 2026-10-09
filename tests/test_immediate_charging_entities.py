@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -20,7 +21,11 @@ from homeassistant.helpers.entity_platform import async_get_platforms
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
-from custom_components.sems.sems_api import OutOfRetries, SemsAuthError
+from custom_components.sems.sems_api import (
+    OutOfRetries,
+    SemsAuthError,
+    SemsPermissionError,
+)
 from tests.fixtures import MOCK_GET_DATA_RESULT_MINIMAL
 
 POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
@@ -73,7 +78,7 @@ STATES = {"sn": INVERTER_SERIAL, "data": {"47545": 1, "47546": 75, "47603": 65}}
 async def _setup_entry(
     hass: HomeAssistant,
     *,
-    cabinets: list[dict[str, str]] = CABINETS,
+    cabinets: list[dict[str, Any]] = CABINETS,
     functions: dict = FUNCTIONS,
     get_data: dict = MOCK_GET_DATA_RESULT_MINIMAL,
 ) -> MockConfigEntry:
@@ -241,6 +246,86 @@ async def test_entities_require_supported_functions(hass: HomeAssistant) -> None
             )
             is None
         )
+
+
+async def test_unconnected_battery_slot_is_skipped(hass: HomeAssistant) -> None:
+    """Don't look up functions for an empty battery slot reported by SEMS+."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    slot = {
+        "no": "1",
+        "name": "BAT1",
+        "translateCode": BATTERY_ID,
+        "type": "BAT_SYS",
+        "isConnected": False,
+    }
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getData",
+            return_value=MOCK_GET_DATA_RESULT_MINIMAL,
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
+            return_value=[slot],
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
+            side_effect=SemsPermissionError("getBatteryGeneralFunctions", "denied"),
+        ) as mock_functions,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    mock_functions.assert_not_called()
+    assert entry.runtime_data.coordinator.data.batteries is None
+
+
+async def test_denied_battery_functions_keep_station_data(
+    hass: HomeAssistant,
+) -> None:
+    """A denied battery functions lookup must not fail the station refresh."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getData",
+            return_value=MOCK_GET_DATA_RESULT_MINIMAL,
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
+            return_value=CABINETS,
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
+            side_effect=SemsPermissionError("getBatteryGeneralFunctions", "denied"),
+        ) as mock_functions,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    mock_functions.assert_called_once()
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.last_update_success
+    assert coordinator.data.batteries is None
+    assert INVERTER_SERIAL in coordinator.data.inverters
 
 
 async def test_entities_are_not_added_after_discovery(hass: HomeAssistant) -> None:

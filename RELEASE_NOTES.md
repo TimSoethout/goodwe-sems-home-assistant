@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix a hybrid inverter without a battery failing to set up when SEMS+ lists
+  its empty battery slot and denies the battery function lookup.
+
 ## 11.13.0-beta.1 - 2026-10-02
 
 ## Add GoodWe EV charger (HCA wallbox) support
