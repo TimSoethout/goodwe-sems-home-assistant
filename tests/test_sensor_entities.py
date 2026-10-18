@@ -176,6 +176,58 @@ async def test_sensor_state_from_coordinator(
     assert "statusText" not in status_state.attributes
 
 
+async def test_total_energy_sensor_stays_enabled_when_initial_value_is_missing(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Keep the lifetime energy sensor registered when its initial counter is withheld."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    inverter_data = MOCK_GET_DATA_RESULT_MINIMAL["inverter"][0]["invert_full"]
+    data_without_total = {
+        **MOCK_GET_DATA_RESULT_MINIMAL,
+        "inverter": [
+            {
+                "invert_full": {
+                    key: value
+                    for key, value in inverter_data.items()
+                    if key != "etotal"
+                }
+            }
+        ],
+    }
+
+    with _mock_no_battery_api(data_without_total):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-energy"
+    )
+    assert entity_id is not None
+    entity_entry = ent_reg.async_get(entity_id)
+    assert entity_entry is not None
+    assert entity_entry.disabled_by is None
+    assert hass.states.get(entity_id).state == "unknown"
+
+    entry.runtime_data.coordinator.async_set_updated_data(
+        SemsData(inverters={"GW0000SN000TEST1": {"etotal": 18843.2}})
+    )
+    await hass.async_block_till_done()
+
+    assert float(hass.states.get(entity_id).state) == pytest.approx(18843.2)
+
+
 @pytest.mark.parametrize("enabled", [True, False])
 async def test_last_month_energy_is_requested_only_when_enabled(
     hass: HomeAssistant,
