@@ -25,6 +25,18 @@
   are not yet bundled.
 - HACS users must opt into prereleases to install this beta.
 
+### Related
+
+- [#245](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/245) -
+  polling options and reauthentication.
+- [#252](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/252),
+  [#254](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/254),
+  and [#255](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/255)
+  - diagnostics, SEMS+ recovery, and station-scoped HomeKit entities.
+- [#259](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/259)
+  and [#263](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/263)
+  - sensor and battery setup recovery.
+
 ### Contributors
 
 - [@WestLabsAI](https://github.com/WestLabsAI) - SEMS+ reliability,
