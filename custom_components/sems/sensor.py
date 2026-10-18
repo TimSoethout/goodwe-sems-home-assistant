@@ -157,6 +157,7 @@ class SemsSensorType:
     data_type_converter: Callable = Decimal
     custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None
     entity_registry_enabled_default: bool = True
+    disable_when_empty: bool = True
 
 
 @dataclass(slots=True)
@@ -246,6 +247,7 @@ def sensor_options_for_data(
                 device_class=SensorDeviceClass.ENERGY,
                 native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
                 state_class=SensorStateClass.TOTAL_INCREASING,
+                disable_when_empty=False,
             ),
             SemsInverterSensorType(
                 device_info,
@@ -964,6 +966,7 @@ async def async_setup_entry(
                 sensor_option.empty_value,
                 sensor_option.custom_value_handler,
                 sensor_option.entity_registry_enabled_default,
+                sensor_option.disable_when_empty,
             )
         )
     async_add_entities(sensors)
@@ -1005,6 +1008,7 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         empty_value=None,
         custom_value_handler=None,
         entity_registry_enabled_default=True,
+        disable_when_empty=True,
     ) -> None:
         """Initialize a SEMS sensor."""
 
@@ -1034,9 +1038,13 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         # A value missing because its source failed during this refresh says
         # nothing about the device, so keep such sensors enabled.
         if (
-            raw_value is None
-            or (self._empty_value is not None and raw_value == self._empty_value)
-        ) and not self._source_unavailable():
+            (
+                raw_value is None
+                or (self._empty_value is not None and raw_value == self._empty_value)
+            )
+            and disable_when_empty
+            and not self._source_unavailable()
+        ):
             _LOGGER.debug(
                 "Disabling SemsSensor `%s` by default since initial value is None or empty (`%s`)",
                 unique_id,
