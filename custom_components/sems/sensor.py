@@ -1031,9 +1031,12 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         raw_value = self._get_native_value_from_coordinator()
 
         # Disable-by-default must be decided before registry entry is created.
-        if raw_value is None or (
-            self._empty_value is not None and raw_value == self._empty_value
-        ):
+        # A value missing because its source failed during this refresh says
+        # nothing about the device, so keep such sensors enabled.
+        if (
+            raw_value is None
+            or (self._empty_value is not None and raw_value == self._empty_value)
+        ) and not self._source_unavailable():
             _LOGGER.debug(
                 "Disabling SemsSensor `%s` by default since initial value is None or empty (`%s`)",
                 unique_id,
@@ -1060,6 +1063,11 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         """Return the dict to read values from."""
 
         return self.coordinator.data.inverters
+
+    def _source_unavailable(self) -> bool:
+        """Return whether this sensor's data source failed in the last refresh."""
+
+        return False
 
     @property
     def native_value(self) -> Any:
@@ -1099,23 +1107,26 @@ class SemsInverterSensor(SemsSensor):
 
         return self.coordinator.data.inverters
 
+    def _source_unavailable(self) -> bool:
+        """Return whether this sensor's inverter data source failed."""
+        if self._data_source is None:
+            return False
+        inverter_sn = self._value_path[0]
+        if not isinstance(inverter_sn, str):
+            return False
+        failed_sources = self.coordinator.data.unavailable_inverter_sources.get(
+            inverter_sn, set()
+        )
+        return self._data_source in failed_sources
+
     @property
     def available(self) -> bool:
         """Return whether this inverter sensor's source was available."""
         if not super().available:
             return False
-        if (
-            self._data_source is None
-            or self._get_native_value_from_coordinator() is not None
-        ):
+        if self._get_native_value_from_coordinator() is not None:
             return True
-        inverter_sn = self._value_path[0]
-        if not isinstance(inverter_sn, str):
-            return True
-        failed_sources = self.coordinator.data.unavailable_inverter_sources.get(
-            inverter_sn, set()
-        )
-        return self._data_source not in failed_sources
+        return not self._source_unavailable()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -1161,19 +1172,21 @@ class SemsHomekitSensor(SemsSensor):
 
         return self.coordinator.data.homekit
 
+    def _source_unavailable(self) -> bool:
+        """Return whether this sensor's HomeKit data source failed."""
+        return (
+            self._data_source is not None
+            and self._data_source in self.coordinator.data.unavailable_homekit_sources
+        )
+
     @property
     def available(self) -> bool:
         """Return whether this HomeKit sensor's source was available."""
         if not super().available:
             return False
-        if (
-            self._data_source is None
-            or self._get_native_value_from_coordinator() is not None
-        ):
+        if self._get_native_value_from_coordinator() is not None:
             return True
-        return (
-            self._data_source not in self.coordinator.data.unavailable_homekit_sources
-        )
+        return not self._source_unavailable()
 
 
 class SemsLegacyPowerflowSensor(SemsHomekitSensor):
