@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+## 11.13.0-beta.3 - 2026-10-18
+
+## Prevent lifetime energy counter resets
+
+- Hold SEMS+ PV and battery lifetime counters through transient zero or
+  decreasing readings, preventing Home Assistant's Energy dashboard from
+  treating a reset as lifetime usage.
+- Withhold an initial zero PV lifetime total until a valid value arrives, and
+  keep the primary lifetime energy sensor enabled while its value is unknown.
+
+### Compatibility and limitations
+
+- After setup or restart, the PV lifetime sensor may remain unknown until
+  SEMS+ returns a valid total.
+- HACS users must opt into prereleases to install this beta.
+
+### Related
+
+- [#260](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/260) -
+  lifetime-counter guards and sensor availability.
+
+### Contributors
+
+- [@IDavinciCode](https://github.com/IDavinciCode) - lifetime-counter guard
+  and regression tests.
+- [@claude](https://github.com/claude) - co-authored API regression tests.
+- [@TimSoethout](https://github.com/TimSoethout) and
+  [@Copilot](https://github.com/apps/copilot-swe-agent) - primary lifetime
+  sensor availability.
+
 ## 11.13.0-beta.2 - 2026-10-18
 
 ## Improve SEMS+ station support and recovery
