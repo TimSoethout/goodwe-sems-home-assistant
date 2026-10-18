@@ -4,7 +4,8 @@
     "PreToolUse": [
       {
         "type": "command",
-        "command": "rtk hook copilot",
+        "bash": "if command -v rtk >/dev/null 2>&1; then output=$(rtk hook copilot) && { printf '%s\\n' \"$output\"; exit 0; }; fi; printf 'RTK unavailable or hook failed; allowing tool unchanged\\n' >&2; printf '{\"permissionDecision\":\"allow\"}\\n'",
+        "powershell": "if (Get-Command rtk -ErrorAction SilentlyContinue) { $output = & rtk hook copilot; if ($LASTEXITCODE -eq 0) { $output; exit 0 } }; [Console]::Error.WriteLine('RTK unavailable or hook failed; allowing tool unchanged'); '{\"permissionDecision\":\"allow\"}'",
         "cwd": ".",
         "timeout": 5
       }

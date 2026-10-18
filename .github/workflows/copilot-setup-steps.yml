@@ -1,0 +1,24 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Install RTK
+        env:
+          RTK_VERSION: v1.0.1
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/v1.0.1/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/rtk" gain
