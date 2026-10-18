@@ -2,8 +2,36 @@
 
 ## Unreleased
 
-- Fix a hybrid inverter without a battery failing to set up when SEMS+ lists
-  its empty battery slot and denies the battery function lookup.
+## 11.13.0-beta.2 - 2026-10-18
+
+## Improve SEMS+ station support and recovery
+
+- Support HomeKit-only SEMS+ stations and keep HomeKit powerflow entities
+  correctly grouped across stations.
+- Add an options flow for the polling interval (60-3600 seconds) and improve
+  reauthentication after rejected control requests.
+- Keep stations and sensors available through transient telemetry, statistics,
+  and battery lookup failures; do not treat unread immediate-charging state as
+  off or fail setup for an empty battery slot.
+- Add redacted diagnostics, avoid unsupported inverter controls for dongles
+  and battery racks, and link devices to the SEMS+ portal.
+
+### Compatibility and limitations
+
+- The polling interval applies to all stations sharing an account and must be
+  at least 60 seconds, matching SEMS+ data resolution.
+- EV charger controls require SEMS+ remote-control permission. A full charging
+  session and live/session sensors remain unverified; sanitized API captures
+  are not yet bundled.
+- HACS users must opt into prereleases to install this beta.
+
+### Contributors
+
+- [@WestLabsAI](https://github.com/WestLabsAI) - SEMS+ reliability,
+  HomeKit station support, and polling options.
+- [@claude](https://github.com/claude) - implementation and regression tests.
+- [@mholka](https://github.com/mholka) - battery-slot fix and EV charger
+  testing.
 
 ## 11.13.0-beta.1 - 2026-10-02
 
