@@ -44,8 +44,9 @@ jobs:
         python-version: "3.14"
 
     - name: Set up uv
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@v10
       with:
+        version: "0.13.1"
         enable-cache: true
         cache-dependency-glob: requirements.test.txt
 
@@ -90,8 +91,9 @@ jobs:
         python-version: "3.14"
 
     - name: Set up uv
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@v10
       with:
+        version: "0.13.1"
         enable-cache: true
         cache-dependency-glob: requirements.lint.txt
 
