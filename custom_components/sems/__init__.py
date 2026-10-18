@@ -473,16 +473,29 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         """Fetch and retain supported battery functions."""
         if energy_storage_cabinets:
             _LOGGER.debug("Getting battery general functions for each cabinet")
-        battery_general_functions = {
-            sn: {
-                bat.get("translateCode"): await self.hass.async_add_executor_job(
-                    self.sems_api.getBatteryGeneralFunctions, sn, bat.get("no", 0)
-                )
-                for bat in bats
-                if isinstance(bat, dict) and bat.get("translateCode") is not None
-            }
-            for sn, bats in energy_storage_cabinets.items()
-        }
+        battery_general_functions: dict[str, dict[Any, dict[str, Any]]] = {}
+        for sn, cabinets in energy_storage_cabinets.items():
+            battery_general_functions[sn] = {}
+            for bat in cabinets:
+                if not isinstance(bat, dict) or bat.get("translateCode") is None:
+                    continue
+                # SEMS+ lists an empty battery slot on a hybrid inverter and
+                # denies the function lookup for it.
+                if bat.get("isConnected") is False:
+                    continue
+                try:
+                    functions = await self.hass.async_add_executor_job(
+                        self.sems_api.getBatteryGeneralFunctions, sn, bat.get("no", 0)
+                    )
+                except SemsPermissionError as err:
+                    # Battery controls are optional; keep the station data.
+                    _LOGGER.debug(
+                        "Battery functions request denied for %s: %s",
+                        redact_for_log(sn),
+                        err,
+                    )
+                    continue
+                battery_general_functions[sn][bat.get("translateCode")] = functions
 
         batteries: dict[str, dict[str, dict[str, Any]]] = {}
         for sn, bats in battery_general_functions.items():
@@ -507,7 +520,8 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                                         for cabinet in energy_storage_cabinets.get(
                                             sn, []
                                         )
-                                        if cabinet.get("translateCode") == bat_id
+                                        if isinstance(cabinet, dict)
+                                        and cabinet.get("translateCode") == bat_id
                                     ),
                                     "",
                                 ),
