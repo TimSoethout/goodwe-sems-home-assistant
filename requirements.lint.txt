@@ -1,0 +1,5 @@
+ruff>=0.5.0
+mypy>=1.10.0
+types-requests
+# mypy needs Home Assistant's type information (e.g. ConfigFlow `domain=` kwarg)
+homeassistant==2026.9.4

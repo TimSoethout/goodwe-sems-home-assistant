@@ -3,8 +3,26 @@ name: Tests
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - "custom_components/**"
+      - "tests/**"
+      - "api_examples/**"
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "hacs.json"
+      - ".codecov.yml"
+      - ".github/workflows/tests.yml"
   pull_request:
     # branches: [ main, master ]
+    paths:
+      - "custom_components/**"
+      - "tests/**"
+      - "api_examples/**"
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "hacs.json"
+      - ".codecov.yml"
+      - ".github/workflows/tests.yml"
   schedule:
     # Run tests daily at 6 AM UTC to catch dependency issues
     - cron: '0 6 * * *'
@@ -24,17 +42,22 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: "3.14"
-        cache: 'pip'
-        cache-dependency-path: '**/requirements.test.txt'
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v10.3.0
+      with:
+        version: "0.13.1"
+        enable-cache: true
+        cache-dependency-glob: requirements.test.txt
 
     - name: Install dependencies
-      run: python -m pip install -r requirements.test.txt
+      run: uv pip install --system -r requirements.test.txt
 
     - name: Run tests with coverage
       run: |
         pytest tests/ --cov=custom_components.sems \
           --cov-report=xml --cov-report=term-missing \
-          --cov-fail-under=80 --junitxml=./junit.xml -v
+          --cov-fail-under=80 --junitxml=./junit.xml
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
@@ -43,7 +66,7 @@ jobs:
         files: ./coverage.xml
         fail_ci_if_error: true
         use_oidc: true
-        verbose: true
+        verbose: false
 
     - name: Upload test results to Codecov
       uses: codecov/codecov-action@v7
@@ -53,7 +76,7 @@ jobs:
         report_type: test_results
         fail_ci_if_error: true
         use_oidc: true
-        verbose: true
+        verbose: false
 
   lint:
     runs-on: ubuntu-26.04
@@ -66,13 +89,16 @@ jobs:
       uses: actions/setup-python@v6
       with:
         python-version: "3.14"
-        cache: 'pip'
-        cache-dependency-path: '**/requirements.test.txt'
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v10.3.0
+      with:
+        version: "0.13.1"
+        enable-cache: true
+        cache-dependency-glob: requirements.lint.txt
 
     - name: Install linting dependencies
-      run: |
-        python -m pip install -r requirements.test.txt \
-          ruff mypy
+      run: uv pip install --system -r requirements.lint.txt
 
     - name: Run ruff (lint)
       run: ruff check custom_components/
