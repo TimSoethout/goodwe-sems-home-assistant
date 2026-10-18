@@ -1,6 +1,6 @@
 # Contributing to GoodWe SEMS Home Assistant Integration
 
-Thank you for your interest in contributing to the GoodWe SEMS Home Assistant Integration! We appreciate contributions from the community.
+Thanks for contributing to the GoodWe SEMS Home Assistant integration.
 
 ## Table of Contents
 
@@ -16,111 +16,50 @@ Thank you for your interest in contributing to the GoodWe SEMS Home Assistant In
 
 ## Code of Conduct
 
-This project adheres to a code of conduct that all contributors are expected to follow. Please be respectful, inclusive, and considerate in all interactions with the community.
+Follow the project's [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.14
-- Git
-- A GitHub account
-- Basic understanding of Home Assistant custom components
-- Familiarity with the GoodWe SEMS API (helpful but not required)
+- Python 3.14, Git, and a GitHub account
+- [uv](https://docs.astral.sh/uv/) for standalone setup
+- Home Assistant custom component or GoodWe SEMS familiarity is helpful, not required
 
 ### Finding Issues to Work On
 
-- Check the [Issues](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues) page
-- Look for issues labeled `good first issue` or `help wanted`
-- Check [Discussions](https://github.com/TimSoethout/goodwe-sems-home-assistant/discussions) for feature requests
-- If you want to work on something not listed, create an issue first to discuss it
+Find work in [Issues](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues)
+(`good first issue` or `help wanted`) or [Discussions](https://github.com/TimSoethout/goodwe-sems-home-assistant/discussions).
+Discuss unlisted feature ideas in an issue before starting.
 
 ## Development Setup
 
-There are two ways to set up your development environment:
+For the recommended Home Assistant Core Dev Container, follow the
+[README development setup](README.md#development-setup). For standalone tests
+and linting, fork and clone the repository, then install:
 
-### Option 1: Home Assistant Core Development Environment (Recommended)
-
-This is the recommended approach for developing Home Assistant custom components:
-
-1. **Set up Home Assistant Core development environment:**
-   ```bash
-   # Follow the official guide:
-   # https://developers.home-assistant.io/docs/development_environment
-   ```
-
-2. **Clone this repository in the config directory:**
-   ```bash
-   cd core/config
-   git clone https://github.com/TimSoethout/goodwe-sems-home-assistant.git
-   ```
-
-3. **Create a symbolic link:**
-   ```bash
-   cd core/config/custom_components
-   ln -s ../goodwe-sems-home-assistant/custom_components/sems sems
-   ```
-
-4. **Install development dependencies:**
-   ```bash
-   pip install -r requirements.test.txt
-   pip install ruff mypy
-   ```
-
-### Option 2: Standalone Testing Environment
-
-For running tests and linting without a full Home Assistant setup:
-
-1. **Fork and clone the repository:**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/goodwe-sems-home-assistant.git
-   cd goodwe-sems-home-assistant
-   ```
-
-2. **Create a virtual environment:**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.test.txt
-   pip install ruff mypy
-   ```
+```bash
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -r requirements.test.txt ruff mypy
+```
 
 ## Making Changes
 
 ### Branch Naming
 
-Use a descriptive branch name. These are examples, not a required list:
-- `feature/add-xyz` - for new features
-- `fix/issue-123` - for bug fixes
-- `docs/update-readme` - for documentation changes
-- `refactor/improve-xyz` - for code refactoring
+Use a descriptive branch name, such as `feature/add-xyz`, `fix/issue-123`,
+`docs/update-readme`, or `refactor/improve-xyz`.
 
 ### Code Style
 
-This project follows Home Assistant's coding standards:
+Follow [PEP 8](https://peps.python.org/pep-0008/), Home Assistant's
+[developer documentation](https://developers.home-assistant.io/), and existing
+patterns. Ruff handles formatting and imports; `pyproject.toml` sets the
+88-character line length.
 
-- **Python Style Guide:** [PEP 8](https://www.python.org/dev/peps/pep-0008/)
-- **Line Length:** 88 characters (configured in `pyproject.toml`)
-- **Quotes:** Double quotes for strings
-- **Import Sorting:** Automated with Ruff (isort)
-
-### Key Files and Their Purpose
-
-- `custom_components/sems/`:
-  - `__init__.py` - Integration setup and configuration
-  - `config_flow.py` - Configuration UI flow
-  - `sems_api.py` - Core API client for GoodWe SEMS
-  - `sensor.py` - Sensor entity implementations
-  - `switch.py` - Switch entity for inverter control
-  - `const.py` - Constants and configuration
-  - `device.py` - Device information
-  - `manifest.json` - Integration metadata
-  - `strings.json` - UI text strings
-  - `translations/` - Localized strings
+Integration code lives in `custom_components/sems/`; see the
+[architecture plan](ARCHITECTURE_PLAN.md) for its data flow.
 
 ## Code Quality
 
@@ -141,179 +80,68 @@ ruff check --fix custom_components/
 ruff format custom_components/
 ```
 
-### Type Hints
-
-- Add type hints to all function signatures
-- Use `from typing import` for complex types
-- Run `mypy` to verify type correctness
+Add type hints to new or changed functions and verify them with the `mypy`
+command above.
 
 ### Documentation
 
-- Document public APIs when needed to explain their behavior
-- Use clear, descriptive variable and function names
-- Update README.md or other user-facing setup, usage, and configuration documentation when relevant
-- Update `strings.json` for any UI text changes
+Update the README or other relevant user-facing docs and `strings.json` when UI
+text changes. Add code comments only to explain non-obvious behavior.
 
 ## Testing
 
-### Running Tests
-
-Run all tests:
-```bash
-python -m pytest tests/ -v
-```
-
-See [tests/README.md](tests/README.md) for targeted test, coverage, and Home Assistant Core workspace instructions.
-
-### Writing Tests
-
-- Add or update automated tests for behavior changes where appropriate, including integration/component tests when useful
-- Follow the existing test patterns in `tests/`
-- Use `requests-mock` for mocking HTTP calls
-- Ensure tests are isolated and don't depend on external services
-- There is no fixed coverage target; focus on exercising the changed behavior
+Use [tests/README.md](tests/README.md) for full and targeted test commands,
+coverage, and Home Assistant Core instructions. CI requires 80% overall
+coverage; focus tests on changed behavior rather than a per-change percentage.
+Include component tests where useful; follow existing patterns, keep tests
+isolated, use `requests-mock` for HTTP, and never call the live GoodWe API.
 
 ## Submitting Changes
 
-### Pull Request Process
-
-1. **Update your fork:**
-   ```bash
-   git checkout master
-   git pull upstream master
-   ```
-
-2. **Create a feature branch:**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-3. **Make your changes:**
-   - Write code following the style guidelines
-   - Add or update tests
-   - Update documentation if needed
-
-4. **Verify your changes:** Run the applicable checks in Code Quality and Testing above.
-
-5. **Commit your changes:**
-   ```bash
-   git add path/to/changed-files
-   git commit -m "Add feature: your feature description"
-   ```
-
-6. **Push to your fork:**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-7. **Create a Pull Request:**
-   - Go to the [repository](https://github.com/TimSoethout/goodwe-sems-home-assistant)
-   - Click "New Pull Request"
-   - Select your branch
-   - Fill out the PR template with a clear description
-   - Link any related issues
-
-### Pull Request Guidelines
-
-Your PR should:
-
-- Have a clear, descriptive title
-- Include a detailed description of what changed and why
-- Link related issues when applicable; use `Closes #123` only when the PR closes the issue
-- Have a single, focused purpose (avoid mixing unrelated changes)
+Fork the repository, branch from `master`, make a focused change, run the checks
+above, then push and open a PR using the
+[pull request template](.github/pull_request_template.md). Link an issue when
+relevant; use `Closes #123` only when the PR closes it.
 
 ## Commit Message Guidelines
 
-Follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
+Use [Conventional Commits](https://www.conventionalcommits.org/), in the form
+`<type>(<scope>): <subject>`.
 
 ### Types
 
-- `feat:` - A new feature
-- `fix:` - A bug fix
-- `docs:` - Documentation only changes
-- `style:` - Code style changes (formatting, no logic change)
-- `refactor:` - Code refactoring (no functional changes)
-- `test:` - Adding or updating tests
-- `chore:` - Maintenance tasks, dependency updates
+- `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
-These are common types, not an exhaustive list; use another descriptive type when it better fits the change.
+These are common types, not an exhaustive list; use another descriptive type
+when it better fits the change.
 
-The repository does not currently document a SemVer bump policy. Maintainers update the version in `custom_components/sems/manifest.json`; Conventional Commit types do not automate version bumps, and publishing a GitHub release triggers the packaging workflow.
+There is no documented SemVer bump policy. Maintainers update
+[`manifest.json`](custom_components/sems/manifest.json) manually; commit types
+don't automate version bumps, and publishing a GitHub release triggers
+packaging.
 
 ### Examples
 
-```
-feat(api): add support for multiple power stations
-
-Add ability to configure and monitor multiple power stations
-from a single integration instance.
-
-Refs #45
-```
-
-```
-fix(sensor): handle null values in inverter data
-
-Previously, null values would cause sensor updates to fail.
-Now they are handled gracefully with default values.
-
-Fixes #123
-```
-
-```
-docs: update development setup instructions
-
-Clarify the steps for setting up the development environment
-with Home Assistant core.
-```
+- `feat(api): support multiple power stations` (`Refs #45`)
+- `fix(sensor): handle null values` (`Fixes #123`)
+- `docs: update development setup`
 
 ## Code Review Process
 
-### What to Expect
-
-- A maintainer will review your PR, usually within a few days
-- You may be asked to make changes or clarifications
-- Be responsive to feedback and questions
-- Once approved, a maintainer will merge your PR
-- A PR with no activity for 90 days may be closed; it can be reopened when work resumes.
-
-### Review Criteria
-
-Reviewers will check for:
-
-- Code quality and adherence to style guidelines
-- The change meets the behavior requested in the issue or pull request
-- Tests exercise changed behavior where appropriate, and CI checks pass
-- Relevant user-facing documentation (such as README setup, usage, or configuration guidance) is updated; code comments explain non-obvious behavior only
-- No breaking changes (or properly documented/versioned if necessary)
-- Security considerations
-- Performance implications
-
-## Additional Resources
-
-- [Home Assistant Developer Documentation](https://developers.home-assistant.io/)
-- [Home Assistant Architecture](https://developers.home-assistant.io/docs/architecture_index)
-- [Creating Custom Components](https://developers.home-assistant.io/docs/creating_component_index)
-- [GoodWe SEMS Portal](https://www.semsportal.com)
+Maintainers review PRs as available and may request changes; those with no
+activity for 90 days may be closed and reopened when work resumes. Reviews
+prioritize requested behavior, then code quality, tests, user-facing docs,
+compatibility, security, and performance. Add code comments only for
+non-obvious behavior.
 
 ## Questions?
 
-- Check existing [Issues](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues)
-- Start a [Discussion](https://github.com/TimSoethout/goodwe-sems-home-assistant/discussions)
-- Reach out to the maintainers
+Use the Issues or Discussions links above for questions.
 
 ## License
 
-By contributing to this project, you agree that your contributions will be licensed under the same license as the project (see LICENSE file).
+Contributions are licensed under the project's [LICENSE](LICENSE).
 
 ---
 
-Thank you for contributing! Your efforts help make this integration better for everyone. 🎉
+Thanks for helping improve the integration.
