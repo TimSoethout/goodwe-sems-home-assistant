@@ -46,7 +46,7 @@ RUN mkdir -p /home/vscode/.claude
 
 COPY requirements.test.txt /tmp/requirements.test.txt
 
-RUN python -m pip install --no-cache-dir \
+RUN uv pip install --system --no-cache \
     -r /tmp/requirements.test.txt \
     mypy \
     ruff
