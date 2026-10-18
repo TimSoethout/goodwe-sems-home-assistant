@@ -1,6 +1,6 @@
 ## Description
 
-<!-- Provide a clear and concise description of your changes -->
+<!-- Summarize intent and changes; follow CONTRIBUTING.md. -->
 
 ## Related Issue
 
@@ -31,7 +31,7 @@ Related issue: #
 
 ## Testing
 
-<!-- Describe how you tested your changes -->
+<!-- List test commands and results; see tests/README.md for test options. -->
 
 ### Test Environment
 
