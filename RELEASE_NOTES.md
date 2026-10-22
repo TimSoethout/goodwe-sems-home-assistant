@@ -2,6 +2,79 @@
 
 ## Unreleased
 
+## 11.13.0 - 2026-10-22
+
+This stable release includes all changes shipped in 11.13.0-beta.1 through
+11.13.0-beta.3. No user-visible integration changes were added after beta.3.
+
+## Add GoodWe EV charger (HCA wallbox) support
+
+- Discover SEMS+ EV chargers as separate devices with status, charging power,
+  telemetry, energy counters, and session sensors.
+- Start and stop charging, choose Fast, PV, or PV + battery mode, and configure
+  Plug and Charge and SEMS+ More Control settings.
+
+## Improve SEMS+ station support and recovery
+
+- Support HomeKit-only stations and correctly scope HomeKit powerflow entities
+  to their station.
+- Add a 60-3600 second polling-interval option and improve reauthentication.
+- Keep stations and sensors available through transient telemetry, statistics,
+  discovery, and battery lookup failures; add redacted diagnostics and avoid
+  unsupported controls for dongles and battery racks. Do not treat unread
+  immediate-charging state as off, fail setup for empty battery slots, or
+  create entities for them; link devices to the SEMS+ portal.
+
+## Prevent lifetime energy counter resets
+
+- Hold PV and battery lifetime counters through transient zero or decreasing
+  readings, and withhold an initial zero PV total until a valid value arrives.
+- Keep the primary PV lifetime sensor enabled while its value is unknown.
+
+### Compatibility and limitations
+
+- The polling interval applies to all stations sharing an account and must be
+  between 60 and 3600 seconds.
+- EV charger controls require SEMS+ remote-control permission; Visitor accounts
+  can read values but cannot control the charger. A full charging session and
+  live/session sensors remain unverified, and sanitized API captures are not
+  bundled.
+- After setup or restart, the PV lifetime sensor may remain unknown until SEMS+
+  returns a valid total.
+
+### Related
+
+- [#240](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/240) -
+  EV charger support.
+- [#182](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/182) -
+  EV charger endpoint discovery and response samples.
+- [#245](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/245),
+  [#252](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/252),
+  [#253](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/253),
+  [#254](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/254),
+  [#255](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/255),
+  [#257](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/257),
+  [#259](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/259),
+  and [#263](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/263) -
+  SEMS+ station support and recovery.
+- [#260](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/260) -
+  lifetime-counter guards.
+
+### Contributors
+
+- [@IDavinciCode](https://github.com/IDavinciCode) - lifetime-counter guard
+  and regression tests.
+- [@WestLabsAI](https://github.com/WestLabsAI) - SEMS+ reliability,
+  HomeKit station support, and polling options.
+- [@mholka](https://github.com/mholka) - battery-slot fix, EV charger
+  implementation, and testing.
+- [@floslight](https://github.com/floslight) - EV charger endpoint samples and
+  observations.
+- [@TimSoethout](https://github.com/TimSoethout) - review and validation.
+- [@claude](https://github.com/claude) - implementation and regression tests.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - lifetime sensor
+  availability.
+
 ## 11.13.0-beta.3 - 2026-10-18
 
 ## Prevent lifetime energy counter resets
