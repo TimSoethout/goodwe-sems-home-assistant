@@ -1962,7 +1962,7 @@ class TestSemsApi:
     def test_get_web_inverter_telecounting_skips_zero_lifetime_without_history(
         self, mock_now, mock_api_call
     ):
-        """Test a zero PV lifetime counter on the first poll is not published (#249)."""
+        """Test zero lifetime counters on the first poll are not published (#249)."""
         mock_now.return_value = datetime(2026, 9, 29, 16, 51)
         mock_api_call.return_value = [
             {
@@ -1970,6 +1970,8 @@ class TestSemsApi:
                 "factors": [
                     {"code": "proPvStatsToday", "data": "0"},
                     {"code": "proPvStatsTotal", "data": "0"},
+                    {"code": "proCharStatsTotal", "data": "0"},
+                    {"code": "proDischarStatsTotal", "data": "0"},
                 ],
             }
         ]
@@ -1981,12 +1983,16 @@ class TestSemsApi:
                 "factors": [
                     {"code": "proPvStatsToday", "data": "12.5"},
                     {"code": "proPvStatsTotal", "data": "7610"},
+                    {"code": "proCharStatsTotal", "data": "7720"},
+                    {"code": "proDischarStatsTotal", "data": "7436"},
                 ],
             }
         ]
         assert self.api.getWebInverterTelecounting("station", "SN1") == {
             "eday": 12.5,
             "etotal": 7610.0,
+            "echarge_total": 7720.0,
+            "edischarge_total": 7436.0,
         }
 
     @patch("custom_components.sems.sems_api.dt_util.now")
