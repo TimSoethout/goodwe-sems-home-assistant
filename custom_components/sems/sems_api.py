@@ -2556,7 +2556,7 @@ class SemsApi:
         """Change inverter status through SEMS+ Web, falling back to legacy API."""
         if plant_id is not None and device_name is not None:
             web_status = str(status)
-            if web_status in {"2", "4"}:
+            if web_status in {"1", "2", "4"}:
                 try:
                     web_control_succeeded = self.setDeviceFunctionParameters(
                         plant_id,
@@ -2564,9 +2564,11 @@ class SemsApi:
                         device_name,
                         {_WEB_INVERTER_STATUS_ADDRESS: int(web_status)},
                         {
-                            "status_setting": (
-                                "stop" if web_status == "2" else "start_up"
-                            )
+                            "status_setting": {
+                                "1": "restart",
+                                "2": "stop",
+                                "4": "start_up",
+                            }[web_status]
                         },
                         {
                             _WEB_INVERTER_STATUS_ADDRESS: _WEB_INVERTER_STATUS_FUNCTION_ID
@@ -2597,7 +2599,9 @@ class SemsApi:
         )
 
         if not success:
-            action = {"2": "stop", "4": "start"}.get(str(status), str(status))
+            action = {"1": "restart", "2": "stop", "4": "start"}.get(
+                str(status), str(status)
+            )
             device = device_name or inverterSn
             station = f" at station {plant_id}" if plant_id else ""
             message = (

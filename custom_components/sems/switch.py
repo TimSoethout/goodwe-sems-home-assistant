@@ -22,12 +22,18 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
-from .const import CONF_STATION_ID, DOMAIN, INVERTER_ON_STATUSES
+from .const import (
+    CONF_STATION_ID,
+    DOMAIN,
+    INVERTER_ON_STATUSES,
+    INVERTER_WAITING_STATUSES,
+)
 from .device import device_info_for_inverter, is_inverter
 from .ev_charger import async_add_ev_charger_entities, ev_charger_switches
 
 _LOGGER = logging.getLogger(__name__)
 
+_COMMAND_RESTART = 1
 _COMMAND_TURN_OFF = 2
 _COMMAND_TURN_ON = 4
 
@@ -79,10 +85,18 @@ class SemsInverterSwitch(SemsSwitchBase):
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        # "Start up" does not bring an inverter out of Standby (reported
+        # status "Waiting"); only the SEMS+ Web "Restart" command does.
+        status = self.coordinator.data.inverters.get(self.serial_number, {}).get(
+            "status"
+        )
+        command = (
+            _COMMAND_RESTART if status in INVERTER_WAITING_STATUSES else _COMMAND_TURN_ON
+        )
         await self._async_execute(
             self.coordinator.sems_api.change_status,
             self.serial_number,
-            _COMMAND_TURN_ON,
+            command,
             self.coordinator.station_id,
             self.coordinator.data.inverters[self.serial_number].get(
                 "name", self.serial_number
