@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 11.13.1-beta.1 - 2026-10-23
+
+## Prevent battery lifetime counter resets after restart
+
+- Withhold initial zero charge and discharge lifetime counters until SEMS+
+  returns valid totals, matching the existing PV lifetime-counter behavior.
+
+### Compatibility and limitations
+
+- After setup or restart, battery lifetime counters may remain unknown until
+  SEMS+ returns valid totals.
+- HACS users must opt into prereleases to install this beta.
+
+### Related
+
+- [#249](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/249) -
+  battery lifetime counters on cold start.
+
+### Contributors
+
+- [@kieranlee1970](https://github.com/kieranlee1970) - reported the remaining
+  cold-start gap.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression test.
+
 ## 11.13.0 - 2026-10-22
 
 This stable release includes all changes shipped in 11.13.0-beta.1 through
