@@ -179,7 +179,7 @@
     },
     "latest_inverter_menu_capture": {
       "source": "SEMS+ Web UI HAR captured on 2026-10-31",
-      "context": "The getTopTreeByCode HAR contains only an OPTIONS preflight. getAllDeviceFunctionTabs returned this menu list, including device_start_stop; the capture does not include function details or control writes.",
+      "context": "The paired getTopTreeByCode HAR contains only an OPTIONS preflight. This full-page HAR returns the menu list including device_start_stop, but its own getDeviceFunctionTabMenus request targets the general inverter menu, not the start/stop menu; it contains no start/stop function details or writes.",
       "request": {
         "method": "POST",
         "path": "/web/sems/sems-remote/api/v2/address/remote/getAllDeviceFunctionTabs",
@@ -257,6 +257,49 @@
             "visible": 1
           }
         ]
+      }
+    },
+    "latest_inverter_function_capture": {
+      "source": "SEMS+ Web UI HAR captures from 2026-10-31",
+      "context": "The standalone getDeviceFunctionTabMenus request uses the device_start_stop menu ID returned by getAllDeviceFunctionTabs. The full-page HAR's own details request targets the general inverter menu instead. This start/stop detail capture contains no setDeviceFunctionParameters write.",
+      "request": {
+        "method": "POST",
+        "path": "/web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+        "body": {
+          "sn": "<device_sn>",
+          "menuId": "<device_start_stop_menu_id>",
+          "batIndex": "",
+          "menuCode": 0
+        }
+      },
+      "response": {
+        "code": "00000",
+        "description": "成功",
+        "data": {
+          "functionMenus": {
+            "menuId": "<device_start_stop_menu_id>",
+            "name": "设备启停",
+            "translateKey": "device_start_stop",
+            "funcKey": "device_start_stop",
+            "children": [],
+            "functions": [
+              {
+                "address": "80017",
+                "id": "<function_id>",
+                "functionName": "状态设置",
+                "translateKey": "status_setting",
+                "control": 4,
+                "controlAttr": "[{\"code\":\"重启\",\"transKey\":\"restart\",\"value\":\"1\"},{\"code\":\"停止\",\"transKey\":\"stop\",\"value\":\"2\"},{\"code\":\"启动\",\"transKey\":\"start_up\",\"value\":\"4\"}]",
+                "preCommand": "F7",
+                "range": "[0,4]",
+                "rwType": "RW",
+                "type": "U16",
+                "unit": "N/A"
+              }
+            ]
+          },
+          "sn": "<device_sn>"
+        }
       }
     },
     "actions": [

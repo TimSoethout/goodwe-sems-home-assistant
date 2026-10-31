@@ -135,18 +135,25 @@ additional evidence.
 - Inverter start/stop uses the SEMS+ Web remote-control API when the account
   has permission, with legacy control retained as a compatibility fallback.
   Do not create the Inverter Control switch for dongles or battery racks.
-- The current SEMS+ Web UI discovers inverter commands per device: call
-  `getAllDeviceFunctionTabs` and find the `device_start_stop` menu, with
-  `getTopTreeByCode` as a fallback, then call `getDeviceFunctionTabMenus` and
-  select functions by `translateKey` (`start_up` or `shutdown`). Build
-  `setDeviceFunctionParameters` from the returned address, function ID, and
-  command value rather than assuming the older `80017` mapping. The captured
-  inverter uses addresses `40330` (Start) and `40331` (Stop), both with value
-  `0`; see
-  [`device_start_stop.json`](./api_examples/device_start_stop.json). This
-  evidence is for one inverter: discovery is keyed and cached by serial number,
-  not model, and the observed addresses/IDs must not be generalized without
-  captures for other devices or firmware.
+- Discover the per-device menu ID with `getAllDeviceFunctionTabs`, then retrieve
+  its functions with `getDeviceFunctionTabMenus`. The detail endpoint requires
+  a menu ID, so the all-tabs call is needed when that ID is not already known.
+  The captured menu list includes `device_start_stop`, and the standalone
+  detail request uses that menu's ID. In the full-page capture, the separate
+  detail request targets the general `inverter` menu instead. `getTopTreeByCode`
+  remains a fallback; a successful tree response is captured separately, while
+  the newest HAR for that endpoint contains only an OPTIONS preflight.
+- Command metadata varies by device. One capture returns separate
+  `start_up`/`shutdown`/`restart` functions at addresses `40330`/`40331`/`40332`,
+  with Start and Stop value `0`. Another returns one `status_setting` function
+  at `80017`, whose `controlAttr` choices are `restart=1`, `stop=2`, and
+  `start_up=4`. The current Web resolver matches separate `start_up` and
+  `shutdown` functions; it does not consume the shared `status_setting`/`stop`
+  shape and instead uses the legacy fallback. The latest detail capture has no
+  control write. See
+  [`device_start_stop.json`](./api_examples/device_start_stop.json). Discovery
+  is cached by serial number, not model; do not generalize observed addresses,
+  IDs, or values to other devices or firmware.
 - Battery immediate charging is a separate operation from stopping inverter
   generation. Continue using the captured function metadata and endpoints;
   do not conflate the two controls.
