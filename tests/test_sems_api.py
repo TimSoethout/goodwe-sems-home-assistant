@@ -2247,6 +2247,13 @@ class TestSemsApi:
             retry_on_api_error=False,
         )
 
+    @patch.object(SemsApi, "_make_api_call", return_value=[])
+    def test_get_battery_general_functions_rejects_non_object_response(
+        self, mock_api_call
+    ):
+        assert self.api.getBatteryGeneralFunctions("test_sn", 1) == {}
+        mock_api_call.assert_called_once()
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_battery_immediate_charging_states(self, mock_api_call):
         """Test getBatteryImmediateChargingStates method."""
@@ -2471,6 +2478,60 @@ class TestSemsApi:
             "<device_start_stop_menu_id>"
         )
 
+    def test_inverter_control_function_discovery_handles_retries_without_menu(self):
+        with (
+            patch.object(
+                self.api, "getAllDeviceFunctionTabs", side_effect=OutOfRetries
+            ),
+            patch.object(self.api, "getTopTreeByCode", return_value={}),
+            patch.object(self.api, "getDeviceFunctionTabMenus") as mock_get_menus,
+        ):
+            assert self.api.getInverterControlFunctions("inverter123") == {}
+
+        mock_get_menus.assert_not_called()
+
+    def test_inverter_control_function_discovery_ignores_empty_menu_ids(self):
+        with (
+            patch.object(
+                self.api,
+                "getAllDeviceFunctionTabs",
+                return_value=[{"funcKey": "device_start_stop", "menuId": ""}],
+            ),
+            patch.object(
+                self.api,
+                "getTopTreeByCode",
+                return_value={
+                    "functionMenus": {
+                        "funcKey": "device_start_stop",
+                        "menuId": "",
+                        "children": None,
+                    }
+                },
+            ),
+            patch.object(self.api, "getDeviceFunctionTabMenus") as mock_get_menus,
+        ):
+            assert self.api.getInverterControlFunctions("inverter123") == {}
+
+        mock_get_menus.assert_not_called()
+
+    @pytest.mark.parametrize("function_menus", [None, {"functions": {}}])
+    def test_inverter_control_function_discovery_rejects_malformed_function_response(
+        self, function_menus
+    ):
+        with (
+            patch.object(
+                self.api,
+                "getAllDeviceFunctionTabs",
+                return_value=[{"funcKey": "device_start_stop", "menuId": "menu123"}],
+            ),
+            patch.object(
+                self.api,
+                "getDeviceFunctionTabMenus",
+                return_value={"functionMenus": function_menus},
+            ),
+        ):
+            assert self.api.getInverterControlFunctions("inverter123") == {}
+
     @patch.object(SemsApi, "_make_control_api_call")
     @patch.object(SemsApi, "setDeviceFunctionParameters")
     @patch.object(SemsApi, "getInverterControlFunctions")
@@ -2528,6 +2589,104 @@ class TestSemsApi:
         )
 
         mock_control_call.assert_called_once()
+
+    @patch.object(SemsApi, "_make_control_api_call", return_value=True)
+    @patch.object(SemsApi, "getInverterControlFunctions", side_effect=OutOfRetries)
+    def test_change_status_falls_back_when_discovery_retries_exhausted(
+        self, mock_functions, mock_control_call
+    ):
+        self.api.change_status(
+            "inverter123",
+            2,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        mock_functions.assert_called_once()
+        mock_control_call.assert_called_once()
+
+    @patch.object(SemsApi, "_make_control_api_call", return_value=True)
+    @patch.object(SemsApi, "getInverterControlFunctions")
+    def test_change_status_uses_legacy_for_unsupported_web_status(
+        self, mock_functions, mock_control_call
+    ):
+        self.api.change_status(
+            "inverter123",
+            1,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        mock_functions.assert_not_called()
+        mock_control_call.assert_called_once()
+
+    @patch.object(SemsApi, "_make_control_api_call", return_value=True)
+    @patch.object(SemsApi, "setDeviceFunctionParameters")
+    @patch.object(
+        SemsApi,
+        "getInverterControlFunctions",
+        return_value={
+            "functions": [
+                {
+                    "translateKey": "shutdown",
+                    "address": "40331",
+                    "id": "function123",
+                    "controlAttr": "not-json",
+                }
+            ]
+        },
+    )
+    def test_change_status_falls_back_for_malformed_control_attributes(
+        self, mock_functions, mock_web_control, mock_control_call
+    ):
+        self.api.change_status(
+            "inverter123",
+            2,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        mock_web_control.assert_not_called()
+        mock_control_call.assert_called_once()
+
+    @patch.object(SemsApi, "_make_control_api_call")
+    @patch.object(SemsApi, "setDeviceFunctionParameters", return_value=True)
+    @patch.object(
+        SemsApi,
+        "getInverterControlFunctions",
+        return_value={
+            "functions": [
+                {
+                    "translateKey": "shutdown",
+                    "address": "40331",
+                    "id": "function123",
+                    "controlAttr": [{"transKey": "shutdown", "value": "2"}],
+                }
+            ]
+        },
+    )
+    def test_change_status_accepts_list_control_attributes(
+        self, mock_functions, mock_web_control, mock_control_call
+    ):
+        self.api.change_status(
+            "inverter123",
+            2,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        mock_web_control.assert_called_once_with(
+            "station123",
+            "inverter123",
+            "Inverter",
+            {"40331": 2},
+            {"shutdown": "shutdown"},
+            {"40331": "function123"},
+            renewToken=False,
+            maxTokenRetries=2,
+            virtual_sn="inverter123",
+        )
+        mock_control_call.assert_not_called()
 
     @patch.object(SemsApi, "_make_control_api_call")
     @patch.object(SemsApi, "setDeviceFunctionParameters")
