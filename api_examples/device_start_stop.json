@@ -142,12 +142,7 @@
                 "kafkaName": "Power On",
                 "translateKey": "start_up",
                 "control": 16,
-                "controlAttr": [
-                  {
-                    "transKey": "start_up",
-                    "value": "0"
-                  }
-                ],
+                "controlAttr": "[{\"code\":\"启动\",\"transKey\":\"start_up\",\"value\":\"0\"}]",
                 "preCommand": "F7",
                 "range": "[0,0]",
                 "rwType": "RW",
@@ -159,12 +154,7 @@
                 "kafkaName": "Power Off",
                 "translateKey": "shutdown",
                 "control": 16,
-                "controlAttr": [
-                  {
-                    "transKey": "shutdown",
-                    "value": "0"
-                  }
-                ],
+                "controlAttr": "[{\"code\":\"停机\",\"transKey\":\"shutdown\",\"value\":\"0\"}]",
                 "preCommand": "F7",
                 "range": "[0,0]",
                 "rwType": "RW",
@@ -176,12 +166,7 @@
                 "kafkaName": "Restart",
                 "translateKey": "restart",
                 "control": 16,
-                "controlAttr": [
-                  {
-                    "transKey": "restart",
-                    "value": "0"
-                  }
-                ],
+                "controlAttr": "[{\"code\":\"重启\",\"transKey\":\"restart\",\"value\":\"0\"}]",
                 "preCommand": "F7",
                 "range": "[0,0]",
                 "rwType": "RW",

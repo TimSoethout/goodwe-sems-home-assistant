@@ -2325,38 +2325,90 @@ class TestSemsApi:
             operation_name="power control command for inverter inverter123",
         )
 
+    @pytest.mark.parametrize(
+        ("status", "action", "address", "function_id"),
+        [
+            (4, "start_up", "40330", "1991318013509906434"),
+            (2, "shutdown", "40331", "1991318013509906435"),
+        ],
+    )
+    def test_change_status_uses_discovered_web_control(
+        self, status, action, address, function_id
+    ):
+        """Test inverter control uses the captured per-device function metadata."""
+        capture = json.loads((API_EXAMPLES_DIR / "device_start_stop.json").read_text())[
+            "additional_web_ui_captures"
+        ]["function_discovery"]
+        with patch.object(
+            self.api,
+            "_make_api_call",
+            side_effect=[
+                capture["tree_response"]["data"],
+                capture["functions_response"]["data"],
+                {},
+            ],
+        ) as mock_api_call:
+            self.api.change_status(
+                "inverter123",
+                status,
+                plant_id="station123",
+                device_name="Inverter",
+            )
+
+        calls = mock_api_call.call_args_list
+        assert calls[0].args[0] == (
+            "/sems-remote/api/v2/address/remote/getTopTreeByCode"
+        )
+        assert json.loads(calls[0].kwargs["data"]) == {
+            "sn": "inverter123",
+            "menuCode": 0,
+            "batIndex": "",
+        }
+        assert calls[1].args[0] == (
+            "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus"
+        )
+        assert json.loads(calls[1].kwargs["data"]) == {
+            "sn": "inverter123",
+            "menuId": "<device_start_stop_menu_id>",
+            "batIndex": "",
+            "menuCode": 0,
+        }
+        assert calls[2].args[0] == (
+            "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters"
+        )
+        assert json.loads(calls[2].kwargs["data"]) == {
+            "sn": "inverter123",
+            "addressMap": {address: 0},
+            "addrFuncMap": {address: function_id},
+            "controlItemLogs": {action: action},
+            "waitingForDevice": True,
+            "plantId": "station123",
+            "deviceName": "Inverter",
+            "virtualSn": "inverter123",
+        }
+        assert (
+            self.api.getInverterControlFunctions("inverter123")
+            == capture["functions_response"]["data"]["functionMenus"]
+        )
+        assert mock_api_call.call_count == 3
+
     @patch.object(SemsApi, "_make_control_api_call")
     @patch.object(SemsApi, "setDeviceFunctionParameters")
-    def test_change_status_uses_web_control(self, mock_web_control, mock_control_call):
-        """Test inverter status uses the SEMS+ Web control endpoint."""
-        mock_web_control.return_value = True
-
-        self.api.change_status(
-            "inverter123",
-            4,
-            plant_id="station123",
-            device_name="Inverter",
-        )
-
-        mock_web_control.assert_called_once_with(
-            "station123",
-            "inverter123",
-            "Inverter",
-            {"80017": 4},
-            {"status_setting": "start_up"},
-            {"80017": "2043643517552594945"},
-            renewToken=False,
-            maxTokenRetries=2,
-            virtual_sn="inverter123",
-        )
-        mock_control_call.assert_not_called()
-
-    @patch.object(SemsApi, "_make_control_api_call")
-    @patch.object(SemsApi, "setDeviceFunctionParameters")
+    @patch.object(SemsApi, "getInverterControlFunctions")
     def test_change_status_falls_back_to_legacy_control(
-        self, mock_web_control, mock_control_call
+        self, mock_functions, mock_web_control, mock_control_call
     ):
         """Test inverter status falls back when Web control fails."""
+        mock_functions.return_value = {
+            "functions": [
+                {
+                    "translateKey": "shutdown",
+                    "address": "40331",
+                    "id": "1991318013509906435",
+                    "controlAttr": '[{"transKey":"shutdown","value":"0"}]',
+                }
+            ]
+        }
         mock_web_control.return_value = False
         mock_control_call.return_value = True
 
@@ -2371,10 +2423,21 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "_make_control_api_call")
     @patch.object(SemsApi, "setDeviceFunctionParameters")
+    @patch.object(SemsApi, "getInverterControlFunctions")
     def test_change_status_falls_back_after_web_retries(
-        self, mock_web_control, mock_control_call
+        self, mock_functions, mock_web_control, mock_control_call
     ):
         """Test inverter status falls back after Web retries are exhausted."""
+        mock_functions.return_value = {
+            "functions": [
+                {
+                    "translateKey": "shutdown",
+                    "address": "40331",
+                    "id": "1991318013509906435",
+                    "controlAttr": '[{"transKey":"shutdown","value":"0"}]',
+                }
+            ]
+        }
         mock_web_control.side_effect = OutOfRetries
         mock_control_call.return_value = True
 
@@ -2385,6 +2448,28 @@ class TestSemsApi:
             device_name="Inverter",
         )
 
+        mock_control_call.assert_called_once()
+
+    @patch.object(SemsApi, "_make_control_api_call")
+    @patch.object(SemsApi, "setDeviceFunctionParameters")
+    @patch.object(SemsApi, "getInverterControlFunctions", return_value={})
+    def test_change_status_falls_back_when_web_command_is_unavailable(
+        self, mock_functions, mock_web_control, mock_control_call
+    ):
+        """Test legacy control is used when discovery has no matching command."""
+        mock_control_call.return_value = True
+
+        self.api.change_status(
+            "inverter123",
+            2,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        mock_functions.assert_called_once_with(
+            "inverter123", renewToken=False, maxTokenRetries=2
+        )
+        mock_web_control.assert_not_called()
         mock_control_call.assert_called_once()
 
     def test_change_status_success_real_structure(self, requests_mock):

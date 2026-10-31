@@ -153,9 +153,10 @@ related-device discovery.
 | `getData` | SEMS+ Web station flow, device discovery, telemetry, and telecounting requests | SEMS+ Web token |
 | `getEnergyStorageIntegratedCabinets` | `GET /web/sems/sems-plant/api/equipments/<sn>/relatedDevices?sn=<sn>&deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=<station_id>` | SEMS+ Web token |
 | `getBatteryGeneralFunctions` | `POST /web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus` | SEMS+ Web token |
+| `getTopTreeByCode`, `getDeviceFunctionTabMenus` | `POST /web/sems/sems-remote/api/v2/address/remote/getTopTreeByCode` and `/web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus` | SEMS+ Web token |
 | `getBatteryImmediateChargingStates` | `POST /web/sems/sems-remote/api/v1/address/remote/get-cache-device-function-parameters` | SEMS+ Web token |
 | `setDeviceFunctionParameters` | `POST /web/sems/sems-remote/api/v1/address/remote/setDeviceFunctionParameters` | SEMS+ Web token |
-| `change_status` | `POST /PowerStation/SaveRemoteControlInverter` | Legacy token |
+| `change_status` | Discovered SEMS+ Web `setDeviceFunctionParameters`; legacy `POST /PowerStation/SaveRemoteControlInverter` fallback | SEMS+ Web token or legacy token |
 
 The `startImmediateCharging`, `stopImmediateCharging`,
 `setImmediateChargingEndSoC`, and `setImmediateChargingChargingPower` methods
