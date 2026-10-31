@@ -39,6 +39,13 @@ evidence and fixture-backed regression coverage where practical.
 
 ## Authentication, permissions, and reliability
 
+- [ ] Replace the hardcoded inverter `80017` start/stop mapping with per-device
+  SEMS+ command discovery via `getTopTreeByCode` and
+  `getDeviceFunctionTabMenus`. Select `start_up` and `shutdown` from the
+  returned function metadata and build the write using its address, function
+  ID, and value. The captured `40330`/`40331` commands are confirmed for one
+  inverter only; add request tests and verify actual state transitions across
+  another device or firmware before generalizing (#277).
 - [ ] Validate SEMS+ Web login and refresh across supported account roles and
   regions, including accounts that return `100004`, before removing legacy
   authentication fallback (#219).

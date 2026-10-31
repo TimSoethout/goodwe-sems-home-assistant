@@ -135,6 +135,17 @@ additional evidence.
 - Inverter start/stop uses the SEMS+ Web remote-control API when the account
   has permission, with legacy control retained as a compatibility fallback.
   Do not create the Inverter Control switch for dongles or battery racks.
+- The current SEMS+ Web UI discovers inverter commands per device: call
+  `getTopTreeByCode` with its serial number, find the `device_start_stop` menu,
+  then call `getDeviceFunctionTabMenus` and select functions by `translateKey`
+  (`start_up` or `shutdown`). Build `setDeviceFunctionParameters` from the
+  returned address, function ID, and command value rather than assuming the
+  older `80017` mapping. The captured inverter uses addresses `40330` (Start)
+  and `40331` (Stop), both with value `0`; see
+  [`device_start_stop.json`](./api_examples/device_start_stop.json). This
+  evidence is for one inverter: discovery is keyed by serial number, not model,
+  and the observed addresses/IDs must not be generalized without captures for
+  other devices or firmware.
 - Battery immediate charging is a separate operation from stopping inverter
   generation. Continue using the captured function metadata and endpoints;
   do not conflate the two controls.
