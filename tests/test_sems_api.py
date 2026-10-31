@@ -2338,13 +2338,21 @@ class TestSemsApi:
         """Test inverter control uses the captured per-device function metadata."""
         capture = json.loads((API_EXAMPLES_DIR / "device_start_stop.json").read_text())[
             "additional_web_ui_captures"
-        ]["function_discovery"]
+        ]
+        tabs_capture = capture["latest_inverter_menu_capture"]
+        function_capture = capture["function_discovery"]
+        device_tabs = tabs_capture["response"]["data"]
+        menu_id = next(
+            menu["menuId"]
+            for menu in device_tabs
+            if menu.get("translateKey") == "device_start_stop"
+        )
         with patch.object(
             self.api,
             "_make_api_call",
             side_effect=[
-                capture["tree_response"]["data"],
-                capture["functions_response"]["data"],
+                device_tabs,
+                function_capture["functions_response"]["data"],
                 {},
             ],
         ) as mock_api_call:
@@ -2357,19 +2365,19 @@ class TestSemsApi:
 
         calls = mock_api_call.call_args_list
         assert calls[0].args[0] == (
-            "/sems-remote/api/v2/address/remote/getTopTreeByCode"
+            "/sems-remote/api/v2/address/remote/getAllDeviceFunctionTabs"
         )
         assert json.loads(calls[0].kwargs["data"]) == {
             "sn": "inverter123",
-            "menuCode": 0,
             "batIndex": "",
+            "menuCode": 0,
         }
         assert calls[1].args[0] == (
             "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus"
         )
         assert json.loads(calls[1].kwargs["data"]) == {
             "sn": "inverter123",
-            "menuId": "<device_start_stop_menu_id>",
+            "menuId": menu_id,
             "batIndex": "",
             "menuCode": 0,
         }
@@ -2388,9 +2396,35 @@ class TestSemsApi:
         }
         assert (
             self.api.getInverterControlFunctions("inverter123")
-            == capture["functions_response"]["data"]["functionMenus"]
+            == function_capture["functions_response"]["data"]["functionMenus"]
         )
         assert mock_api_call.call_count == 3
+
+    def test_inverter_control_function_discovery_falls_back_to_tree(self):
+        """Test the older captured function-tree response remains supported."""
+        capture = json.loads((API_EXAMPLES_DIR / "device_start_stop.json").read_text())[
+            "additional_web_ui_captures"
+        ]["function_discovery"]
+        with patch.object(
+            self.api,
+            "_make_api_call",
+            side_effect=[
+                [],
+                capture["tree_response"]["data"],
+                capture["functions_response"]["data"],
+            ],
+        ) as mock_api_call:
+            result = self.api.getInverterControlFunctions("inverter123")
+
+        assert result == capture["functions_response"]["data"]["functionMenus"]
+        assert [call.args[0] for call in mock_api_call.call_args_list] == [
+            "/sems-remote/api/v2/address/remote/getAllDeviceFunctionTabs",
+            "/sems-remote/api/v2/address/remote/getTopTreeByCode",
+            "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+        ]
+        assert json.loads(mock_api_call.call_args_list[2].kwargs["data"])["menuId"] == (
+            "<device_start_stop_menu_id>"
+        )
 
     @patch.object(SemsApi, "_make_control_api_call")
     @patch.object(SemsApi, "setDeviceFunctionParameters")

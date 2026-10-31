@@ -177,6 +177,88 @@
         }
       }
     },
+    "latest_inverter_menu_capture": {
+      "source": "SEMS+ Web UI HAR captured on 2026-10-31",
+      "context": "The getTopTreeByCode HAR contains only an OPTIONS preflight. getAllDeviceFunctionTabs returned this menu list, including device_start_stop; the capture does not include function details or control writes.",
+      "request": {
+        "method": "POST",
+        "path": "/web/sems/sems-remote/api/v2/address/remote/getAllDeviceFunctionTabs",
+        "body": {
+          "sn": "<device_sn>",
+          "batIndex": "",
+          "menuCode": 0
+        }
+      },
+      "response": {
+        "code": "00000",
+        "description": "成功",
+        "data": [
+          {
+            "menuId": "1988897383950872577",
+            "name": "设备启停",
+            "translateKey": "device_start_stop",
+            "funcKey": "device_start_stop",
+            "visible": 0,
+            "quickTag": "3"
+          },
+          {
+            "menuId": "1988897503857635329",
+            "name": "能量管理",
+            "translateKey": "energy_management",
+            "funcKey": "energy_management",
+            "visible": 1,
+            "quickTag": "1"
+          },
+          {
+            "menuId": "1988897450690637825",
+            "name": "环境控制",
+            "translateKey": "environmental_control",
+            "funcKey": "environmental_control",
+            "visible": 1
+          },
+          {
+            "menuId": "1988897568789655553",
+            "name": "交流侧设置",
+            "translateKey": "ac_side_settings",
+            "funcKey": "ac_side_settings",
+            "visible": 1
+          },
+          {
+            "menuId": "1988897823220330497",
+            "name": "PV设置",
+            "translateKey": "pv_settings",
+            "visible": 1
+          },
+          {
+            "menuId": "1988898861440593922",
+            "name": "电池设置",
+            "translateKey": "battery_set",
+            "visible": 1
+          },
+          {
+            "menuId": "1988898901252927490",
+            "name": "保护设置",
+            "translateKey": "protection_settings",
+            "visible": 1
+          },
+          {
+            "menuId": "1988898951530049538",
+            "name": "通用设置",
+            "translateKey": "general_set",
+            "funcKey": "GeneralSet",
+            "visible": 1,
+            "quickTag": "1"
+          },
+          {
+            "menuId": "1988896905871519745",
+            "name": "电表",
+            "translateKey": "meter",
+            "funcKey": "meter",
+            "visible": 1
+          }
+        ]
+      }
+    },
     "actions": [
       {
         "action": "stop",

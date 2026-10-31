@@ -122,6 +122,9 @@ _POWER_CONTROL_ENDPOINT = ApiEndpoint(
 _WEB_DEVICE_FUNCTION_TREE_ENDPOINT = ApiEndpoint(
     "/sems-remote/api/v2/address/remote/getTopTreeByCode", "web"
 )
+_WEB_DEVICE_ALL_FUNCTION_TABS_ENDPOINT = ApiEndpoint(
+    "/sems-remote/api/v2/address/remote/getAllDeviceFunctionTabs", "web"
+)
 _WEB_DEVICE_FUNCTION_MENUS_ENDPOINT = ApiEndpoint(
     "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus", "web"
 )
@@ -2359,6 +2362,33 @@ class SemsApi:
         )
         return result if isinstance(result, dict) else {}
 
+    def getAllDeviceFunctionTabs(
+        self,
+        serialNumber: str,
+        batIndex: str = "",
+        menuCode: int = 0,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> list[dict[str, Any]]:
+        """Get the SEMS+ remote-control tabs available for a device."""
+        result = self._make_api_call(
+            _WEB_DEVICE_ALL_FUNCTION_TABS_ENDPOINT.url_part,
+            data=json.dumps(
+                {"sn": serialNumber, "batIndex": batIndex, "menuCode": menuCode}
+            ),
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getAllDeviceFunctionTabs API call",
+            is_web=True,
+            retry_on_api_error=False,
+            token_type=_WEB_DEVICE_ALL_FUNCTION_TABS_ENDPOINT.token_type,
+        )
+        return (
+            [menu for menu in result if isinstance(menu, dict)]
+            if isinstance(result, list)
+            else []
+        )
+
     def getDeviceFunctionTabMenus(
         self,
         serialNumber: str,
@@ -2403,24 +2433,45 @@ class SemsApi:
         ):
             return cached[1]
 
-        tree = self.getTopTreeByCode(
-            serialNumber, renewToken=renewToken, maxTokenRetries=maxTokenRetries
-        ).get("functionMenus")
-        menus = [tree] if isinstance(tree, dict) else []
         menu_id: str | None = None
-        while menus:
-            menu = menus.pop()
-            if (
-                menu.get("funcKey") == "device_start_stop"
-                or menu.get("translateKey") == "device_start_stop"
-            ):
-                value = menu.get("menuId")
-                if isinstance(value, str) and value:
-                    menu_id = value
-                    break
-            children = menu.get("children")
-            if isinstance(children, list):
-                menus.extend(child for child in children if isinstance(child, dict))
+        try:
+            tabs = self.getAllDeviceFunctionTabs(
+                serialNumber, renewToken=renewToken, maxTokenRetries=maxTokenRetries
+            )
+        except OutOfRetries:
+            tabs = []
+        menu = next(
+            (
+                item
+                for item in tabs
+                if item.get("funcKey") == "device_start_stop"
+                or item.get("translateKey") == "device_start_stop"
+            ),
+            None,
+        )
+        if menu is not None:
+            value = menu.get("menuId")
+            if isinstance(value, str) and value:
+                menu_id = value
+
+        if menu_id is None:
+            tree = self.getTopTreeByCode(
+                serialNumber, renewToken=renewToken, maxTokenRetries=maxTokenRetries
+            ).get("functionMenus")
+            menus = [tree] if isinstance(tree, dict) else []
+            while menus:
+                menu = menus.pop()
+                if (
+                    menu.get("funcKey") == "device_start_stop"
+                    or menu.get("translateKey") == "device_start_stop"
+                ):
+                    value = menu.get("menuId")
+                    if isinstance(value, str) and value:
+                        menu_id = value
+                        break
+                children = menu.get("children")
+                if isinstance(children, list):
+                    menus.extend(child for child in children if isinstance(child, dict))
         if menu_id is None:
             return {}
 
