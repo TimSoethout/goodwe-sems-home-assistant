@@ -92,5 +92,153 @@
         "description": "success"
       }
     }
-  ]
+  ],
+  "additional_web_ui_captures": {
+    "source": "SEMS+ Web UI HAR captures from 2026-10-30",
+    "context": "The later capture includes command discovery plus successful Start and Stop writes. These commands differ from the older 80017 capability capture above.",
+    "function_discovery": {
+      "tree_request": {
+        "method": "POST",
+        "path": "/web/sems/sems-remote/api/v2/address/remote/getTopTreeByCode",
+        "body": {
+          "sn": "<device_sn>",
+          "menuCode": 0,
+          "batIndex": ""
+        }
+      },
+      "tree_response": {
+        "code": "00000",
+        "data": {
+          "functionMenus": {
+            "children": [
+              {
+                "menuId": "<device_start_stop_menu_id>",
+                "translateKey": "device_start_stop",
+                "funcKey": "device_start_stop"
+              }
+            ]
+          }
+        }
+      },
+      "functions_request": {
+        "method": "POST",
+        "path": "/web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+        "body": {
+          "sn": "<device_sn>",
+          "menuId": "<device_start_stop_menu_id>",
+          "batIndex": "",
+          "menuCode": 0
+        }
+      },
+      "functions_response": {
+        "code": "00000",
+        "data": {
+          "functionMenus": {
+            "translateKey": "device_start_stop",
+            "functions": [
+              {
+                "address": "40330",
+                "id": "1991318013509906434",
+                "kafkaName": "Power On",
+                "translateKey": "start_up",
+                "control": 16,
+                "controlAttr": [
+                  {
+                    "transKey": "start_up",
+                    "value": "0"
+                  }
+                ],
+                "preCommand": "F7",
+                "range": "[0,0]",
+                "rwType": "RW",
+                "type": "U16"
+              },
+              {
+                "address": "40331",
+                "id": "1991318013509906435",
+                "kafkaName": "Power Off",
+                "translateKey": "shutdown",
+                "control": 16,
+                "controlAttr": [
+                  {
+                    "transKey": "shutdown",
+                    "value": "0"
+                  }
+                ],
+                "preCommand": "F7",
+                "range": "[0,0]",
+                "rwType": "RW",
+                "type": "U16"
+              },
+              {
+                "address": "40332",
+                "id": "1991318013514100737",
+                "kafkaName": "Restart",
+                "translateKey": "restart",
+                "control": 16,
+                "controlAttr": [
+                  {
+                    "transKey": "restart",
+                    "value": "0"
+                  }
+                ],
+                "preCommand": "F7",
+                "range": "[0,0]",
+                "rwType": "RW",
+                "type": "U16"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "actions": [
+      {
+        "action": "stop",
+        "request": {
+          "sn": "<device_sn>",
+          "addressMap": {
+            "40331": 0
+          },
+          "addrFuncMap": {
+            "40331": "1991318013509906435"
+          },
+          "controlItemLogs": {
+            "shutdown": "shutdown"
+          },
+          "waitingForDevice": true,
+          "plantId": "<station_id>",
+          "deviceName": "<device_name>",
+          "virtualSn": "<device_sn>"
+        },
+        "response": {
+          "code": "00000",
+          "description": "\u6210\u529f"
+        }
+      },
+      {
+        "action": "start",
+        "request": {
+          "sn": "<device_sn>",
+          "addressMap": {
+            "40330": 0
+          },
+          "addrFuncMap": {
+            "40330": "1991318013509906434"
+          },
+          "controlItemLogs": {
+            "start_up": "start_up"
+          },
+          "waitingForDevice": true,
+          "plantId": "<station_id>",
+          "deviceName": "<device_name>",
+          "virtualSn": "<device_sn>"
+        },
+        "response": {
+          "code": "00000",
+          "description": "\u6210\u529f"
+        }
+      }
+    ]
+  }
 }
