@@ -119,8 +119,12 @@ class ApiEndpoint(NamedTuple):
 _POWER_CONTROL_ENDPOINT = ApiEndpoint(
     "/PowerStation/SaveRemoteControlInverter", "legacy"
 )
-_WEB_INVERTER_STATUS_ADDRESS = "80017"
-_WEB_INVERTER_STATUS_FUNCTION_ID = "2043643517552594945"
+_WEB_DEVICE_FUNCTION_TREE_ENDPOINT = ApiEndpoint(
+    "/sems-remote/api/v2/address/remote/getTopTreeByCode", "web"
+)
+_WEB_DEVICE_FUNCTION_MENUS_ENDPOINT = ApiEndpoint(
+    "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus", "web"
+)
 _WEB_DEVICE_STATUS_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/stations/device/all-status", "web"
 )
@@ -2317,7 +2321,7 @@ class SemsApi:
             }
         )
         result = self._make_api_call(
-            "/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+            _WEB_DEVICE_FUNCTION_MENUS_ENDPOINT.url_part,
             method="POST",
             data=data,
             renewToken=renewToken,
@@ -2331,6 +2335,108 @@ class SemsApi:
         if result.get("functionMenus"):
             self._set_web_cache_entry(cache_key, (time.monotonic(), result))
         return result
+
+    def getTopTreeByCode(
+        self,
+        serialNumber: str,
+        menuCode: int = 0,
+        batIndex: str = "",
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get the SEMS+ remote-control menu tree for a device."""
+        result = self._make_api_call(
+            _WEB_DEVICE_FUNCTION_TREE_ENDPOINT.url_part,
+            data=json.dumps(
+                {"sn": serialNumber, "menuCode": menuCode, "batIndex": batIndex}
+            ),
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getTopTreeByCode API call",
+            is_web=True,
+            retry_on_api_error=False,
+            token_type=_WEB_DEVICE_FUNCTION_TREE_ENDPOINT.token_type,
+        )
+        return result if isinstance(result, dict) else {}
+
+    def getDeviceFunctionTabMenus(
+        self,
+        serialNumber: str,
+        menuId: str,
+        batIndex: str = "",
+        menuCode: int = 0,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Get the available remote-control functions for a device menu."""
+        result = self._make_api_call(
+            _WEB_DEVICE_FUNCTION_MENUS_ENDPOINT.url_part,
+            data=json.dumps(
+                {
+                    "sn": serialNumber,
+                    "menuId": menuId,
+                    "batIndex": batIndex,
+                    "menuCode": menuCode,
+                }
+            ),
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+            operation_name="getDeviceFunctionTabMenus API call",
+            is_web=True,
+            retry_on_api_error=False,
+            token_type=_WEB_DEVICE_FUNCTION_MENUS_ENDPOINT.token_type,
+        )
+        return result if isinstance(result, dict) else {}
+
+    def getInverterControlFunctions(
+        self,
+        serialNumber: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> dict[str, Any]:
+        """Discover and cache the SEMS+ start/stop functions for an inverter."""
+        cache_key = f"inverter_function_menus:{serialNumber}"
+        cached = self._get_web_cache_entry(cache_key)
+        if (
+            cached
+            and time.monotonic() - cached[0] < _WEB_FUNCTION_MENUS_REFRESH_SECONDS
+        ):
+            return cached[1]
+
+        tree = self.getTopTreeByCode(
+            serialNumber, renewToken=renewToken, maxTokenRetries=maxTokenRetries
+        ).get("functionMenus")
+        menus = [tree] if isinstance(tree, dict) else []
+        menu_id: str | None = None
+        while menus:
+            menu = menus.pop()
+            if (
+                menu.get("funcKey") == "device_start_stop"
+                or menu.get("translateKey") == "device_start_stop"
+            ):
+                value = menu.get("menuId")
+                if isinstance(value, str) and value:
+                    menu_id = value
+                    break
+            children = menu.get("children")
+            if isinstance(children, list):
+                menus.extend(child for child in children if isinstance(child, dict))
+        if menu_id is None:
+            return {}
+
+        result = self.getDeviceFunctionTabMenus(
+            serialNumber,
+            menu_id,
+            renewToken=renewToken,
+            maxTokenRetries=maxTokenRetries,
+        )
+        function_menus = result.get("functionMenus")
+        if not isinstance(function_menus, dict) or not isinstance(
+            function_menus.get("functions"), list
+        ):
+            return {}
+        self._set_web_cache_entry(cache_key, (time.monotonic(), function_menus))
+        return function_menus
 
     def getBatteryImmediateChargingStates(
         self, serialNumber: str, renewToken: bool = False, maxTokenRetries: int = 2
@@ -2556,29 +2662,80 @@ class SemsApi:
         """Change inverter status through SEMS+ Web, falling back to legacy API."""
         if plant_id is not None and device_name is not None:
             web_status = str(status)
-            if web_status in {"2", "4"}:
+            function_name = {"2": "shutdown", "4": "start_up"}.get(web_status)
+            if function_name is not None:
                 try:
-                    web_control_succeeded = self.setDeviceFunctionParameters(
-                        plant_id,
+                    function_menus = self.getInverterControlFunctions(
                         inverterSn,
-                        device_name,
-                        {_WEB_INVERTER_STATUS_ADDRESS: int(web_status)},
-                        {
-                            "status_setting": (
-                                "stop" if web_status == "2" else "start_up"
-                            )
-                        },
-                        {
-                            _WEB_INVERTER_STATUS_ADDRESS: _WEB_INVERTER_STATUS_FUNCTION_ID
-                        },
                         renewToken=renewToken,
                         maxTokenRetries=maxTokenRetries,
-                        virtual_sn=inverterSn,
                     )
                 except OutOfRetries:
-                    web_control_succeeded = False
-                if web_control_succeeded:
-                    return
+                    function_menus = {}
+
+                functions = function_menus.get("functions")
+                if not isinstance(functions, list):
+                    functions = []
+                function = next(
+                    (
+                        item
+                        for item in functions
+                        if isinstance(item, dict)
+                        and item.get("translateKey") == function_name
+                    ),
+                    None,
+                )
+                if function is not None:
+                    address = function.get("address")
+                    function_id = function.get("id")
+                    control_attrs = function.get("controlAttr")
+                    if isinstance(control_attrs, str):
+                        try:
+                            control_attrs = json.loads(control_attrs)
+                        except json.JSONDecodeError:
+                            control_attrs = []
+                    control_attr = (
+                        next(
+                            (
+                                item
+                                for item in control_attrs
+                                if isinstance(item, dict)
+                                and item.get("transKey") == function_name
+                            ),
+                            None,
+                        )
+                        if isinstance(control_attrs, list)
+                        else None
+                    )
+                    try:
+                        if (
+                            address is None
+                            or function_id is None
+                            or not str(address)
+                            or not str(function_id)
+                            or control_attr is None
+                        ):
+                            raise ValueError
+                        address = str(address)
+                        function_id = str(function_id)
+                        value = int(control_attr["value"])
+                        web_control_succeeded = self.setDeviceFunctionParameters(
+                            plant_id,
+                            inverterSn,
+                            device_name,
+                            {address: value},
+                            {function_name: function_name},
+                            {address: function_id},
+                            renewToken=renewToken,
+                            maxTokenRetries=maxTokenRetries,
+                            virtual_sn=inverterSn,
+                        )
+                    except KeyError, TypeError, ValueError:
+                        web_control_succeeded = False
+                    except OutOfRetries:
+                        web_control_succeeded = False
+                    if web_control_succeeded:
+                        return
                 _LOGGER.warning(
                     "SEMS+ Web inverter status command failed; trying legacy API"
                 )
