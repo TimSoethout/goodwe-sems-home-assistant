@@ -275,8 +275,10 @@ paths:
       operationId: setDeviceFunctionParameters
       summary: Set remote device function parameters
       description: |
-        Captured start/stop examples document one function address and model.
-        Other addresses, values, and device-specific behavior are not inferred.
+        Captures show device-specific command forms: a shared status_setting
+        function at address 80017 and separate start/stop/restart functions at
+        addresses 40330, 40331, and 40332. Other addresses, values, and device
+        behavior are not inferred.
       security:
         - WebToken: []
           WebSignature: []

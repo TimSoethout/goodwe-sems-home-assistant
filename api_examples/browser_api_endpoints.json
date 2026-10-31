@@ -141,6 +141,6 @@
   "notes": [
     "Query values, tokens, cookies, signatures, station IDs, and serial numbers are redacted or replaced with placeholders.",
     "Static JavaScript, CSS, image, analytics, and version resources are excluded.",
-    "Inverter control menu and command captures are documented in device_start_stop.json. The second-inverter capture contains the menu list but not its function details or control writes."
+    "Inverter control menu and command captures are documented in device_start_stop.json. The 2026-10-31 captures include the start/stop function details but no control write; the full-page HAR's detail request is for the general inverter menu."
   ]
 }
