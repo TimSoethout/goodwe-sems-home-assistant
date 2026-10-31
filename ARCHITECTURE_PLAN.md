@@ -147,10 +147,10 @@ additional evidence.
   `start_up`/`shutdown`/`restart` functions at addresses `40330`/`40331`/`40332`,
   with Start and Stop value `0`. Another returns one `status_setting` function
   at `80017`, whose `controlAttr` choices are `restart=1`, `stop=2`, and
-  `start_up=4`. The current Web resolver matches separate `start_up` and
-  `shutdown` functions; it does not consume the shared `status_setting`/`stop`
-  shape and instead uses the legacy fallback. The latest detail capture has no
-  control write. See
+  `start_up=4`. The Web resolver supports both forms, mapping HA Stop to the
+  shared function's `stop` choice and logging actions under the parent
+  `status_setting` key. Restart remains a distinct action and is not substituted
+  for Start or Stop. The latest detail capture has no control write. See
   [`device_start_stop.json`](./api_examples/device_start_stop.json). Discovery
   is cached by serial number, not model; do not generalize observed addresses,
   IDs, or values to other devices or firmware.

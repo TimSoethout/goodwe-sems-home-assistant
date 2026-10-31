@@ -2736,6 +2736,16 @@ class SemsApi:
                     ),
                     None,
                 )
+                if function is None:
+                    function = next(
+                        (
+                            item
+                            for item in functions
+                            if isinstance(item, dict)
+                            and item.get("translateKey") == "status_setting"
+                        ),
+                        None,
+                    )
                 if function is not None:
                     address = function.get("address")
                     function_id = function.get("id")
@@ -2745,17 +2755,29 @@ class SemsApi:
                             control_attrs = json.loads(control_attrs)
                         except json.JSONDecodeError:
                             control_attrs = []
+                    control_action = (
+                        "stop"
+                        if function.get("translateKey") == "status_setting"
+                        and function_name == "shutdown"
+                        else function_name
+                    )
                     control_attr = (
                         next(
                             (
                                 item
                                 for item in control_attrs
                                 if isinstance(item, dict)
-                                and item.get("transKey") == function_name
+                                and item.get("transKey") == control_action
                             ),
                             None,
                         )
                         if isinstance(control_attrs, list)
+                        else None
+                    )
+                    log_name = function.get("translateKey")
+                    log_action = (
+                        control_attr.get("transKey")
+                        if isinstance(control_attr, dict)
                         else None
                     )
                     try:
@@ -2765,6 +2787,8 @@ class SemsApi:
                             or not str(address)
                             or not str(function_id)
                             or control_attr is None
+                            or not isinstance(log_name, str)
+                            or not isinstance(log_action, str)
                         ):
                             raise ValueError
                         address = str(address)
@@ -2775,7 +2799,7 @@ class SemsApi:
                             inverterSn,
                             device_name,
                             {address: value},
-                            {function_name: function_name},
+                            {log_name: log_action},
                             {address: function_id},
                             renewToken=renewToken,
                             maxTokenRetries=maxTokenRetries,
