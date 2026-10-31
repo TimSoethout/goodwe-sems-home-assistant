@@ -11,7 +11,7 @@
   "examples": [
     {"path": "api_examples/all_status.json", "provenance": "api_capture", "tests": ["tests/test_sems_api.py"]},
     {"path": "api_examples/browser_api_endpoints.json", "provenance": "endpoint_inventory"},
-    {"path": "api_examples/device_start_stop.json", "provenance": "api_capture"},
+    {"path": "api_examples/device_start_stop.json", "provenance": "api_capture", "tests": ["tests/test_sems_api.py"]},
     {"path": "api_examples/ev_charger_detail_issue_182.json", "provenance": "issue_report", "tests": ["tests/test_ev_charger.py"]},
     {"path": "api_examples/ev_charger_device_list_issue_182.json", "provenance": "issue_report"},
     {"path": "api_examples/ev_charger_equipment_information_issue_182.json", "provenance": "issue_report"},
