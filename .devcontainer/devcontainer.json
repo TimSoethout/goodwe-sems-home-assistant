@@ -10,8 +10,8 @@
     }
   },
   "mounts": [
-    "type=bind,source=${localEnv:HOME}/.copilot,target=/home/vscode/.copilot",
-    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,readonly"
+    "type=bind,source=${localEnv:HOME}/.copilot,target=/root/.copilot",
+    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly"
   ],
   "containerEnv": {
     "GIT_EDITOR": "code --wait"
@@ -19,7 +19,7 @@
   "forwardPorts": [
     8123
   ],
-  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postCreateCommand": "uv venv \"$UV_PROJECT_ENVIRONMENT\" && uv pip install --python \"$UV_PROJECT_ENVIRONMENT/bin/python\" -r requirements.test.txt mypy ruff && bash .devcontainer/setup.sh",
   "postStartCommand": "bash .devcontainer/start-home-assistant",
   "customizations": {
     "vscode": {
@@ -30,7 +30,8 @@
         "GitHub.vscode-pull-request-github"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.defaultInterpreterPath": "/workspaces/.venv/bin/python",
+        "python.terminal.activateEnvironment": false,
         "python.testing.pytestArgs": [
           "tests"
         ],
