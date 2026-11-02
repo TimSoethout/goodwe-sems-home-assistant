@@ -60,6 +60,11 @@ _RequestTimeout = 30  # seconds
 _RateLimitRetryAfterSeconds = 300
 # One client is shared by all stations of an account; keep its load bounded.
 _MaxConcurrentRequests = 2
+# Shared per-account spacing between HTTP request starts. Use a shorter
+# interval during HA bootstrap to reduce bursts without excessively delaying
+# mandatory initial refreshes; retain the proven normal-operation interval.
+_MinRequestSpacingSeconds = 1.0
+_StartupRequestSpacingSeconds = 0.25
 # Client-wide cool-down after rate limiting or a rejected login. It doubles on
 # each consecutive failure; Retry-After is honoured up to its own cap.
 _CooldownBaseSeconds = 60
@@ -196,6 +201,8 @@ class SemsApi:
         self._web_cache_pruned_at = time.monotonic()
         self._session = requests.Session()
         self._request_slots = threading.BoundedSemaphore(_MaxConcurrentRequests)
+        self._request_pacing_lock = threading.Lock()
+        self._next_request_at = 0.0
         # Logins are serialized. Each successful login bumps the generation of
         # its token type, so a request that was rejected with an older token
         # reuses a token another thread already fetched instead of logging in.
@@ -266,6 +273,21 @@ class SemsApi:
         try:
             _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
             with self._request_slots:
+                # Pace startup too, but at 0.25s rather than the normal 1.0s.
+                # The shared lock prevents simultaneous request starts across
+                # all stations using this account. Never sleep on HA's event loop.
+                with self._request_pacing_lock:
+                    self._raise_if_cooling_down(operation_name)
+                    delay = self._next_request_at - time.monotonic()
+                    if delay > 0:
+                        time.sleep(delay)
+                    self._raise_if_cooling_down(operation_name)
+                    spacing = (
+                        _MinRequestSpacingSeconds
+                        if self._hass.is_running
+                        else _StartupRequestSpacingSeconds
+                    )
+                    self._next_request_at = time.monotonic() + spacing
                 response = self._session.request(
                     method.upper(),
                     url,
@@ -1027,7 +1049,7 @@ class SemsApi:
                     continue
                 try:
                     numeric_value = float(value)
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     continue
                 if math.isfinite(numeric_value):
                     values.append(numeric_value)
@@ -1047,7 +1069,7 @@ class SemsApi:
                 continue
             try:
                 numeric_value = float(value)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 continue
             if math.isfinite(numeric_value) and item not in parsed:
                 parsed[item] = [numeric_value]
@@ -1057,7 +1079,7 @@ class SemsApi:
                 continue
             try:
                 numeric_value = float(value)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 continue
             if math.isfinite(numeric_value):
                 parsed[summary_key] = [numeric_value]
@@ -1139,9 +1161,11 @@ class SemsApi:
             month_start = now.replace(day=1)
             previous_month_end = month_start - timedelta(seconds=1)
             previous_month_start = previous_month_end.replace(day=1)
+            # Only the current-day data is consumed below. The former
+            # month-to-date request was fetched on every refresh but unused.
+            # Keep the separate previous-month request when its sensor is enabled.
             statistic_ranges = [
                 ("day", now, now + timedelta(days=1) - timedelta(seconds=1)),
-                ("day", month_start, now + timedelta(days=1) - timedelta(seconds=1)),
             ]
             if include_last_month:
                 statistic_ranges.append(
@@ -1156,7 +1180,7 @@ class SemsApi:
                     install_year = (
                         year if install_year is None else min(install_year, year)
                     )
-                except TypeError, ValueError, OSError, OverflowError:
+                except (TypeError, ValueError, OSError, OverflowError):
                     continue
             if install_year is None:
                 install_year = _WEB_STATISTICS_EARLIEST_YEAR
@@ -1305,7 +1329,7 @@ class SemsApi:
             devices = self.getWebInverterDevices(
                 powerStationId, renewToken, maxTokenRetries
             )
-        except OutOfRetries, SemsRateLimitedError:
+        except (OutOfRetries, SemsRateLimitedError):
             if (
                 cached_devices is None
                 or time.monotonic() - cached_devices[0]
@@ -1463,7 +1487,7 @@ class SemsApi:
                 next(iter(ev_chargers.values()))["charging_power"] = (
                     abs(float(flow["pEvChar"])) * 1000
                 )
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 _LOGGER.debug("SEMS station flow has an invalid pEvChar value")
         if flow:
             if (
@@ -1474,7 +1498,7 @@ class SemsApi:
                 try:
                     for inverter in real_inverters:
                         inverter["invert_full"]["pmeter"] = float(grid_power) * 1000
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     _LOGGER.debug("SEMS station flow has an invalid pGrid value")
             if len(real_inverters) == 1:
                 inverter_full = real_inverters[0]["invert_full"]
@@ -1484,7 +1508,7 @@ class SemsApi:
                 ):
                     try:
                         inverter_full["pac"] = float(solar_power) * 1000
-                    except TypeError, ValueError:
+                    except (TypeError, ValueError):
                         _LOGGER.debug("SEMS station flow has an invalid pAc value")
             result.update(
                 {
@@ -1713,7 +1737,7 @@ class SemsApi:
                 code = factor.get("code")
                 try:
                     value = float(factor["data"])
-                except KeyError, TypeError, ValueError:
+                except (KeyError, TypeError, ValueError):
                     continue
                 if not isinstance(code, str):
                     continue
@@ -1912,7 +1936,7 @@ class SemsApi:
             return None
         try:
             return float(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
 
     def getWebInverterDevices(
