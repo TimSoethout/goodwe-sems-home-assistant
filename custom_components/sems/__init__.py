@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import partial
-from typing import Any
+from typing import Any, TypeGuard
 
 import requests
 from homeassistant.config_entries import ConfigEntry
@@ -98,9 +98,23 @@ class _SharedApi:
     entry_ids: set[str]
 
 
+def _is_shared_api_mapping(value: object) -> TypeGuard[dict[str, _SharedApi]]:
+    """Return whether shared account data has its expected shape."""
+    return isinstance(value, dict) and all(
+        isinstance(key, str) and isinstance(shared, _SharedApi)
+        for key, shared in value.items()
+    )
+
+
 def _shared_clients(hass: HomeAssistant) -> dict[str, _SharedApi]:
     """Return the shared API clients, keyed by account."""
-    return hass.data.setdefault(DOMAIN, {}).setdefault("clients", {})
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if not isinstance(domain_data, dict):
+        raise TypeError("SEMS integration data must be a mapping")
+    clients = domain_data.setdefault("clients", {})
+    if not _is_shared_api_mapping(clients):
+        raise TypeError("SEMS shared clients must be a mapping of API clients")
+    return clients
 
 
 def _acquire_api(hass: HomeAssistant, entry: ConfigEntry) -> SemsApi:
@@ -177,7 +191,7 @@ class SemsData:
     unavailable_homekit_sources: set[str] = field(default_factory=set)
 
 
-async def async_setup(hass: HomeAssistant, config: dict):
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up the sems component."""
     return True
 
