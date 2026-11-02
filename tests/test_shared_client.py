@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -16,8 +17,11 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.sems import SemsDataUpdateCoordinator
-from custom_components.sems.const import CONF_STATION_ID, DOMAIN
+from custom_components.sems import (
+    SemsDataUpdateCoordinator,
+    _device_config_entry_ids,
+)
+from custom_components.sems.const import CONF_STATION_ID, DOMAIN, GOODWE_SPELLING
 from custom_components.sems.sems_api import (
     OutOfRetries,
     SemsApi,
@@ -75,6 +79,16 @@ def _mock_api(get_data: Any = None):
         patch.object(SemsApi, "getBatteryGeneralFunctions", return_value={}),
     ):
         yield mock_get_data
+
+
+def test_device_config_entry_ids_supports_old_and_new_home_assistant_shapes() -> None:
+    """Read both the singular and set-valued device registry fields."""
+    assert _device_config_entry_ids(
+        SimpleNamespace(config_entry_id="entry-1", config_entries=set())
+    ) == {"entry-1"}
+    assert _device_config_entry_ids(
+        SimpleNamespace(config_entry_id=None, config_entries={"entry-1", "entry-2"})
+    ) == {"entry-1", "entry-2"}
 
 
 async def test_coordinator_passes_retry_after(hass: HomeAssistant) -> None:
@@ -138,6 +152,73 @@ async def test_coordinator_requests_reauth(hass: HomeAssistant) -> None:
         pytest.raises(ConfigEntryAuthFailed),
     ):
         await coordinator._async_update_data()
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"inverter": "not-a-list"},
+        {"inverter": [], "unavailable_data_sources": []},
+        {"inverter": [], "unavailable_data_sources": {"inverters": []}},
+        {"inverter": [], "unavailable_data_sources": {"homekit": []}},
+        {
+            "inverter": [],
+            "unavailable_data_sources": {"inverters": {"INV1": ["telemetry"]}},
+        },
+        {
+            "inverter": [],
+            "unavailable_data_sources": {"inverters": {1: {"telemetry"}}},
+        },
+        {"inverter": [], "unavailable_data_sources": {"homekit": {1}}},
+    ],
+)
+async def test_coordinator_rejects_malformed_normalized_data(
+    hass: HomeAssistant, data: dict[str, Any]
+) -> None:
+    """Reject malformed normalized data rather than silently dropping status."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(
+        hass, SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD), entry
+    )
+
+    with (
+        patch.object(SemsApi, "getData", return_value=data),
+        pytest.raises(UpdateFailed),
+    ):
+        await coordinator._async_update_data()
+
+
+async def test_coordinator_normalizes_optional_powerflow_data(
+    hass: HomeAssistant,
+) -> None:
+    """Keep the HomeKit station entity when optional payload sections are malformed."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(
+        hass, SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD), entry
+    )
+    data = {
+        "inverter": [
+            {},
+            {"invert_full": None},
+            {"invert_full": {"sn": 123}},
+        ],
+        "kpi": [],
+        "hasPowerflow": True,
+        "powerflow": [],
+        GOODWE_SPELLING.hasEnergyStatisticsCharts: True,
+        GOODWE_SPELLING.energyStatisticsCharts: [],
+        GOODWE_SPELLING.energyStatisticsTotals: [],
+    }
+
+    with patch.object(SemsApi, "getData", return_value=data):
+        result = await coordinator._async_update_data()
+
+    assert result.inverters == {}
+    assert result.homekit is not None
+    assert result.homekit["all_time_generation"] is None
+    assert result.homekit[GOODWE_SPELLING.hasEnergyStatisticsCharts] is True
 
 
 async def test_entries_of_one_account_share_one_client(hass: HomeAssistant) -> None:

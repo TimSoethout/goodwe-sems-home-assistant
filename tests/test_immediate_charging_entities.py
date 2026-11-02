@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.config_entries import SOURCE_REAUTH
@@ -160,6 +160,50 @@ async def test_immediate_charging_entity_commands(hass: HomeAssistant) -> None:
         hass.states.async_set(entity_id, value)
         await hass.async_block_till_done()
         assert hass.states.get(entity_id).state == value
+
+
+async def test_control_entities_execute_and_reject_missing_coordinator_data(
+    hass: HomeAssistant,
+) -> None:
+    """Run each command path and fail clearly if coordinator data is unavailable."""
+    entry = await _setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    entities = {
+        entity.unique_id: entity
+        for platform in async_get_platforms(hass, DOMAIN)
+        for entity in platform.entities.values()
+    }
+    battery_switch = entities[
+        f"{INVERTER_SERIAL}-{BATTERY_ID}-battery_immediate_charging"
+    ]
+    battery_number = entities[f"{INVERTER_SERIAL}-{BATTERY_ID}-end_charge_soc"]
+    inverter_switch = entities[f"{INVERTER_SERIAL}-switch"]
+
+    with (
+        patch.object(coordinator, "async_control", new_callable=AsyncMock) as control,
+        patch.object(
+            coordinator, "async_request_refresh", new_callable=AsyncMock
+        ) as refresh,
+    ):
+        await battery_number.async_set_native_value(70.9)
+        await battery_switch.async_turn_on()
+        await battery_switch.async_turn_off()
+        await inverter_switch.async_turn_on()
+        await inverter_switch.async_turn_off()
+
+        assert control.await_count == 5
+        assert refresh.await_count == 5
+        assert control.await_args_list[0].args[4] == int(70.9)
+
+        coordinator_data = coordinator.data
+        coordinator.data = None
+        try:
+            with pytest.raises(HomeAssistantError, match="no coordinator data"):
+                await battery_number.async_set_native_value(70)
+            with pytest.raises(HomeAssistantError, match="no coordinator data"):
+                await battery_switch.async_turn_on()
+        finally:
+            coordinator.data = coordinator_data
 
 
 async def _refresh_with_states(hass: HomeAssistant, entry: MockConfigEntry, **states):
