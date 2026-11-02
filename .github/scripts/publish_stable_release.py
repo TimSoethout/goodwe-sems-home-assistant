@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from upload_release_asset import get_release, upload_release_asset
+
 ROOT = Path(__file__).resolve().parents[2]
 INTEGRATION = ROOT / "custom_components" / "sems"
 VERSION = json.loads((INTEGRATION / "manifest.json").read_text())["version"]
@@ -36,21 +38,6 @@ def release_notes() -> str:
     return section + "\n"
 
 
-def existing_release() -> dict | None:
-    result = subprocess.run(
-        ["gh", "release", "view", VERSION, "--json", "isDraft,isPrerelease,assets"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        return None
-
-    release = json.loads(result.stdout)
-    if release["isDraft"] or release["isPrerelease"]:
-        raise SystemExit(f"Release {VERSION} is not a published stable release")
-    return release
-
-
 def tag_exists() -> bool:
     result = subprocess.run(
         ["git", "ls-remote", "--exit-code", "origin", f"refs/tags/{VERSION}"],
@@ -60,13 +47,6 @@ def tag_exists() -> bool:
     if result.returncode not in (0, 2):
         raise SystemExit(f"Could not check tag {VERSION}: {result.stderr.strip()}")
     return result.returncode == 0
-
-
-def create_zip() -> Path:
-    archive = INTEGRATION / "sems.zip"
-    archive.unlink(missing_ok=True)
-    subprocess.run(["zip", "sems.zip", "-r", "./"], cwd=INTEGRATION, check=True)
-    return archive
 
 
 def main() -> None:
@@ -85,42 +65,34 @@ def main() -> None:
     if sys.argv[1:]:
         raise SystemExit("Usage: publish_stable_release.py [--check]")
 
-    release = existing_release()
-    if release:
-        if any(asset["name"] == "sems.zip" for asset in release["assets"]):
-            print(f"Release {VERSION} already exists with sems.zip; skipping.")
-            return
-        print(f"Release {VERSION} exists; attaching the missing sems.zip.")
-        subprocess.run(
-            ["gh", "release", "upload", VERSION, str(create_zip())], check=True
-        )
-        return
+    release = get_release(VERSION, allow_missing=True)
+    if release is None:
+        if tag_exists():
+            raise SystemExit(
+                f"Tag {VERSION} already exists without a GitHub Release; refusing to reuse it."
+            )
 
-    if tag_exists():
-        raise SystemExit(
-            f"Tag {VERSION} already exists without a GitHub Release; refusing to reuse it."
-        )
+        with TemporaryDirectory() as temp_dir:
+            notes_path = Path(temp_dir) / "release-notes.md"
+            notes_path.write_text(notes, encoding="utf-8")
+            subprocess.run(
+                [
+                    "gh",
+                    "release",
+                    "create",
+                    VERSION,
+                    "--title",
+                    VERSION,
+                    "--notes-file",
+                    str(notes_path),
+                    "--target",
+                    os.environ["GITHUB_SHA"],
+                    "--latest",
+                ],
+                check=True,
+            )
 
-    with TemporaryDirectory() as temp_dir:
-        notes_path = Path(temp_dir) / "release-notes.md"
-        notes_path.write_text(notes, encoding="utf-8")
-        subprocess.run(
-            [
-                "gh",
-                "release",
-                "create",
-                VERSION,
-                "--title",
-                VERSION,
-                "--notes-file",
-                str(notes_path),
-                "--target",
-                os.environ["GITHUB_SHA"],
-                "--latest",
-                str(create_zip()),
-            ],
-            check=True,
-        )
+    upload_release_asset(VERSION, stable=True, release=release)
 
 
 if __name__ == "__main__":
