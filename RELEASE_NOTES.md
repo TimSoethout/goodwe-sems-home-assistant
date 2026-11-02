@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+## 11.13.1 - 2026-11-02
+
+This stable release includes all changes shipped in 11.13.1-beta.1 and
+11.13.1-beta.2.
+
+## Prevent battery lifetime counter resets after restart
+
+- Withhold initial zero battery charge and discharge lifetime counters until
+  SEMS+ returns valid totals.
+
+## Restore SEMS+ inverter start/stop control
+
+- Discover per-inverter Start/Stop functions, support separate and shared
+  `status_setting` commands, and retain legacy control as a fallback.
+- Map Stop to the captured `stop` action without substituting Restart.
+
+### Compatibility and limitations
+
+- After setup or restart, battery lifetime counters may remain unknown until
+  SEMS+ returns valid totals.
+- SEMS+ remote-control permission is required for Web control. If discovery
+  provides no usable Start/Stop action, the integration uses legacy control.
+- The latest shared-function capture contains command metadata but no control
+  write; verify Start and Stop on your device.
+
+### Related
+
+- [#249](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/249) -
+  battery lifetime counters on cold start.
+- [#277](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/277) -
+  Start/Stop regression report.
+- [#279](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/279) -
+  per-inverter command discovery and control.
+
+### Contributors
+
+- [@kieranlee1970](https://github.com/kieranlee1970) - reported the remaining
+  cold-start gap.
+- [@hansbennis-hub](https://github.com/hansbennis-hub) - HAR captures and
+  troubleshooting.
+- [@TimSoethout](https://github.com/TimSoethout) - implementation, regression
+  tests, and validation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression tests.
+
 ## 11.13.1-beta.2 - 2026-10-31
 
 ## Restore SEMS+ inverter start/stop control
