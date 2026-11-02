@@ -1,0 +1,30 @@
+name: "Stable release"
+
+on:
+  push:
+    branches:
+      - "master"
+    paths:
+      - "RELEASE_NOTES.md"
+      - "custom_components/sems/manifest.json"
+
+permissions: {}
+
+concurrency:
+  group: stable-release-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: "Publish stable release"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: "Checkout the repository"
+        uses: "actions/checkout@v4.1.7"
+
+      - name: "Publish stable release"
+        run: "python3 .github/scripts/publish_stable_release.py"
