@@ -7,6 +7,8 @@ on:
       - "custom_components/**"
       - "tests/**"
       - "api_examples/**"
+      - "scripts/**"
+      - ".github/workflows/quality-scale-report.yml"
       - "requirements*.txt"
       - "pyproject.toml"
       - "hacs.json"
@@ -18,6 +20,8 @@ on:
       - "custom_components/**"
       - "tests/**"
       - "api_examples/**"
+      - "scripts/**"
+      - ".github/workflows/quality-scale-report.yml"
       - "requirements*.txt"
       - "pyproject.toml"
       - "hacs.json"
@@ -57,7 +61,23 @@ jobs:
       run: |
         pytest tests/ --cov=custom_components.sems \
           --cov-report=xml --cov-report=term-missing \
+          --cov-report=json:coverage.json \
           --cov-fail-under=80 --junitxml=./junit.xml
+
+    - name: Report HA quality-scale coverage checks
+      if: always()
+      continue-on-error: true
+      run: bash scripts/report_quality_scale_coverage.sh
+
+    - name: Upload quality-scale coverage report
+      if: ${{ always() && github.event_name == 'pull_request' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: quality-scale-coverage
+        path: quality-scale-coverage.json
+        if-no-files-found: warn
+        retention-days: 1
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
@@ -108,6 +128,21 @@ jobs:
 
     - name: Run mypy (check)
       run: mypy custom_components/ --ignore-missing-imports --python-version 3.14
+
+    - name: Report Platinum strict-typing check
+      if: always()
+      continue-on-error: true
+      run: bash scripts/report_quality_scale_strict_typing.sh
+
+    - name: Upload quality-scale strict-typing report
+      if: ${{ always() && github.event_name == 'pull_request' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: quality-scale-strict-typing
+        path: quality-scale-strict-typing.json
+        if-no-files-found: warn
+        retention-days: 1
 
   validate:
     runs-on: ubuntu-26.04
