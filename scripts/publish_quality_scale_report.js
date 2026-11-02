@@ -36,7 +36,7 @@ function coverageResults(report) {
     } else {
       const percent = ((bronze.covered / bronze.total) * 100).toFixed(2);
       bronzeResult =
-        `${bronze.covered === bronze.total ? "PASS" : "Below 100%"} ` +
+        `${bronze.covered === bronze.total ? "✅ PASS" : "Below 100%"} ` +
         `(${bronze.covered}/${bronze.total}, ${percent}%)`;
     }
   }
@@ -53,7 +53,7 @@ function coverageResults(report) {
       silver.modules === 0
         ? "No modules measured"
         : silver.below === 0
-          ? `PASS: all ${silver.modules} modules exceed 95%`
+          ? `✅ PASS: all ${silver.modules} modules exceed 95%`
           : `${silver.below}/${silver.modules} modules do not exceed 95%`;
   }
   return { bronzeResult, silverResult };
@@ -64,7 +64,7 @@ function buildComment(run, coverage, strictTyping) {
   const platinumResult =
     strictTyping?.available === true && typeof strictTyping.passed === "boolean"
       ? strictTyping.passed
-        ? "PASS: mypy --strict"
+        ? "✅ PASS: mypy --strict"
         : "Issues reported by mypy --strict"
       : "Not available";
 

@@ -73,9 +73,9 @@ test("publishes quality-scale reports as an up-to-date sticky PR comment", async
 
     assert.equal(calls.createdComment.issue_number, 123);
     assert.match(calls.createdComment.body, new RegExp(marker));
-    assert.match(calls.createdComment.body, /PASS \(95\/95, 100\.00%\)/);
-    assert.match(calls.createdComment.body, /PASS: all 2 modules exceed 95%/);
-    assert.match(calls.createdComment.body, /PASS: mypy --strict/);
+    assert.match(calls.createdComment.body, /✅ PASS \(95\/95, 100\.00%\)/);
+    assert.match(calls.createdComment.body, /✅ PASS: all 2 modules exceed 95%/);
+    assert.match(calls.createdComment.body, /✅ PASS: mypy --strict/);
     assert.equal(calls.updatedComment, undefined);
   });
 
