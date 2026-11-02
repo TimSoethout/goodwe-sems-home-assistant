@@ -102,3 +102,22 @@ test("publishes quality-scale reports as an up-to-date sticky PR comment", async
     assert.equal(calls.createdComment, undefined);
   });
 });
+
+test("creates a sticky comment with unavailable results when reports are missing", async (t) => {
+  const originalCwd = process.cwd();
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "quality-scale-report-"));
+  process.chdir(tempDir);
+  t.after(() => {
+    process.chdir(originalCwd);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const { calls, github, context, core } = createHarness();
+  await publish({ github, context, core });
+
+  assert.equal(calls.createdComment.issue_number, 123);
+  assert.match(calls.createdComment.body, new RegExp(marker));
+  assert.match(calls.createdComment.body, /\| Bronze \| Config-flow line coverage: Not available\./);
+  assert.match(calls.createdComment.body, /\| Silver \| Per-module test coverage: Not available\./);
+  assert.match(calls.createdComment.body, /\| Platinum \| Strict typing: Not available\./);
+});
