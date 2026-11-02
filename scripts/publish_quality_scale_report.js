@@ -25,6 +25,7 @@ function isCount(value) {
 function coverageResults(report) {
   const bronze = report?.bronze;
   let bronzeResult = "Not available";
+  let bronzeStatus = "";
   if (
     bronze?.available === true &&
     isCount(bronze.covered) &&
@@ -35,14 +36,16 @@ function coverageResults(report) {
       bronzeResult = "No executable lines measured";
     } else {
       const percent = ((bronze.covered / bronze.total) * 100).toFixed(2);
+      bronzeStatus = bronze.covered === bronze.total ? "✅" : "❌";
       bronzeResult =
-        `${bronze.covered === bronze.total ? "✅ PASS" : "Below 100%"} ` +
+        `${bronze.covered === bronze.total ? "PASS" : "Below 100%"} ` +
         `(${bronze.covered}/${bronze.total}, ${percent}%)`;
     }
   }
 
   const silver = report?.silver;
   let silverResult = "Not available";
+  let silverStatus = "";
   if (
     silver?.available === true &&
     isCount(silver.modules) &&
@@ -53,31 +56,38 @@ function coverageResults(report) {
       silver.modules === 0
         ? "No modules measured"
         : silver.below === 0
-          ? `✅ PASS: all ${silver.modules} modules exceed 95%`
+          ? `PASS: all ${silver.modules} modules exceed 95%`
           : `${silver.below}/${silver.modules} modules do not exceed 95%`;
+    if (silver.modules > 0) silverStatus = silver.below === 0 ? "✅" : "❌";
   }
-  return { bronzeResult, silverResult };
+  return { bronzeResult, bronzeStatus, silverResult, silverStatus };
 }
 
 function buildComment(run, coverage, strictTyping) {
-  const { bronzeResult, silverResult } = coverageResults(coverage);
-  const platinumResult =
-    strictTyping?.available === true && typeof strictTyping.passed === "boolean"
-      ? strictTyping.passed
-        ? "✅ PASS: mypy --strict"
-        : "Issues reported by mypy --strict"
-      : "Not available";
+  const { bronzeResult, bronzeStatus, silverResult, silverStatus } =
+    coverageResults(coverage);
+  let platinumStatus = "";
+  let platinumResult = "Not available";
+  if (
+    strictTyping?.available === true &&
+    typeof strictTyping.passed === "boolean"
+  ) {
+    platinumStatus = strictTyping.passed ? "✅" : "❌";
+    platinumResult = strictTyping.passed
+      ? "PASS: mypy --strict"
+      : "Issues reported by mypy --strict";
+  }
 
   return [
     marker,
     "## Home Assistant quality-scale advisory checks",
     "",
-    "| Tier | Result |",
-    "| --- | --- |",
-    `| Bronze | Config-flow line coverage: ${bronzeResult}. Flow scenario coverage still needs review. |`,
-    `| Silver | Per-module test coverage: ${silverResult}. |`,
-    "| Gold | Requires human review; no automated tier verdict is claimed. |",
-    `| Platinum | Strict typing: ${platinumResult}. |`,
+    "| Status | Tier | Result |",
+    "| --- | --- | --- |",
+    `| ${bronzeStatus} | Bronze | Config-flow line coverage: ${bronzeResult}. Flow scenario coverage still needs review. |`,
+    `| ${silverStatus} | Silver | Per-module test coverage: ${silverResult}. |`,
+    "|  | Gold | Requires human review; no automated tier verdict is claimed. |",
+    `| ${platinumStatus} | Platinum | Strict typing: ${platinumResult}. |`,
     "",
     `These checks are advisory and do not fail CI. See the [workflow run](${run.html_url}) for detailed warnings and diagnostics.`,
     "",

@@ -73,10 +73,37 @@ test("publishes quality-scale reports as an up-to-date sticky PR comment", async
 
     assert.equal(calls.createdComment.issue_number, 123);
     assert.match(calls.createdComment.body, new RegExp(marker));
-    assert.match(calls.createdComment.body, /✅ PASS \(95\/95, 100\.00%\)/);
-    assert.match(calls.createdComment.body, /✅ PASS: all 2 modules exceed 95%/);
-    assert.match(calls.createdComment.body, /✅ PASS: mypy --strict/);
+    assert.ok(calls.createdComment.body.includes("| ✅ | Bronze |"));
+    assert.ok(calls.createdComment.body.includes("| ✅ | Silver |"));
+    assert.ok(calls.createdComment.body.includes("| ✅ | Platinum |"));
+    assert.match(calls.createdComment.body, /PASS \(95\/95, 100\.00%\)/);
+    assert.match(calls.createdComment.body, /PASS: all 2 modules exceed 95%/);
+    assert.match(calls.createdComment.body, /PASS: mypy --strict/);
     assert.equal(calls.updatedComment, undefined);
+  });
+
+  await t.test("marks unsuccessful checks at the start of their rows", async () => {
+    fs.writeFileSync(
+      path.join(tempDir, "quality-scale-reports", "quality-scale-coverage.json"),
+      JSON.stringify({
+        bronze: { available: true, covered: 90, total: 100 },
+        silver: { available: true, modules: 2, below: 1 },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(
+        tempDir,
+        "quality-scale-reports",
+        "quality-scale-strict-typing.json",
+      ),
+      JSON.stringify({ available: true, passed: false }),
+    );
+    const { calls, github, context, core } = createHarness();
+    await publish({ github, context, core });
+
+    assert.ok(calls.createdComment.body.includes("| ❌ | Bronze |"));
+    assert.ok(calls.createdComment.body.includes("| ❌ | Silver |"));
+    assert.ok(calls.createdComment.body.includes("| ❌ | Platinum |"));
   });
 
   await t.test("updates only the existing bot comment", async () => {
