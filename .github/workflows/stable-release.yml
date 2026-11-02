@@ -1,0 +1,124 @@
+name: "Stable release"
+
+on:
+  push:
+    branches:
+      - "master"
+    paths:
+      - "RELEASE_NOTES.md"
+      - "custom_components/sems/manifest.json"
+
+permissions: {}
+
+concurrency:
+  group: stable-release-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: "Publish stable release"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: "Checkout the repository"
+        uses: "actions/checkout@v4.1.7"
+
+      - name: "Validate version and extract release notes"
+        id: "release"
+        shell: "bash"
+        run: |
+          set -euo pipefail
+
+          version="$(jq -er '.version' custom_components/sems/manifest.json)"
+          if [[ "$version" == *-* ]]; then
+            echo "Skipping prerelease version $version."
+            exit 0
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unsupported stable version: $version" >&2
+            exit 1
+          fi
+
+          python3 - "$version" RELEASE_NOTES.md "$RUNNER_TEMP/release-notes.md" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          version, notes_path, output_path = sys.argv[1:]
+          notes = Path(notes_path).read_text(encoding="utf-8").splitlines()
+          release_heading = re.compile(
+              r"^## (\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?) - "
+          )
+          matching = [
+              index
+              for index, line in enumerate(notes)
+              if (match := release_heading.match(line)) and match.group(1) == version
+          ]
+          if len(matching) != 1:
+              raise SystemExit(
+                  f"Expected one release-notes section for {version}, found {len(matching)}"
+              )
+
+          start = matching[0]
+          end = next(
+              (
+                  index
+                  for index in range(start + 1, len(notes))
+                  if release_heading.match(notes[index])
+              ),
+              len(notes),
+          )
+          section = "\n".join(notes[start:end]).strip()
+          if not section:
+              raise SystemExit(f"Release notes for {version} are empty")
+          Path(output_path).write_text(section + "\n", encoding="utf-8")
+          PY
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: "Create integration ZIP"
+        if: steps.release.outputs.version != ''
+        shell: "bash"
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/custom_components/sems"
+          zip sems.zip -r ./
+
+      - name: "Publish GitHub Release"
+        if: steps.release.outputs.version != ''
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: "bash"
+        run: |
+          set -euo pipefail
+          zip_path="$GITHUB_WORKSPACE/custom_components/sems/sems.zip"
+
+          if release="$(gh release view "$VERSION" --json isPrerelease,assets 2>/dev/null)"; then
+            if [[ "$(jq -r '.isPrerelease' <<< "$release")" == "true" ]]; then
+              echo "Release $VERSION is marked as a prerelease; refusing to treat it as stable." >&2
+              exit 1
+            fi
+            assets="$(jq -r '.assets[].name' <<< "$release")"
+            if grep -Fxq "sems.zip" <<< "$assets"; then
+              echo "Release $VERSION already exists with sems.zip; skipping."
+              exit 0
+            fi
+            echo "Release $VERSION exists; attaching the missing sems.zip."
+            gh release upload "$VERSION" "$zip_path"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists without a GitHub Release; refusing to reuse it." >&2
+            exit 1
+          fi
+
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --target "$GITHUB_SHA" \
+            --latest \
+            "$zip_path"
