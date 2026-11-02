@@ -1,0 +1,165 @@
+name: Quality scale PR report
+
+on:
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
+
+permissions:
+  actions: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  report:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.pull_requests[0] != null
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download quality-scale reports
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          pattern: quality-scale-*
+          merge-multiple: true
+          path: quality-scale-reports
+
+      - name: Update PR summary comment
+        if: always()
+        continue-on-error: true
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const marker = "<!-- ha-quality-scale-report -->";
+            const run = context.payload.workflow_run;
+            const pullRequest = run.pull_requests?.[0];
+
+            if (!pullRequest) {
+              core.notice("No pull request is associated with this workflow run.");
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const { data: currentPullRequest } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pullRequest.number,
+            });
+            if (currentPullRequest.head.sha !== run.head_sha) {
+              core.notice("Skipping a report for an outdated pull request revision.");
+              return;
+            }
+
+            function readReport(filename) {
+              const filePath = path.join("quality-scale-reports", filename);
+              if (!fs.existsSync(filePath)) return null;
+              if (fs.statSync(filePath).size > 4096) {
+                core.warning(`Ignoring oversized report: ${filename}`);
+                return null;
+              }
+              try {
+                return JSON.parse(fs.readFileSync(filePath, "utf8"));
+              } catch (error) {
+                core.warning(`Ignoring invalid report ${filename}: ${error.message}`);
+                return null;
+              }
+            }
+
+            function count(value) {
+              return Number.isSafeInteger(value) && value >= 0;
+            }
+
+            const coverage = readReport("quality-scale-coverage.json");
+            const bronze = coverage?.bronze;
+            let bronzeResult = "Not available";
+            if (
+              bronze?.available === true &&
+              count(bronze.covered) &&
+              count(bronze.total) &&
+              bronze.covered <= bronze.total
+            ) {
+              if (bronze.total === 0) {
+                bronzeResult = "No executable lines measured";
+              } else {
+                const percent = ((bronze.covered / bronze.total) * 100).toFixed(2);
+                bronzeResult =
+                  `${bronze.covered === bronze.total ? "PASS" : "Below 100%"} ` +
+                  `(${bronze.covered}/${bronze.total}, ${percent}%)`;
+              }
+            }
+
+            const silver = coverage?.silver;
+            let silverResult = "Not available";
+            if (
+              silver?.available === true &&
+              count(silver.modules) &&
+              count(silver.below) &&
+              silver.below <= silver.modules
+            ) {
+              silverResult =
+                silver.modules === 0
+                  ? "No modules measured"
+                  : silver.below === 0
+                    ? `PASS: all ${silver.modules} modules exceed 95%`
+                    : `${silver.below}/${silver.modules} modules do not exceed 95%`;
+            }
+
+            const strictTyping = readReport("quality-scale-strict-typing.json");
+            const platinumResult =
+              strictTyping?.available === true && typeof strictTyping.passed === "boolean"
+                ? strictTyping.passed
+                  ? "PASS: mypy --strict"
+                  : "Issues reported by mypy --strict"
+                : "Not available";
+
+            const body = [
+              marker,
+              "## Home Assistant quality-scale advisory checks",
+              "",
+              "| Tier | Result |",
+              "| --- | --- |",
+              `| Bronze | Config-flow line coverage: ${bronzeResult}. Flow scenario coverage still needs review. |`,
+              `| Silver | Per-module test coverage: ${silverResult}. |`,
+              "| Gold | Requires human review; no automated tier verdict is claimed. |",
+              `| Platinum | Strict typing: ${platinumResult}. |`,
+              "",
+              "These checks are advisory and do not fail CI. See the [workflow run](" +
+                `${run.html_url}) for detailed warnings and diagnostics.`,
+              "",
+              "_AI/Copilot-generated CI summary._",
+            ].join("\n");
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: pullRequest.number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.login === "github-actions[bot]" &&
+                comment.body?.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pullRequest.number,
+                body,
+              });
+            }

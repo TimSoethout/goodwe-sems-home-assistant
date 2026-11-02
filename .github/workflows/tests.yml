@@ -8,6 +8,7 @@ on:
       - "tests/**"
       - "api_examples/**"
       - "scripts/**"
+      - ".github/workflows/quality-scale-report.yml"
       - "requirements*.txt"
       - "pyproject.toml"
       - "hacs.json"
@@ -20,6 +21,7 @@ on:
       - "tests/**"
       - "api_examples/**"
       - "scripts/**"
+      - ".github/workflows/quality-scale-report.yml"
       - "requirements*.txt"
       - "pyproject.toml"
       - "hacs.json"
@@ -66,6 +68,16 @@ jobs:
       if: always()
       continue-on-error: true
       run: bash scripts/report_quality_scale_coverage.sh
+
+    - name: Upload quality-scale coverage report
+      if: ${{ always() && github.event_name == 'pull_request' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: quality-scale-coverage
+        path: quality-scale-coverage.json
+        if-no-files-found: warn
+        retention-days: 1
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
@@ -121,6 +133,16 @@ jobs:
       if: always()
       continue-on-error: true
       run: bash scripts/report_quality_scale_strict_typing.sh
+
+    - name: Upload quality-scale strict-typing report
+      if: ${{ always() && github.event_name == 'pull_request' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: quality-scale-strict-typing
+        path: quality-scale-strict-typing.json
+        if-no-files-found: warn
+        retention-days: 1
 
   validate:
     runs-on: ubuntu-26.04

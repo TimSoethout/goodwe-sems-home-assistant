@@ -3,6 +3,12 @@ set -euo pipefail
 
 summary_file="${GITHUB_STEP_SUMMARY:?}"
 report_path=coverage.json
+bronze_available=false
+bronze_covered=0
+bronze_total=0
+silver_available=false
+module_count=0
+below_count=0
 
 {
   printf '## Home Assistant quality-scale advisory checks\n\n'
@@ -22,7 +28,10 @@ report_path=coverage.json
     if [[ -z "$config_stats" ]]; then
       printf '%s\n' '- **Bronze: config-flow-test-coverage:** `config_flow.py` not found in coverage.'
     else
+      bronze_available=true
       IFS=$'\t' read -r covered total <<< "$config_stats"
+      bronze_covered=$covered
+      bronze_total=$total
       if (( total > 0 )); then
         percent=$(awk -v covered="$covered" -v total="$total" 'BEGIN { printf "%.2f", covered * 100 / total }')
       else
@@ -48,7 +57,8 @@ report_path=coverage.json
       printf '%s\n' '- **Silver: test-coverage:** No integration modules found in coverage.'
     else
       mapfile -t modules <<< "$module_rows"
-      below_count=0
+      silver_available=true
+      module_count=${#modules[@]}
       details=''
       for row in "${modules[@]}"; do
         IFS=$'\t' read -r path percent statements <<< "$row"
@@ -67,3 +77,23 @@ report_path=coverage.json
   fi
   printf '\n%s\n\n' '- **Gold:** Requires human review; no automated tier verdict is claimed.'
 } >> "$summary_file"
+
+jq -n \
+  --argjson bronze_available "$bronze_available" \
+  --argjson bronze_covered "$bronze_covered" \
+  --argjson bronze_total "$bronze_total" \
+  --argjson silver_available "$silver_available" \
+  --argjson module_count "$module_count" \
+  --argjson below_count "$below_count" \
+  '{
+    bronze: {
+      available: $bronze_available,
+      covered: $bronze_covered,
+      total: $bronze_total
+    },
+    silver: {
+      available: $silver_available,
+      modules: $module_count,
+      below: $below_count
+    }
+  }' > quality-scale-coverage.json
