@@ -16,4 +16,6 @@ For a stable release after betas, use the same version number and preserve the f
 
 ## Before finishing
 - Run the narrowest relevant tests; if code changed, run `ruff check` and `ruff format --check` on the touched area.
-- Confirm manifest/tag versions match, prerelease status is correct, and the ZIP uploaded.
+- Before merging a stable release-preparation PR, confirm the manifest version matches exactly one stable release-notes section and that the tag is unused; do not publish manually.
+- After merge, confirm the stable GitHub Release tag matches the manifest, it is not a prerelease, and `sems.zip` is attached.
+- For a manually published prerelease, confirm the tag matches the manifest, the prerelease flag is set, and `sems.zip` is attached.
