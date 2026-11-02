@@ -12,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sems import async_migrate_entry
-from custom_components.sems.config_flow import _normalize_station_ids
+from custom_components.sems.config_flow import CannotConnect, _normalize_station_ids
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
 from custom_components.sems.sems_api import SemsRateLimitedError
 
@@ -358,3 +358,72 @@ async def test_other_api_error_shows_cannot_connect(
 
     assert result["type"] == FlowResultType.FORM
     assert result["errors"]["base"] == "cannot_connect"
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_error"),
+    [
+        (CannotConnect("connection failed"), "cannot_connect"),
+        (RuntimeError("unexpected failure"), "unknown"),
+    ],
+)
+async def test_user_step_handles_connection_and_unexpected_errors(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+    error: Exception,
+    expected_error: str,
+) -> None:
+    """Connection and unexpected failures surface an error on the setup form."""
+    del enable_custom_integrations
+
+    result = await _init_flow(hass)
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.test_authentication",
+        side_effect=error,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"]["base"] == expected_error
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_error"),
+    [
+        (HomeAssistantError("connection failed"), "cannot_connect"),
+        (RuntimeError("unexpected failure"), "unknown"),
+    ],
+)
+async def test_reauth_handles_connection_and_unexpected_errors(
+    hass: HomeAssistant,
+    error: Exception,
+    expected_error: str,
+) -> None:
+    """Connection and unexpected failures surface an error on reauthentication."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=MOCK_STATION_ID_1,
+        data={
+            CONF_USERNAME: MOCK_USERNAME,
+            CONF_PASSWORD: MOCK_PASSWORD,
+            CONF_STATION_ID: MOCK_STATION_ID_1,
+        },
+    )
+    entry.add_to_hass(hass)
+    result = await entry.start_reauth_flow(hass)
+
+    with patch(
+        "custom_components.sems.sems_api.SemsApi.test_authentication",
+        side_effect=error,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_PASSWORD: "new_password"}
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+    assert result["errors"]["base"] == expected_error
