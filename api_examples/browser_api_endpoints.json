@@ -117,18 +117,30 @@
       "method": "POST",
       "path": "/web/sems/sems-remote/api/v1/address/remote/setDeviceFunctionParameters",
       "purpose": "Inverter remote function control, including start and stop",
-      "integration_relevance": "candidate_for_control_migration"
+      "integration_relevance": "required_for_inverter_control"
+    },
+    {
+      "method": "POST",
+      "path": "/web/sems/sems-remote/api/v2/address/remote/getAllDeviceFunctionTabs",
+      "purpose": "Discover available device remote-control tabs",
+      "integration_relevance": "required_for_inverter_control"
+    },
+    {
+      "method": "POST",
+      "path": "/web/sems/sems-remote/api/v2/address/remote/getTopTreeByCode",
+      "purpose": "Fallback discovery of the device remote-control menu tree",
+      "integration_relevance": "fallback_for_inverter_control"
     },
     {
       "method": "POST",
       "path": "/web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
-      "purpose": "Device remote-control function capability details",
-      "integration_relevance": "candidate_for_control_migration"
+      "purpose": "Retrieve function addresses, IDs, and values for a device menu",
+      "integration_relevance": "required_for_inverter_control"
     }
   ],
   "notes": [
     "Query values, tokens, cookies, signatures, station IDs, and serial numbers are redacted or replaced with placeholders.",
     "Static JavaScript, CSS, image, analytics, and version resources are excluded.",
-    "The optional endpoints were observed in the UI but their response bodies were not needed for inverter telemetry migration."
+    "Inverter control menu and command captures are documented in device_start_stop.json. The 2026-10-31 captures include the start/stop function details but no control write; the full-page HAR's detail request is for the general inverter menu."
   ]
 }

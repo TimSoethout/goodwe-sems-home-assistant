@@ -92,5 +92,263 @@
         "description": "success"
       }
     }
-  ]
+  ],
+  "additional_web_ui_captures": {
+    "source": "SEMS+ Web UI HAR captures from 2026-10-30",
+    "context": "The later capture includes command discovery plus successful Start and Stop writes. These commands differ from the older 80017 capability capture above.",
+    "function_discovery": {
+      "tree_request": {
+        "method": "POST",
+        "path": "/web/sems/sems-remote/api/v2/address/remote/getTopTreeByCode",
+        "body": {
+          "sn": "<device_sn>",
+          "menuCode": 0,
+          "batIndex": ""
+        }
+      },
+      "tree_response": {
+        "code": "00000",
+        "data": {
+          "functionMenus": {
+            "children": [
+              {
+                "menuId": "<device_start_stop_menu_id>",
+                "translateKey": "device_start_stop",
+                "funcKey": "device_start_stop"
+              }
+            ]
+          }
+        }
+      },
+      "functions_request": {
+        "method": "POST",
+        "path": "/web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+        "body": {
+          "sn": "<device_sn>",
+          "menuId": "<device_start_stop_menu_id>",
+          "batIndex": "",
+          "menuCode": 0
+        }
+      },
+      "functions_response": {
+        "code": "00000",
+        "data": {
+          "functionMenus": {
+            "translateKey": "device_start_stop",
+            "functions": [
+              {
+                "address": "40330",
+                "id": "1991318013509906434",
+                "kafkaName": "Power On",
+                "translateKey": "start_up",
+                "control": 16,
+                "controlAttr": "[{\"code\":\"启动\",\"transKey\":\"start_up\",\"value\":\"0\"}]",
+                "preCommand": "F7",
+                "range": "[0,0]",
+                "rwType": "RW",
+                "type": "U16"
+              },
+              {
+                "address": "40331",
+                "id": "1991318013509906435",
+                "kafkaName": "Power Off",
+                "translateKey": "shutdown",
+                "control": 16,
+                "controlAttr": "[{\"code\":\"停机\",\"transKey\":\"shutdown\",\"value\":\"0\"}]",
+                "preCommand": "F7",
+                "range": "[0,0]",
+                "rwType": "RW",
+                "type": "U16"
+              },
+              {
+                "address": "40332",
+                "id": "1991318013514100737",
+                "kafkaName": "Restart",
+                "translateKey": "restart",
+                "control": 16,
+                "controlAttr": "[{\"code\":\"重启\",\"transKey\":\"restart\",\"value\":\"0\"}]",
+                "preCommand": "F7",
+                "range": "[0,0]",
+                "rwType": "RW",
+                "type": "U16"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "latest_inverter_menu_capture": {
+      "source": "SEMS+ Web UI HAR captured on 2026-10-31",
+      "context": "The paired getTopTreeByCode HAR contains only an OPTIONS preflight. This full-page HAR returns the menu list including device_start_stop, but its own getDeviceFunctionTabMenus request targets the general inverter menu, not the start/stop menu; it contains no start/stop function details or writes.",
+      "request": {
+        "method": "POST",
+        "path": "/web/sems/sems-remote/api/v2/address/remote/getAllDeviceFunctionTabs",
+        "body": {
+          "sn": "<device_sn>",
+          "batIndex": "",
+          "menuCode": 0
+        }
+      },
+      "response": {
+        "code": "00000",
+        "description": "成功",
+        "data": [
+          {
+            "menuId": "1988897383950872577",
+            "name": "设备启停",
+            "translateKey": "device_start_stop",
+            "funcKey": "device_start_stop",
+            "visible": 0,
+            "quickTag": "3"
+          },
+          {
+            "menuId": "1988897503857635329",
+            "name": "能量管理",
+            "translateKey": "energy_management",
+            "funcKey": "energy_management",
+            "visible": 1,
+            "quickTag": "1"
+          },
+          {
+            "menuId": "1988897450690637825",
+            "name": "环境控制",
+            "translateKey": "environmental_control",
+            "funcKey": "environmental_control",
+            "visible": 1
+          },
+          {
+            "menuId": "1988897568789655553",
+            "name": "交流侧设置",
+            "translateKey": "ac_side_settings",
+            "funcKey": "ac_side_settings",
+            "visible": 1
+          },
+          {
+            "menuId": "1988897823220330497",
+            "name": "PV设置",
+            "translateKey": "pv_settings",
+            "visible": 1
+          },
+          {
+            "menuId": "1988898861440593922",
+            "name": "电池设置",
+            "translateKey": "battery_set",
+            "visible": 1
+          },
+          {
+            "menuId": "1988898901252927490",
+            "name": "保护设置",
+            "translateKey": "protection_settings",
+            "visible": 1
+          },
+          {
+            "menuId": "1988898951530049538",
+            "name": "通用设置",
+            "translateKey": "general_set",
+            "funcKey": "GeneralSet",
+            "visible": 1,
+            "quickTag": "1"
+          },
+          {
+            "menuId": "1988896905871519745",
+            "name": "电表",
+            "translateKey": "meter",
+            "funcKey": "meter",
+            "visible": 1
+          }
+        ]
+      }
+    },
+    "latest_inverter_function_capture": {
+      "source": "SEMS+ Web UI HAR captures from 2026-10-31",
+      "context": "The standalone getDeviceFunctionTabMenus request uses the device_start_stop menu ID returned by getAllDeviceFunctionTabs. The full-page HAR's own details request targets the general inverter menu instead. This start/stop detail capture contains no setDeviceFunctionParameters write.",
+      "request": {
+        "method": "POST",
+        "path": "/web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus",
+        "body": {
+          "sn": "<device_sn>",
+          "menuId": "<device_start_stop_menu_id>",
+          "batIndex": "",
+          "menuCode": 0
+        }
+      },
+      "response": {
+        "code": "00000",
+        "description": "成功",
+        "data": {
+          "functionMenus": {
+            "menuId": "<device_start_stop_menu_id>",
+            "name": "设备启停",
+            "translateKey": "device_start_stop",
+            "funcKey": "device_start_stop",
+            "children": [],
+            "functions": [
+              {
+                "address": "80017",
+                "id": "<function_id>",
+                "functionName": "状态设置",
+                "translateKey": "status_setting",
+                "control": 4,
+                "controlAttr": "[{\"code\":\"重启\",\"transKey\":\"restart\",\"value\":\"1\"},{\"code\":\"停止\",\"transKey\":\"stop\",\"value\":\"2\"},{\"code\":\"启动\",\"transKey\":\"start_up\",\"value\":\"4\"}]",
+                "preCommand": "F7",
+                "range": "[0,4]",
+                "rwType": "RW",
+                "type": "U16",
+                "unit": "N/A"
+              }
+            ]
+          },
+          "sn": "<device_sn>"
+        }
+      }
+    },
+    "actions": [
+      {
+        "action": "stop",
+        "request": {
+          "sn": "<device_sn>",
+          "addressMap": {
+            "40331": 0
+          },
+          "addrFuncMap": {
+            "40331": "1991318013509906435"
+          },
+          "controlItemLogs": {
+            "shutdown": "shutdown"
+          },
+          "waitingForDevice": true,
+          "plantId": "<station_id>",
+          "deviceName": "<device_name>",
+          "virtualSn": "<device_sn>"
+        },
+        "response": {
+          "code": "00000",
+          "description": "\u6210\u529f"
+        }
+      },
+      {
+        "action": "start",
+        "request": {
+          "sn": "<device_sn>",
+          "addressMap": {
+            "40330": 0
+          },
+          "addrFuncMap": {
+            "40330": "1991318013509906434"
+          },
+          "controlItemLogs": {
+            "start_up": "start_up"
+          },
+          "waitingForDevice": true,
+          "plantId": "<station_id>",
+          "deviceName": "<device_name>",
+          "virtualSn": "<device_sn>"
+        },
+        "response": {
+          "code": "00000",
+          "description": "\u6210\u529f"
+        }
+      }
+    ]
+  }
 }

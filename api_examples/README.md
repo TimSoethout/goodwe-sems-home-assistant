@@ -46,7 +46,7 @@ the relevant JSON response and sanitize it instead.
 | `web_cross_login.json` | `POST /web/sems/sems-user/api/v1/auth/cross-login` | Account credentials; returns a SEMS+ Web token | `code=00000`, regional `api`, `region`, Web token metadata |
 | `station_list.json` | `POST /web/sems/sems-plant/api/portal/stations/page` with `current` and `size` | SEMS+ Web token and `X-Signature` | `dataList[].id`, station status, capacity, generation, and timezone |
 | `browser_api_endpoints.json` | Sanitized inventory of API URLs observed in the Web UI | Web token and `X-Signature` for authenticated calls | Authentication, station, device, alarm, message, and UI-support endpoints |
-| `device_start_stop.json` | `POST /web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus` and `POST /web/sems/sems-remote/api/v1/address/remote/setDeviceFunctionParameters` with address `80017` | SEMS+ Web token and `X-Signature` | Start/stop capability schema, request values, and successful response codes |
+| `device_start_stop.json` | `POST /web/sems/sems-remote/api/v2/address/remote/getAllDeviceFunctionTabs` or `getTopTreeByCode`, followed by `getDeviceFunctionTabMenus` and `/web/sems/sems-remote/api/v1/address/remote/setDeviceFunctionParameters` | SEMS+ Web token and `X-Signature` | Menu discovery and two supported command schemas: shared `status_setting` at `80017` (`restart=1`, `stop=2`, `start_up=4`) and separate `40330`/`40331`/`40332` action functions; the newest detail capture has no control write |
 | `station_flow.json` | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | `id`, `name`, `status`, `pSystem`, `pAc`, `consumFlag`, `refreshTime` |
 | `station_flow_import.json` | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | Importing example with `pGrid`, `pConsum`, and flow direction |
 | [`station_flow_battery_directions.json`](./station_flow_battery_directions.json) | `GET /web/sems/sems-plant/api/stations/flow?stationId=<station_id>` | SEMS+ Web token and `X-Signature` | Four hybrid charge/discharge and import/export samples; `pBat` and `pGrid` are in kW |
@@ -153,9 +153,10 @@ related-device discovery.
 | `getData` | SEMS+ Web station flow, device discovery, telemetry, and telecounting requests | SEMS+ Web token |
 | `getEnergyStorageIntegratedCabinets` | `GET /web/sems/sems-plant/api/equipments/<sn>/relatedDevices?sn=<sn>&deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=<station_id>` | SEMS+ Web token |
 | `getBatteryGeneralFunctions` | `POST /web/sems/sems-remote/api/v2/address/remote/getDeviceFunctionTabMenus` | SEMS+ Web token |
+| `getTopTreeByCode`, `getAllDeviceFunctionTabs`, `getDeviceFunctionTabMenus` | `POST /web/sems/sems-remote/api/v2/address/remote/getTopTreeByCode`, `getAllDeviceFunctionTabs`, and `getDeviceFunctionTabMenus` | SEMS+ Web token |
 | `getBatteryImmediateChargingStates` | `POST /web/sems/sems-remote/api/v1/address/remote/get-cache-device-function-parameters` | SEMS+ Web token |
 | `setDeviceFunctionParameters` | `POST /web/sems/sems-remote/api/v1/address/remote/setDeviceFunctionParameters` | SEMS+ Web token |
-| `change_status` | `POST /PowerStation/SaveRemoteControlInverter` | Legacy token |
+| `change_status` | Discovered SEMS+ Web `setDeviceFunctionParameters`; legacy `POST /PowerStation/SaveRemoteControlInverter` fallback | SEMS+ Web token or legacy token |
 
 The `startImmediateCharging`, `stopImmediateCharging`,
 `setImmediateChargingEndSoC`, and `setImmediateChargingChargingPower` methods

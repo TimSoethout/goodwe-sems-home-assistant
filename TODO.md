@@ -39,6 +39,9 @@ evidence and fixture-backed regression coverage where practical.
 
 ## Authentication, permissions, and reliability
 
+- [ ] Verify inverter command discovery and state transitions with an
+  additional device or firmware before generalizing beyond the captured
+  `40330`/`40331` commands (#277).
 - [ ] Validate SEMS+ Web login and refresh across supported account roles and
   regions, including accounts that return `100004`, before removing legacy
   authentication fallback (#219).

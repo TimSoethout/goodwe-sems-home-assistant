@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+## 11.13.1-beta.2 - 2026-10-31
+
+## Restore SEMS+ inverter start/stop control
+
+- Discover available remote-control functions per inverter and support both
+  separate Start/Stop functions and the shared `status_setting` function.
+- Map HA Stop to the captured `stop` action without substituting the separate
+  Restart action; retain legacy control as a compatibility fallback.
+
+### Compatibility and limitations
+
+- SEMS+ remote-control permission is required for Web control. If discovery
+  does not provide a usable Start/Stop action, the integration uses legacy
+  control.
+- The latest shared-function capture contains command metadata but no control
+  write for that inverter; please verify Start and Stop on your device.
+- HACS users must opt into prereleases to install this beta.
+
+### Related
+
+- [#279](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/279) -
+  per-inverter command discovery and control.
+- [#277](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/277) -
+  Start/Stop regression report.
+
+### Contributors
+
+- [@hansbennis-hub](https://github.com/hansbennis-hub) - HAR captures and
+  troubleshooting.
+- [@TimSoethout](https://github.com/TimSoethout) - implementation and
+  regression tests.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression tests.
+
+## 11.13.1-beta.1 - 2026-10-23
+
+## Prevent battery lifetime counter resets after restart
+
+- Withhold initial zero charge and discharge lifetime counters until SEMS+
+  returns valid totals, matching the existing PV lifetime-counter behavior.
+
+### Compatibility and limitations
+
+- After setup or restart, battery lifetime counters may remain unknown until
+  SEMS+ returns valid totals.
+- HACS users must opt into prereleases to install this beta.
+
+### Related
+
+- [#249](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/249) -
+  battery lifetime counters on cold start.
+
+### Contributors
+
+- [@kieranlee1970](https://github.com/kieranlee1970) - reported the remaining
+  cold-start gap.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression test.
+
 ## 11.13.0 - 2026-10-22
 
 This stable release includes all changes shipped in 11.13.0-beta.1 through
