@@ -65,7 +65,7 @@ jobs:
     - name: Report HA quality-scale coverage checks
       if: always()
       continue-on-error: true
-      run: python scripts/report_quality_scale_coverage.py
+      run: bash scripts/report_quality_scale_coverage.sh
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
@@ -120,7 +120,7 @@ jobs:
     - name: Report Platinum strict-typing check
       if: always()
       continue-on-error: true
-      run: python scripts/report_quality_scale_strict_typing.py
+      run: bash scripts/report_quality_scale_strict_typing.sh
 
   validate:
     runs-on: ubuntu-26.04
