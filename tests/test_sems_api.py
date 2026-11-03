@@ -222,10 +222,10 @@ class TestSemsApi:
         return_value={"currency": "EUR"},
     )
     @patch("custom_components.sems.sems_api.dt_util.now")
-    def test_web_energy_statistics_batches_historic_years(
+    def test_web_energy_statistics_requests_historic_years_individually(
         self, mock_now, mock_production, mock_statistics
     ):
-        """Test historical years are requested in one range."""
+        """Request each historic year separately so SEMS returns its data."""
         mock_now.return_value = datetime(2026, 9, 25)
         inverters = [{"invert_full": {"addTime": "1545351495000"}}]
 
@@ -233,16 +233,23 @@ class TestSemsApi:
 
         assert result is not None
         assert mock_production.called
-        assert mock_statistics.call_count == 3
-        assert any(
-            call_args.args[1:]
-            == (
-                "year",
-                datetime(2018, 1, 1),
-                datetime(2027, 1, 1) - timedelta(seconds=1),
-            )
-            for call_args in mock_statistics.call_args_list
+        assert mock_statistics.call_count == 11
+        requested_years = sorted(
+            (
+                call_args.args[1:]
+                for call_args in mock_statistics.call_args_list
+                if call_args.args[1] == "year"
+            ),
+            key=lambda request: request[1],
         )
+        assert requested_years == [
+            (
+                "year",
+                datetime(year, 1, 1),
+                datetime(year + 1, 1, 1) - timedelta(seconds=1),
+            )
+            for year in range(2018, 2027)
+        ]
         assert not any(
             call_args.args[1:]
             == (

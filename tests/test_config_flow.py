@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -14,7 +16,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.sems import async_migrate_entry
 from custom_components.sems.config_flow import CannotConnect, _normalize_station_ids
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
-from custom_components.sems.sems_api import SemsRateLimitedError
+from custom_components.sems.sems_api import NEW_LOGIN_URL, SemsRateLimitedError
 
 MOCK_USERNAME = "test@example.com"
 MOCK_PASSWORD = "test_password"
@@ -115,6 +117,46 @@ async def test_single_station_creates_entry_directly(
     assert result["title"] == f"Inverter {MOCK_STATION_ID_1}"
     assert result["data"][CONF_STATION_ID] == MOCK_STATION_ID_1
     assert result["data"][CONF_USERNAME] == MOCK_USERNAME
+
+
+async def test_captured_web_login_and_station_list_create_entry(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+    mock_setup_entry,
+    requests_mock,
+) -> None:
+    """Use captured SEMS+ responses through login, discovery, and entry creation."""
+    del enable_custom_integrations
+    examples = Path(__file__).parent.parent / "api_examples"
+    login_capture = json.loads(
+        (examples / "web_cross_login.json").read_text(encoding="utf-8")
+    )
+    station_capture = json.loads(
+        (examples / "station_list.json").read_text(encoding="utf-8")
+    )
+    login_response = login_capture["response"]
+    station_id = station_capture["data"]["dataList"][0]["id"]
+    station_url = (
+        f"{login_response['data']['api'].rstrip('/')}"
+        "/sems-plant/api/portal/stations/page"
+    )
+    requests_mock.post(NEW_LOGIN_URL, json=login_response)
+    requests_mock.post(station_url, json=station_capture)
+
+    result = await _init_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["title"] == f"Inverter {station_id}"
+    assert result["data"][CONF_STATION_ID] == station_id
+    assert len(requests_mock.request_history) == 2
+    station_request = requests_mock.request_history[1]
+    assert station_request.url == station_url
+    assert station_request.json() == {"current": 1, "size": 100}
+    assert "X-Signature" in station_request.headers
 
 
 async def test_multiple_stations_auto_creates_all_entries(
