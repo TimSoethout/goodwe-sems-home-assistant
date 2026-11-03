@@ -13,6 +13,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_platform import async_get_platforms
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.sems import (
@@ -23,11 +24,18 @@ from custom_components.sems import (
 from custom_components.sems.const import (
     CONF_STATION_ID,
     DOMAIN,
+    GOODWE_SPELLING,
     homekit_station_serial,
 )
 from custom_components.sems.sems_api import SemsApi
 from custom_components.sems.sensor import (
+    SemsLegacyPowerflowSensor,
+    SemsSensor,
+    _data_source_for_value_path,
+    _percentage_handler,
     convert_status_to_label,
+    get_has_existing_homekit_entity,
+    get_value_from_path,
     sensor_options_for_data,
 )
 
@@ -76,6 +84,215 @@ def test_normalize_energy_statistics_charts_preserves_large_kwh_values() -> None
     normalized = _normalize_energy_statistics_charts(charts, 2000.0)
 
     assert normalized == charts
+
+
+@pytest.mark.parametrize("capacity", [None, 0, -1])
+def test_normalize_energy_statistics_charts_without_capacity(
+    capacity: float | None,
+) -> None:
+    """Leave chart values intact when capacity cannot establish their unit."""
+    charts = {"sum": 40633.4}
+
+    normalized = _normalize_energy_statistics_charts(charts, capacity)
+
+    assert normalized == charts
+    assert normalized is not charts
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ([], None),
+        ([1], None),
+        (["INV1", "status"], "device_status"),
+        (["INV1", "etotal"], "counters"),
+        (["INV1", "vpv1"], "telemetry"),
+        (["INV1", "meter_phase_a_voltage"], "telemetry"),
+        (["INV1", "name"], None),
+    ],
+)
+def test_data_source_for_value_path(path: list[Any], expected: str | None) -> None:
+    """Map sensor paths to their SEMS+ data source when one exists."""
+    assert _data_source_for_value_path(path) == expected
+
+
+def test_sensor_value_handlers_cover_missing_and_invalid_values() -> None:
+    """Keep malformed and missing values from breaking sensor normalization."""
+    assert get_value_from_path({"nested": None}, ["missing"]) is None
+    assert get_value_from_path({"nested": None}, ["nested", "value"]) is None
+    assert _percentage_handler(0.125, {}) == 12.5
+    assert _percentage_handler(None, {}) is None
+    assert _percentage_handler("not-a-number", {}) == "not-a-number"
+
+    data = SemsData(
+        inverters={},
+        homekit={
+            "sn": "METER1",
+            "gridStatus": "-1",
+            GOODWE_SPELLING.batteryStatus: "invalid",
+        },
+    )
+    options = {sensor.unique_id: sensor for sensor in sensor_options_for_data(data)}
+    load_status_handler = options["METER1-load-status"].custom_value_handler
+    battery_handler = options["METER1-battery"].custom_value_handler
+    assert load_status_handler is not None
+    assert battery_handler is not None
+    assert load_status_handler(5, data.homekit) == -5
+    assert load_status_handler(None, data.homekit) is None
+    assert load_status_handler("", data.homekit) is None
+    assert load_status_handler(5, {}) == 5
+    assert battery_handler(5, data.homekit) == 5
+
+
+def test_sensor_options_skip_missing_chart_series() -> None:
+    """Do not create chart sensors when no chart or total series exists."""
+    data = SemsData(
+        inverters={},
+        homekit={
+            "sn": "METER1",
+            GOODWE_SPELLING.hasEnergyStatisticsCharts: True,
+        },
+    )
+
+    unique_ids = {sensor.unique_id for sensor in sensor_options_for_data(data)}
+
+    assert "METER1-import-energy" not in unique_ids
+    assert "METER1-import-energy-total" not in unique_ids
+
+
+async def test_homekit_entity_detection_requires_a_matching_entity(
+    hass: HomeAssistant,
+) -> None:
+    """A missing or unregistered HomeKit serial does not count as existing."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert not get_has_existing_homekit_entity(None, hass, entry)
+    assert not get_has_existing_homekit_entity({"sn": "METER1"}, hass, entry)
+    er.async_get(hass).async_get_or_create(
+        Platform.SENSOR,
+        DOMAIN,
+        "METER1",
+        config_entry=entry,
+    )
+    assert get_has_existing_homekit_entity({"sn": "METER1"}, hass, entry)
+
+
+def test_sensor_options_include_battery_slot_sensors() -> None:
+    """Expose the battery-slot sensors when a hybrid inverter reports slots."""
+    sensors = sensor_options_for_data(
+        SemsData(
+            inverters={
+                "INV1": {
+                    "battery_count": 1,
+                    "more_batterys": [{"pbattery": 0, "vbattery": 51.2}],
+                }
+            }
+        )
+    )
+
+    assert {
+        "INV1-0-pbattery",
+        "INV1-0-vbattery",
+        "INV1-0-ibattery",
+        "INV1-0-bms_temperature",
+    } <= {sensor.unique_id for sensor in sensors}
+
+
+def test_legacy_powerflow_helpers_handle_invalid_values() -> None:
+    """Keep legacy attributes stable when optional values are malformed."""
+    assert SemsLegacyPowerflowSensor._status_text(None) == "Unknown"
+    assert SemsLegacyPowerflowSensor._status_text("invalid") == "Unknown"
+    assert SemsLegacyPowerflowSensor._strip_watt_suffix("12(W)") == "12"
+    assert SemsLegacyPowerflowSensor._strip_watt_suffix(12) == 12
+
+
+async def test_legacy_homekit_sensor_attributes_handle_optional_values(
+    hass: HomeAssistant,
+) -> None:
+    """Preserve legacy values and omit invalid power-flow attributes."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    with _mock_no_battery_api(MOCK_GET_DATA_HOMEKIT_ACTUAL_JSON):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data.coordinator
+    homekit = coordinator.data.homekit
+    assert homekit is not None
+    homekit.update(
+        {
+            "pv": "1(W)",
+            "bettery": "2(W)",
+            "load": "12(W)",
+            "grid": "-3(W)",
+            "gridStatus": "invalid",
+            "loadStatus": "invalid",
+            "missing": None,
+            None: "ignored",
+            "isSemsPlusFlow": True,
+        }
+    )
+    entities = {
+        entity.unique_id: entity
+        for platform in async_get_platforms(hass, DOMAIN)
+        for entity in platform.entities.values()
+    }
+    legacy_sensor = entities[f"{homekit['sn']}-homekit"]
+
+    assert legacy_sensor.native_value == 12
+    attributes = legacy_sensor.extra_state_attributes
+    assert attributes is not None
+    assert attributes["pv"] == "1"
+    assert attributes["bettery"] == "2"
+    assert attributes["load"] == "12"
+    assert attributes["grid"] == "-3"
+    assert attributes["statusText"] == "Unknown"
+    assert "missing" not in attributes
+    assert None not in attributes
+    assert "PowerFlowDirection" not in attributes
+
+    homekit.pop("isSemsPlusFlow")
+    homekit.pop("gridStatus")
+    assert legacy_sensor.native_value == 12
+    homekit["gridStatus"] = "1"
+    assert legacy_sensor.native_value == 12
+    homekit["gridStatus"] = "0"
+    assert legacy_sensor.native_value == 0
+    homekit["gridStatus"] = "invalid"
+    assert legacy_sensor.native_value == 12
+
+    homekit["loadStatus"] = -1
+    assert legacy_sensor.extra_state_attributes["PowerFlowDirection"] == "Export -3(W)"
+    homekit["loadStatus"] = 1
+    assert legacy_sensor.extra_state_attributes["PowerFlowDirection"] == "Import -3(W)"
+
+    legacy_sensor._attr_unique_id = "not-a-legacy-homekit-sensor"
+    assert legacy_sensor.native_value == 12
+    assert legacy_sensor.extra_state_attributes is None
+    legacy_sensor._attr_unique_id = f"{homekit['sn']}-homekit"
+
+    coordinator.async_set_updated_data(SemsData(inverters={}, homekit=None))
+    with patch.object(
+        legacy_sensor, "_get_native_value_from_coordinator", return_value=12
+    ):
+        assert legacy_sensor.native_value == 12
+    assert legacy_sensor.extra_state_attributes is None
 
 
 @contextmanager
@@ -129,6 +346,7 @@ MOCK_GET_DATA_RESULT_MINIMAL = {
 async def test_sensor_state_from_coordinator(
     hass: HomeAssistant,
     enable_custom_integrations: None,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test that the power sensor is created and has the expected state."""
     del enable_custom_integrations
@@ -147,6 +365,7 @@ async def test_sensor_state_from_coordinator(
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
+    coordinator = entry.runtime_data.coordinator
     ent_reg = er.async_get(hass)
     entity_id = ent_reg.async_get_entity_id(
         Platform.SENSOR, DOMAIN, "GW0000SN000TEST1-power"
@@ -174,6 +393,35 @@ async def test_sensor_state_from_coordinator(
     assert status_state.state == "Normal"
     assert "pac" not in status_state.attributes
     assert "statusText" not in status_state.attributes
+
+    power_sensor = next(
+        entity
+        for platform in async_get_platforms(hass, DOMAIN)
+        for entity in platform.entities.values()
+        if entity.unique_id == "GW0000SN000TEST1-power"
+    )
+    power_sensor_definition = next(
+        sensor
+        for sensor in sensor_options_for_data(coordinator.data)
+        if sensor.unique_id == "GW0000SN000TEST1-power"
+    )
+    base_sensor = SemsSensor(
+        coordinator,
+        power_sensor_definition.device_info,
+        "base-sensor-test",
+        None,
+        ["missing"],
+        power_sensor_definition.data_type_converter,
+    )
+    assert base_sensor.native_value is None
+    with patch.object(base_sensor, "_get_data_dict", return_value=None):
+        assert base_sensor._get_native_value_from_coordinator() is None
+
+    def reject_conversion(_value: Any) -> Any:
+        raise TypeError("invalid value")
+
+    monkeypatch.setattr(power_sensor, "_data_type_converter", reject_conversion)
+    assert power_sensor.native_value == 589
 
 
 async def test_total_energy_sensor_stays_enabled_when_initial_value_is_missing(

@@ -21,6 +21,7 @@ from custom_components.sems.sems_api import (
     SemsAuthExpiredError,
     SemsPermissionError,
     SemsRateLimitedError,
+    _LegacyApiFallback,
 )
 
 # Test data constants - anonymized for privacy
@@ -75,6 +76,18 @@ class TestSemsApi:
 
         mock_get_login_token.assert_called_once_with(self.username, self.password)
 
+    @patch.object(SemsApi, "getLoginToken", return_value={"token": "legacy"})
+    @patch.object(
+        SemsApi, "_get_web_login_token", side_effect=requests.ConnectionError("offline")
+    )
+    def test_authentication_falls_back_after_web_request_error(
+        self, mock_web_login, mock_legacy_login
+    ):
+        """A temporary SEMS+ login transport error still permits legacy login."""
+        assert self.api.test_authentication()
+        mock_web_login.assert_called_once_with(self.username, self.password)
+        mock_legacy_login.assert_called_once_with(self.username, self.password)
+
     def test_web_station_statistics_parses_only_finite_values(self):
         """Test station statistics parsing ignores malformed values."""
         with patch.object(
@@ -114,6 +127,89 @@ class TestSemsApi:
         assert request["isReport"] is False
         assert request["startTime"] == "2026-01-01 00:00:00"
         assert request["endTime"] == "2026-01-02 00:00:00"
+
+    def test_web_station_statistics_parses_sanitized_capture(self):
+        """Normalize the captured daily statistics response."""
+        with (API_EXAMPLES_DIR / "semsplus_hybrid/statistics_day.json").open(
+            encoding="utf-8"
+        ) as file:
+            response = json.load(file)["data"]
+
+        with patch.object(
+            self.api, "_make_api_call", return_value=response
+        ) as mock_call:
+            result = self.api._get_web_statistics(
+                MOCK_POWER_STATION_ID,
+                "day",
+                datetime(2026, 9, 24),
+                datetime(2026, 9, 24, 23, 59, 59),
+            )
+            assert (
+                self.api._get_web_statistics(
+                    MOCK_POWER_STATION_ID,
+                    "day",
+                    datetime(2026, 9, 24),
+                    datetime(2026, 9, 24, 23, 59, 59),
+                )
+                == result
+            )
+
+        mock_call.assert_called_once()
+        assert result == {
+            "proSystemTotalStats": [31.4],
+            "proConsumStats": [29.01],
+            "proCharStats": [20.3],
+            "proDischarStats": [12.8],
+            "proGridStats": [9.76],
+            "proPurchaseStats": [17.57],
+            "proSelfConsumStats": [17.24],
+            "contributionRate": [59.43],
+            "proSelfConsumRate": [63.85],
+        }
+
+    def test_web_station_statistics_suppresses_malformed_response_values(self):
+        """Ignore invalid optional series and remember a failed request briefly."""
+        response = {
+            "dataList": [
+                None,
+                {"item": 1, "statisticsList": [{"val": 1}]},
+                {
+                    "item": "invalid",
+                    "statisticsList": [None, {"val": None}, {"val": []}],
+                },
+            ],
+            "production": None,
+            "proConsum": [],
+            "contributionRate": "not-a-number",
+        }
+        with patch.object(self.api, "_make_api_call", return_value=response):
+            assert (
+                self.api._get_web_statistics(
+                    "station",
+                    "day",
+                    datetime(2026, 1, 1),
+                    datetime(2026, 1, 2),
+                )
+                == {}
+            )
+
+        response.update({"proGrid": "not-a-number", "proPurchase": 2.5})
+        with patch.object(self.api, "_make_api_call", return_value=response):
+            parsed = self.api._get_web_statistics(
+                "station",
+                "day",
+                datetime(2026, 3, 1),
+                datetime(2026, 3, 2),
+            )
+        assert parsed == {"proPurchaseStats": [2.5]}
+
+        with (
+            patch.object(self.api, "_make_api_call", side_effect=OutOfRetries),
+        ):
+            start = datetime(2026, 2, 1)
+            end = datetime(2026, 2, 2)
+            assert self.api._get_web_statistics("station", "day", start, end) is None
+            assert self.api._get_web_statistics("station", "day", start, end) is None
 
     @patch.object(
         SemsApi,
@@ -350,6 +446,82 @@ class TestSemsApi:
                 operation_name="test operation",
             )
 
+    @pytest.mark.parametrize(
+        ("operation_name", "body_is_logged"),
+        [("login API call", False), ("device telemetry", True)],
+    )
+    @patch("custom_components.sems.sems_api.requests.Session.request")
+    def test_make_http_request_logs_http_errors_safely(
+        self, mock_request, caplog, operation_name, body_is_logged
+    ):
+        """Redact login response bodies while retaining ordinary HTTP diagnostics."""
+        response = Mock(
+            status_code=401,
+            url="https://api.example.invalid",
+            text="sensitive response body",
+        )
+        error = requests.HTTPError("unauthorized")
+        error.response = response
+        response.raise_for_status.side_effect = error
+        mock_request.return_value = response
+
+        with pytest.raises(requests.HTTPError):
+            self.api._make_http_request(
+                response.url,
+                {},
+                operation_name=operation_name,
+            )
+
+        assert ("sensitive response body" in caplog.text) is body_is_logged
+
+    @patch("custom_components.sems.sems_api.requests.Session.request")
+    def test_make_http_request_logs_error_without_response(self, mock_request, caplog):
+        """Log an HTTP failure when requests provides no response object."""
+        error = requests.HTTPError("connection failed before response")
+        mock_request.side_effect = error
+
+        with pytest.raises(requests.HTTPError):
+            self.api._make_http_request(
+                "https://api.example.invalid",
+                {},
+                operation_name="device telemetry",
+            )
+
+        assert "connection failed before response" in caplog.text
+
+    @patch("custom_components.sems.sems_api.requests.Session.request")
+    def test_make_http_request_raises_permission_error(self, mock_request):
+        """Surface the API's explicit permission-denied response."""
+        response = Mock(status_code=200)
+        response.json.return_value = {"code": "100025", "description": "denied"}
+        response.raise_for_status.return_value = None
+        mock_request.return_value = response
+
+        with pytest.raises(SemsPermissionError, match="denied"):
+            self.api._make_http_request(
+                "https://api.example.invalid",
+                {},
+                operation_name="device telemetry",
+            )
+
+    def test_response_error_message_has_a_safe_fallback(self):
+        """Use the first non-empty textual API error, or a generic message."""
+        assert SemsApi._response_error_message({"msg": 1, "errorMsg": "denied"}) == (
+            "denied"
+        )
+        assert SemsApi._response_error_message({}) == "Unknown error"
+
+    def test_start_cooldown_reuses_an_active_deadline(self):
+        """Concurrent failures do not extend an existing cooldown."""
+        with patch(
+            "custom_components.sems.sems_api.time.monotonic",
+            side_effect=[100, 100.5],
+        ):
+            assert self.api._start_cooldown() == 60
+            assert self.api._start_cooldown() == 60
+
+        assert self.api._cooldown_strikes == 1
+
     @patch.object(SemsApi, "_make_http_request")
     def test_get_login_token_success(self, mock_http_request):
         """Test successful login token retrieval."""
@@ -375,6 +547,89 @@ class TestSemsApi:
         """Test SEMS+ password encoding."""
         assert self.api._hash_password_for_new_login("sems_test_password") == (
             "ZTJmYTRkNDJhZTk4Y2NiMTFkYzg0NWJhYWY1YWUxYzc="
+        )
+
+    def test_extract_login_token_handles_api_url_fallbacks(self):
+        """Resolve login API hosts from the response, token, or known fallback."""
+        assert self.api._extract_login_token(None, "new", "login API call") is None
+        assert (
+            self.api._extract_login_token(
+                {"code": "denied", "data": {}}, "new", "login API call"
+            )
+            is None
+        )
+        assert (
+            self.api._extract_login_token(
+                {"code": 0, "data": {"token": "t"}},
+                "new",
+                "login API call",
+            )
+            is None
+        )
+        assert (
+            self.api._extract_login_token(
+                {"code": 0, "data": []}, "new", "login API call"
+            )
+            is None
+        )
+        assert self.api._extract_login_token(
+            {"code": 0, "data": {"api": "https://nested.example", "token": "t"}},
+            "new",
+            "login API call",
+        ) == {"api": "https://nested.example", "token": "t"}
+        assert self.api._extract_login_token(
+            {"code": 0, "data": {"token": "t"}},
+            "new",
+            "login API call",
+            fallback_api_url="https://fallback.example",
+        ) == {"api": "https://fallback.example", "token": "t"}
+        assert (
+            self.api._extract_login_token(
+                {"code": 0, "data": {"api": "https://api.example"}},
+                "new",
+                "login API call",
+            )
+            is None
+        )
+
+    def test_powerstation_route_normalizes_regional_hosts(self):
+        """Route control requests to the resolved regional SEMS host."""
+        self.api._token = {"region": "eu"}
+        assert (
+            self.api._extract_gateway_region(
+                "https://eu-gateway.semsportal.com/web/sems"
+            )
+            == "eu"
+        )
+        assert self.api._extract_gateway_region("https://eu.semsportal.com/api") == "eu"
+        assert self.api._extract_gateway_region("https://gateway.invalid/api") is None
+        assert (
+            self.api._normalize_powerstation_api_base(
+                "https://gateway.invalid/web/sems",
+                "/PowerStation/SaveRemoteControlInverter",
+            )
+            == "https://eu.semsportal.com/api"
+        )
+        self.api._token = {}
+        assert (
+            self.api._normalize_powerstation_api_base(
+                "https://eu-gateway.semsportal.com/web/sems",
+                "/v3/PowerStation/SaveRemoteControlInverter",
+            )
+            == "https://eu.semsportal.com/api"
+        )
+        assert (
+            self.api._normalize_powerstation_api_base(
+                "https://gateway.invalid/web/sems", "/other/route"
+            )
+            == "https://gateway.invalid/web/sems"
+        )
+        assert (
+            self.api._normalize_powerstation_api_base(
+                "https://gateway.invalid/web/sems",
+                "/PowerStation/SaveRemoteControlInverter",
+            )
+            == _LegacyApiFallback
         )
 
     def test_get_login_token_new_success_skips_legacy(self):
@@ -885,6 +1140,20 @@ class TestSemsApi:
         mock_http_request.assert_called_once()
         mock_login.assert_not_called()
 
+    def test_make_api_call_returns_none_for_transport_errors(self):
+        """Return no result after the HTTP layer has logged a transport failure."""
+        with (
+            patch.object(
+                self.api,
+                "_get_authenticated_request_context",
+                return_value=("https://api.example.invalid", {}, 0),
+            ),
+            patch.object(
+                self.api, "_make_http_request", side_effect=requests.ConnectionError
+            ),
+        ):
+            assert self.api._make_api_call("/endpoint") is None
+
     def test_telecounting_token_error_is_not_error_logged(self, requests_mock, caplog):
         """Test a rejected token is raised for re-login, not logged as an error."""
         requests_mock.post(
@@ -1297,6 +1566,40 @@ class TestSemsApi:
             token_type="web",
         )
 
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_devices_ignores_malformed_groups(self, mock_api_call):
+        """Ignore invalid device groups and serial entries in a partial response."""
+        mock_api_call.return_value = {
+            "deviceDetailList": [
+                None,
+                {"deviceType": "UNSUPPORTED", "statusDetailList": []},
+                {
+                    "deviceType": "INVERTER",
+                    "statusDetailList": [
+                        None,
+                        {"detailMap": []},
+                        {
+                            "snList": ["INV1", 1],
+                            "detailMap": {"INV1": None},
+                        },
+                        {
+                            "status": 1,
+                            "snList": ["INV2"],
+                            "detailMap": {"INV2": {"name": "Inverter"}},
+                        },
+                    ],
+                },
+            ]
+        }
+
+        assert self.api.getWebInverterDevices("station") == [
+            {
+                "name": "Inverter",
+                "deviceType": "INVERTER",
+                "status": 1,
+            }
+        ]
+
     def test_get_web_data_reuses_cached_device_inventory_after_request_failure(self):
         """Reuse recent discovery metadata, but never its stale device status."""
         with (API_EXAMPLES_DIR / "all_status.json").open(encoding="utf-8") as file:
@@ -1469,6 +1772,32 @@ class TestSemsApi:
         assert "pv" not in result
         assert "grid" not in result
         assert "battery" not in result
+
+    def test_web_factor_helpers_ignore_malformed_factors(self):
+        """Skip malformed factor groups while preserving numeric values."""
+        response = [
+            None,
+            {
+                "factors": [
+                    None,
+                    {"code": "empty", "data": None},
+                    {"code": 1, "data": "2"},
+                    {"code": "valid", "data": "2.5", "unit": "", "alias": ""},
+                    {"code": "invalid", "data": "not-a-number"},
+                ]
+            },
+        ]
+
+        assert SemsApi._flatten_web_factors(response) == {
+            "valid": "2.5",
+            "invalid": "not-a-number",
+        }
+        assert SemsApi._numeric_web_factor({"valid": "2.5"}, "valid") == 2.5
+        assert SemsApi._numeric_web_factor({"invalid": "n/a"}, "invalid") is None
+        assert SemsApi._numeric_web_factor({}, "missing") is None
+        assert SemsApi._web_factors_with_units(response) == {
+            "valid": {"value": 2.5, "unit": None, "alias": "valid"}
+        }
 
     def test_prune_web_cache_drops_stale_entries(self):
         """Stale date-keyed entries are evicted; counters and fresh ones stay."""
@@ -2111,6 +2440,29 @@ class TestSemsApi:
             token_type="web",
         )
 
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_normalizes_captured_meter_counters(
+        self, mock_api_call
+    ):
+        """Map the captured smart-meter lifetime and period counters."""
+        with (API_EXAMPLES_DIR / "smart_meter_telecounting.json").open(
+            encoding="utf-8"
+        ) as file:
+            mock_api_call.return_value = json.load(file)["data"]
+
+        with patch(
+            "custom_components.sems.sems_api.dt_util.now",
+            return_value=datetime(2026, 9, 24, 12),
+        ):
+            result = self.api.getWebInverterTelecounting(
+                MOCK_POWER_STATION_ID, "METER1", device_type="SMART_METER"
+            )
+
+        assert result["proPurchaseStatsToday"] == 12.84
+        assert result["proGridStatsToday"] == 36.77
+        assert result["proPurchaseStatsTotal"] == 20314.77
+        assert result["proGridStatsTotal"] == 38846.49
+
     @patch.object(SemsApi, "getBatterySystemTelemetry")
     def test_get_web_batteries_maps_existing_entity_shape(self, mock_telemetry):
         """Test related BAT_SYS values map to the existing battery sensors."""
@@ -2137,6 +2489,24 @@ class TestSemsApi:
                 "bms_temperature": 24,
             }
         ]
+        mock_telemetry.assert_called_once_with("station", "BAT1")
+
+    @patch.object(SemsApi, "getBatterySystemTelemetry", return_value={})
+    def test_get_web_batteries_ignores_invalid_and_empty_devices(self, mock_telemetry):
+        """Skip malformed related devices and batteries with no reported values."""
+        assert (
+            self.api._get_web_batteries(
+                "station",
+                [
+                    None,
+                    {"type": "INVERTER", "sn": "INV1"},
+                    {"type": "BAT_SYS"},
+                    {"type": "BAT_SYS", "sn": 123},
+                    {"type": "BAT_SYS", "sn": "BAT1"},
+                ],
+            )
+            == []
+        )
         mock_telemetry.assert_called_once_with("station", "BAT1")
 
     @patch.object(SemsApi, "_make_api_call")
@@ -2318,6 +2688,51 @@ class TestSemsApi:
                 operation_name="test control call",
                 maxTokenRetries=1,
             )
+
+    def test_make_control_api_call_retries_http_and_expired_token_errors(self):
+        """Retry control commands once when the session is rejected."""
+        response = Mock(status_code=401)
+        http_error = requests.HTTPError("unauthorized")
+        http_error.response = response
+        for error in (http_error, SemsAuthExpiredError("expired token")):
+            with (
+                patch.object(
+                    self.api,
+                    "_get_authenticated_request_context",
+                    return_value=("https://api.example.invalid", {}, 0),
+                ) as context,
+                patch.object(
+                    self.api,
+                    "_make_http_request",
+                    side_effect=[error, {"code": 0}],
+                ) as request,
+            ):
+                assert self.api._make_control_api_call(
+                    {"command": "start"}, maxTokenRetries=2
+                )
+
+            assert context.call_count == 2
+            assert request.call_count == 2
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            SemsRateLimitedError(retry_after=60),
+            requests.ConnectionError("offline"),
+        ],
+        ids=["rate-limit", "connection-error"],
+    )
+    def test_make_control_api_call_returns_false_for_transient_failures(self, error):
+        """Keep failed optional controls from raising into the entity layer."""
+        with (
+            patch.object(
+                self.api,
+                "_get_authenticated_request_context",
+                return_value=("https://api.example.invalid", {}, 0),
+            ),
+            patch.object(self.api, "_make_http_request", side_effect=error),
+        ):
+            assert not self.api._make_control_api_call({"command": "start"})
 
     @patch.object(SemsApi, "_make_control_api_call")
     def test_change_status(self, mock_control_call):
