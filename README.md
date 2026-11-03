@@ -3,6 +3,7 @@
 [![Paypal-shield]](https://paypal.me/timsoethout)
 <a href="https://www.buymeacoffee.com/TimSoethout" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="20"></a>
 <a href="https://github.com/sponsors/timsoethout"><img alt="Sponsor" src="https://img.shields.io/badge/sponsor-30363D?&logo=GitHub-Sponsors&logoColor=#white" height="20"/></a>
+[![AI Ready](https://img.shields.io/badge/AI--Ready-yes-brightgreen?style=flat)](https://github.com/johnpapa/ai-ready)
 
 Integration for Home Assistant that retrieves PV data from the GoodWe SEMS and
 SEMS+ APIs.
@@ -238,6 +239,13 @@ To fix lint issues locally:
 ruff check --fix custom_components/
 ruff format custom_components/
 ```
+
+## Contributing
+
+Contributions are welcome. Open a pull request against `master`, include tests
+for behavior changes, and follow the repository guidance in [`AGENTS.md`](AGENTS.md).
+Run `python -m pytest tests/ -v` and the lint and type checks above before
+submitting.
 
 ## Credits
 
