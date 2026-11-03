@@ -847,6 +847,80 @@ async def test_captured_semsplus_meter_data_reaches_homekit_sensors(
         assert state.attributes["unit_of_measurement"] == unit
 
 
+async def test_captured_semsplus_inverter_without_homekit_reaches_sensors(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Normalize captured inverter responses without creating HomeKit sensors."""
+    del enable_custom_integrations
+    examples = Path(__file__).parent.parent / "api_examples"
+
+    def load_example(filename: str) -> Any:
+        return json.loads((examples / filename).read_text(encoding="utf-8"))["data"]
+
+    def captured_api_call(url_part: str, *args: Any, **kwargs: Any) -> Any:
+        if "all-status" in url_part:
+            return load_example("all_status.json")
+        if "stations/flow" in url_part:
+            return None
+        if "telemetry" in url_part:
+            return load_example("telemetry.json")
+        if "telecounting" in url_part:
+            return load_example("telecounting.json")
+        if "statistics" in url_part or "production" in url_part:
+            return None
+        raise AssertionError(f"Unexpected SEMS+ endpoint: {url_part}")
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi._make_api_call",
+            side_effect=captured_api_call,
+        ),
+        patch(
+            "custom_components.sems.sems_api.dt_util.now",
+            return_value=datetime(2026, 1, 1, 12),
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator_data = entry.runtime_data.coordinator.data
+    assert coordinator_data is not None
+    assert coordinator_data.homekit is None
+    assert len(coordinator_data.inverters) == 1
+    inverter_sn = next(iter(coordinator_data.inverters))
+    ent_reg = er.async_get(hass)
+
+    for unique_id, expected_value, unit in (
+        (f"{inverter_sn}-power", 1064, "W"),
+        (f"{inverter_sn}-eday", 12.34, "kWh"),
+    ):
+        entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, unique_id)
+        assert entity_id is not None
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert float(state.state) == pytest.approx(expected_value)
+        assert state.attributes["unit_of_measurement"] == unit
+
+    assert (
+        ent_reg.async_get_entity_id(
+            Platform.SENSOR, DOMAIN, f"{MOCK_STATION_SERIAL}-grid"
+        )
+        is None
+    )
+
+
 async def test_failed_smart_meter_telemetry_marks_only_meter_sensors_unavailable(
     hass: HomeAssistant,
     enable_custom_integrations: None,
