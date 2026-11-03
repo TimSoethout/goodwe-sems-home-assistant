@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -204,6 +205,75 @@ async def test_control_entities_execute_and_reject_missing_coordinator_data(
                 await battery_switch.async_turn_on()
         finally:
             coordinator.data = coordinator_data
+
+
+async def test_battery_control_services_send_expected_api_payloads(
+    hass: HomeAssistant,
+) -> None:
+    """Verify HA control services preserve the discovered battery command data."""
+    entry = await _setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    endpoint = "/sems-remote/api/v1/address/remote/setDeviceFunctionParameters"
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi._make_api_call",
+            return_value={},
+        ) as api_call,
+        patch.object(
+            coordinator, "async_request_refresh", new_callable=AsyncMock
+        ) as refresh,
+    ):
+        await hass.services.async_call(
+            "switch",
+            "turn_on",
+            {
+                "entity_id": _entity_id(
+                    hass, Platform.SWITCH, "battery_immediate_charging"
+                )
+            },
+            blocking=True,
+        )
+        await hass.services.async_call(
+            "number",
+            "set_value",
+            {
+                "entity_id": _entity_id(hass, Platform.NUMBER, "end_charge_soc"),
+                "value": 70,
+            },
+            blocking=True,
+        )
+
+    assert refresh.await_count == 2
+    assert len(api_call.call_args_list) == 2
+    assert [call.args[0] for call in api_call.call_args_list] == [
+        endpoint,
+        endpoint,
+    ]
+    assert [call.kwargs["method"] for call in api_call.call_args_list] == [
+        "POST",
+        "POST",
+    ]
+    assert [json.loads(call.kwargs["data"]) for call in api_call.call_args_list] == [
+        {
+            "sn": INVERTER_SERIAL,
+            "addressMap": {"47545": 1},
+            "addrFuncMap": {"47545": "1991791639537946634"},
+            "controlItemLogs": {"immediate_charge": "on"},
+            "waitingForDevice": True,
+            "plantId": POWER_STATION_ID,
+            "deviceName": BATTERY_ID,
+        },
+        {
+            "sn": INVERTER_SERIAL,
+            "addressMap": {"47546": 70},
+            "addrFuncMap": {"47546": "1991791639537946635"},
+            "controlItemLogs": {"end_charge_soc": 70},
+            "waitingForDevice": True,
+            "plantId": POWER_STATION_ID,
+            "deviceName": BATTERY_ID,
+        },
+    ]
 
 
 async def _refresh_with_states(hass: HomeAssistant, entry: MockConfigEntry, **states):

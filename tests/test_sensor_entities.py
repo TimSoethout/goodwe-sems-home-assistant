@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -766,6 +767,84 @@ async def test_web_meter_data_keeps_registered_homekit_serial(
         )
         is None
     )
+
+
+async def test_captured_semsplus_meter_data_reaches_homekit_sensors(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Normalize captured SEMS+ responses through the coordinator to sensor states."""
+    del enable_custom_integrations
+    examples = Path(__file__).parent.parent / "api_examples"
+
+    def load_example(filename: str) -> Any:
+        return json.loads((examples / filename).read_text(encoding="utf-8"))["data"]
+
+    def captured_api_call(url_part: str, *args: Any, **kwargs: Any) -> Any:
+        if "all-status" in url_part:
+            return load_example("smart_meter_all_status.json")
+        if "stations/flow" in url_part:
+            return load_example("station_flow_import.json")
+        if "telemetry" in url_part:
+            filename = (
+                "smart_meter_telemetry.json"
+                if "deviceType=SMART_METER" in url_part
+                else "telemetry.json"
+            )
+            return load_example(filename)
+        if "telecounting" in url_part:
+            filename = (
+                "smart_meter_telecounting.json"
+                if "deviceType=SMART_METER" in url_part
+                else "telecounting.json"
+            )
+            return load_example(filename)
+        if "statistics" in url_part or "production" in url_part:
+            return None
+        raise AssertionError(f"Unexpected SEMS+ endpoint: {url_part}")
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi._make_api_call",
+            side_effect=captured_api_call,
+        ),
+        patch(
+            "custom_components.sems.sems_api.dt_util.now",
+            return_value=datetime(2026, 9, 24, 12),
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator_data = entry.runtime_data.coordinator.data
+    assert coordinator_data is not None
+    assert coordinator_data.homekit is not None
+    homekit_sn = coordinator_data.homekit["sn"]
+    ent_reg = er.async_get(hass)
+
+    for unique_id, expected_value, unit in (
+        (f"{homekit_sn}-grid", -1351, "W"),
+        (f"{homekit_sn}-meter_power", -1154, "W"),
+        (f"{homekit_sn}-import-energy", 12.84, "kWh"),
+        (f"{homekit_sn}-export-energy-total", 38846.49, "kWh"),
+    ):
+        entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, unique_id)
+        assert entity_id is not None
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert float(state.state) == pytest.approx(expected_value)
+        assert state.attributes["unit_of_measurement"] == unit
 
 
 async def test_failed_smart_meter_telemetry_marks_only_meter_sensors_unavailable(
