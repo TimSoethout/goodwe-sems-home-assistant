@@ -154,7 +154,7 @@ class SemsSensorType:
     native_unit_of_measurement: str | None = None
     state_class: SensorStateClass | None = None
     empty_value: Any = None
-    data_type_converter: Callable = Decimal
+    data_type_converter: Callable[[Any], Any] = Decimal
     custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None
     entity_registry_enabled_default: bool = True
     disable_when_empty: bool = True
@@ -1001,14 +1001,14 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         unique_id: str,
         name: str | None,
         value_path: SemsValuePath,
-        data_type_converter: Callable,
+        data_type_converter: Callable[[Any], Any],
         device_class: SensorDeviceClass | None = None,
         native_unit_of_measurement: str | None = None,
         state_class: SensorStateClass | None = None,
-        empty_value=None,
-        custom_value_handler=None,
-        entity_registry_enabled_default=True,
-        disable_when_empty=True,
+        empty_value: Any = None,
+        custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None,
+        entity_registry_enabled_default: bool = True,
+        disable_when_empty: bool = True,
     ) -> None:
         """Initialize a SEMS sensor."""
 

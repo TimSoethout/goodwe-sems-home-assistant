@@ -446,6 +446,22 @@ def test_station_production_is_cached(requests_mock) -> None:
     assert requests_mock.call_count == 2
 
 
+def test_failed_production_refresh_keeps_last_value() -> None:
+    """An expired production result is kept during the retry delay."""
+    api = SemsApi(Mock(), MOCK_USERNAME, MOCK_PASSWORD)
+    start = datetime(2026, 1, 1)
+    end = datetime(2026, 1, 1, 23, 59, 59)
+    cache_key = f"production:{MOCK_STATION_ID_1}:{start.date()}:{end.date()}"
+    cached_data = {"currency": "EUR"}
+    now = time.monotonic()
+    api._web_cache[cache_key] = (now - 301, cached_data)
+    api._web_cache[f"failed:{cache_key}"] = (now, None)
+
+    with patch.object(api, "_make_api_call") as mock_api_call:
+        assert api._get_web_production(MOCK_STATION_ID_1, start, end) == cached_data
+    mock_api_call.assert_not_called()
+
+
 def test_failed_statistics_are_not_retried_every_refresh(requests_mock) -> None:
     """A failed statistics request waits before it is tried again."""
     requests_mock.post(STATISTICS_URL, json={"code": "E500", "msg": "timeout"})

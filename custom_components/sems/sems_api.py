@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal, NamedTuple, TypeGuard
 
 import requests
 from homeassistant import exceptions
@@ -54,6 +54,18 @@ _WEB_STATISTICS_RATE_MAP = {
     "contributionRate": "contributingRate",
     "proSelfConsumRate": "selfUseRate",
 }
+
+
+def _is_web_statistics(value: object) -> TypeGuard[dict[str, list[float]]]:
+    """Return whether a cached value contains normalized SEMS statistics."""
+    return isinstance(value, dict) and all(
+        isinstance(key, str)
+        and isinstance(values, list)
+        and all(isinstance(statistic, float) for statistic in values)
+        for key, values in value.items()
+    )
+
+
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
 # Web token plus X-Signature headers.
 _RequestTimeout = 30  # seconds
@@ -408,7 +420,7 @@ class SemsApi:
                 # Parallel requests hitting the same limit extend nothing.
                 return math.ceil(self._cooldown_until - now)
             self._cooldown_strikes += 1
-            delay = min(
+            delay: int = min(
                 _CooldownBaseSeconds * 2 ** (self._cooldown_strikes - 1),
                 _CooldownMaxSeconds,
             )
@@ -982,10 +994,17 @@ class SemsApi:
             else _WEB_HISTORIC_STATISTICS_REFRESH_SECONDS
         )
         cached = self._get_web_cache_entry(cache_key)
-        if cached and time.monotonic() - cached[0] < refresh:
-            return cached[1]
+        cached_statistics = (
+            cached[1] if cached and _is_web_statistics(cached[1]) else None
+        )
+        if (
+            cached is not None
+            and cached_statistics is not None
+            and time.monotonic() - cached[0] < refresh
+        ):
+            return cached_statistics
         if self._recently_failed(cache_key):
-            return cached[1] if cached else None
+            return cached_statistics
 
         try:
             response = self._make_api_call(
@@ -1009,7 +1028,7 @@ class SemsApi:
             response = None
         if not isinstance(response, dict):
             self._remember_failure(cache_key)
-            return cached[1] if cached else None
+            return cached_statistics
 
         parsed: dict[str, list[float]] = {}
         for item_data in response.get("dataList", []):
@@ -1246,10 +1265,15 @@ class SemsApi:
         """Get optional flat station production totals and currency."""
         cache_key = f"production:{power_station_id}:{start.date()}:{end.date()}"
         cached = self._get_web_cache_entry(cache_key)
-        if cached and time.monotonic() - cached[0] < _WEB_STATISTICS_REFRESH_SECONDS:
-            return cached[1]
+        cached_data = cached[1] if cached and isinstance(cached[1], dict) else None
+        if (
+            cached is not None
+            and cached_data is not None
+            and time.monotonic() - cached[0] < _WEB_STATISTICS_REFRESH_SECONDS
+        ):
+            return cached_data
         if self._recently_failed(cache_key):
-            return cached[1] if cached else None
+            return cached_data
 
         try:
             response = self._make_api_call(
@@ -2317,6 +2341,7 @@ class SemsApi:
         if (
             cached
             and time.monotonic() - cached[0] < _WEB_FUNCTION_MENUS_REFRESH_SECONDS
+            and isinstance(cached[1], dict)
         ):
             return cached[1]
         data = json.dumps(
@@ -2434,6 +2459,7 @@ class SemsApi:
         if (
             cached
             and time.monotonic() - cached[0] < _WEB_FUNCTION_MENUS_REFRESH_SECONDS
+            and isinstance(cached[1], dict)
         ):
             return cached[1]
 
@@ -2534,7 +2560,7 @@ class SemsApi:
         function_id: str,
         renewToken: bool = False,
         maxTokenRetries: int = 2,
-    ):
+    ) -> None:
         self.setDeviceFunctionParameters(
             plant_id,
             serial_number,
@@ -2555,7 +2581,7 @@ class SemsApi:
         function_id: str,
         renewToken: bool = False,
         maxTokenRetries: int = 2,
-    ):
+    ) -> None:
         self.setDeviceFunctionParameters(
             plant_id,
             serial_number,
@@ -2577,7 +2603,7 @@ class SemsApi:
         function_id: str,
         renewToken: bool = False,
         maxTokenRetries: int = 2,
-    ):
+    ) -> None:
         self.setDeviceFunctionParameters(
             plant_id,
             serial_number,
@@ -2599,7 +2625,7 @@ class SemsApi:
         function_id: str,
         renewToken: bool = False,
         maxTokenRetries: int = 2,
-    ):
+    ) -> None:
         self.setDeviceFunctionParameters(
             plant_id,
             serial_number,

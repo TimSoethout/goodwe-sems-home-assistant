@@ -87,7 +87,7 @@ async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: SemsConfigEntry,
     async_add_entities: AddEntitiesCallback,
-):
+) -> None:
     """Set up SEMS number entities from a config entry."""
     coordinator: SemsCoordinator = config_entry.runtime_data.coordinator
 
