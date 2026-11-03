@@ -72,6 +72,18 @@ jobs:
       continue-on-error: true
       run: bash scripts/report_quality_scale_coverage.sh
 
+    - name: Enforce HA quality-scale coverage
+      if: success()
+      run: |
+        jq -e '
+          .bronze.available == true
+          and (.bronze.total | type == "number" and . > 0)
+          and .bronze.covered == .bronze.total
+          and .silver.available == true
+          and (.silver.modules | type == "number" and . > 0)
+          and .silver.below == 0
+        ' quality-scale-coverage.json > /dev/null
+
     - name: Upload quality-scale coverage report
       if: ${{ always() && github.event_name == 'pull_request' }}
       continue-on-error: true
@@ -136,6 +148,12 @@ jobs:
       if: always()
       continue-on-error: true
       run: bash scripts/report_quality_scale_strict_typing.sh
+
+    - name: Enforce Platinum strict typing
+      if: success()
+      run: |
+        jq -e '.available == true and .passed == true' \
+          quality-scale-strict-typing.json > /dev/null
 
     - name: Upload quality-scale strict-typing report
       if: ${{ always() && github.event_name == 'pull_request' }}

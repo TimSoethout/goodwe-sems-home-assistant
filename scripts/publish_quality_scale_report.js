@@ -80,7 +80,7 @@ function buildComment(run, coverage, strictTyping) {
 
   return [
     marker,
-    "## Home Assistant quality-scale advisory checks",
+    "## Home Assistant quality-scale checks",
     "",
     "| Status | Tier | Result |",
     "| --- | --- | --- |",
@@ -89,7 +89,7 @@ function buildComment(run, coverage, strictTyping) {
     "|  | Gold | Requires human review; no automated tier verdict is claimed. |",
     `| ${platinumStatus} | Platinum | Strict typing: ${platinumResult}. |`,
     "",
-    `These checks are advisory and do not fail CI. See the [workflow run](${run.html_url}) for detailed warnings and diagnostics.`,
+    `Bronze, Silver, and Platinum thresholds are enforced by CI; Gold requires human review. See the [workflow run](${run.html_url}) for detailed results.`,
     "",
     "_AI/Copilot-generated CI summary._",
   ].join("\n");
