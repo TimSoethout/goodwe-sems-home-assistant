@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a problem with the GoodWe SEMS integration
+title: "[Bug]: "
+body:
+  - type: textarea
+    id: bug
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you were doing.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can it be reproduced?
+      description: Include the steps that reproduce the problem.
+      placeholder: |
+        1. Configure...
+        2. Open...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions and device
+      description: Include Home Assistant version, integration version, and GoodWe device type/model. Do not include station IDs or serial numbers.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: See the README debug logging instructions. Remove credentials, tokens, signatures, station IDs, serial numbers, trace IDs, precise locations, and personal names before posting.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Optional. Remove identifying information before uploading.
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+    validations:
+      required: false
