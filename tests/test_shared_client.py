@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.sems import (
     SemsDataUpdateCoordinator,
     _device_config_entry_ids,
+    _shared_clients,
 )
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN, GOODWE_SPELLING
 from custom_components.sems.sems_api import (
@@ -89,6 +90,23 @@ def test_device_config_entry_ids_supports_old_and_new_home_assistant_shapes() ->
     assert _device_config_entry_ids(
         SimpleNamespace(config_entry_id=None, config_entries={"entry-1", "entry-2"})
     ) == {"entry-1", "entry-2"}
+
+
+@pytest.mark.parametrize(
+    ("integration_data", "message"),
+    [
+        ([], "integration data"),
+        ({"clients": []}, "shared clients"),
+    ],
+)
+def test_shared_clients_rejects_malformed_hass_data(
+    hass: HomeAssistant, integration_data: Any, message: str
+) -> None:
+    """Reject malformed integration and shared-client data."""
+    hass.data[DOMAIN] = integration_data
+
+    with pytest.raises(TypeError, match=message):
+        _shared_clients(hass)
 
 
 async def test_coordinator_passes_retry_after(hass: HomeAssistant) -> None:
