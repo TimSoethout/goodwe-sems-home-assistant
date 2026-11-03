@@ -132,5 +132,3 @@ evidence and fixture-backed regression coverage where practical.
   shared-account authentication, bounded retries, rate limiting, and redacted
   logging; current requests already run in executor jobs to avoid blocking the
   event loop.
-- [ ] Make the strict mypy check a required CI check. The current code passes
-  strict typing, but the quality-scale reporting step is advisory.

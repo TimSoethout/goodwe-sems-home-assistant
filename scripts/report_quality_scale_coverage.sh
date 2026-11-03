@@ -11,7 +11,7 @@ module_count=0
 below_count=0
 
 {
-  printf '## Home Assistant quality-scale advisory checks\n\n'
+  printf '## Home Assistant quality-scale checks\n\n'
   if [[ ! -f "$report_path" ]]; then
     printf '%s\n' \
       '- **Bronze: config-flow-test-coverage:** Coverage report unavailable.' \

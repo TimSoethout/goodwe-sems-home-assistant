@@ -8,11 +8,11 @@ trap 'rm -f "$mypy_output"' EXIT
 
 if mypy custom_components/ --strict --ignore-missing-imports --python-version 3.14 >"$mypy_output" 2>&1; then
   passed=true
-  printf '## Home Assistant quality-scale advisory checks\n\n- **Platinum: strict-typing:** PASS (`mypy --strict`).\n\n' >> "$summary_file"
+  printf '## Home Assistant quality-scale checks\n\n- **Platinum: strict-typing:** PASS (`mypy --strict`).\n\n' >> "$summary_file"
 else
   {
-    printf '## Home Assistant quality-scale advisory checks\n\n'
-    printf '%s\n\n```text\n' '- **Platinum: strict-typing:** Issues found by the advisory `mypy --strict` probe.'
+    printf '## Home Assistant quality-scale checks\n\n'
+    printf '%s\n\n```text\n' '- **Platinum: strict-typing:** Issues found by `mypy --strict`.'
     sed -n '1,30p' "$mypy_output"
     printf '```\n\n'
   } >> "$summary_file"
