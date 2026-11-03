@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -766,6 +767,269 @@ async def test_web_meter_data_keeps_registered_homekit_serial(
         )
         is None
     )
+
+
+async def test_captured_semsplus_meter_data_reaches_homekit_sensors(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Normalize captured SEMS+ responses through the coordinator to sensor states."""
+    del enable_custom_integrations
+    examples = Path(__file__).parent.parent / "api_examples"
+
+    def load_example(filename: str) -> Any:
+        return json.loads((examples / filename).read_text(encoding="utf-8"))["data"]
+
+    def captured_api_call(url_part: str, *args: Any, **kwargs: Any) -> Any:
+        if "all-status" in url_part:
+            return load_example("smart_meter_all_status.json")
+        if "stations/flow" in url_part:
+            return load_example("station_flow_import.json")
+        if "telemetry" in url_part:
+            filename = (
+                "smart_meter_telemetry.json"
+                if "deviceType=SMART_METER" in url_part
+                else "telemetry.json"
+            )
+            return load_example(filename)
+        if "telecounting" in url_part:
+            filename = (
+                "smart_meter_telecounting.json"
+                if "deviceType=SMART_METER" in url_part
+                else "telecounting.json"
+            )
+            return load_example(filename)
+        if "statistics" in url_part or "production" in url_part:
+            return None
+        raise AssertionError(f"Unexpected SEMS+ endpoint: {url_part}")
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi._make_api_call",
+            side_effect=captured_api_call,
+        ),
+        patch(
+            "custom_components.sems.sems_api.dt_util.now",
+            return_value=datetime(2026, 9, 24, 12),
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator_data = entry.runtime_data.coordinator.data
+    assert coordinator_data is not None
+    assert coordinator_data.homekit is not None
+    homekit_sn = coordinator_data.homekit["sn"]
+    ent_reg = er.async_get(hass)
+
+    for unique_id, expected_value, unit in (
+        (f"{homekit_sn}-grid", -1351, "W"),
+        (f"{homekit_sn}-meter_power", -1154, "W"),
+        (f"{homekit_sn}-import-energy", 12.84, "kWh"),
+        (f"{homekit_sn}-export-energy-total", 38846.49, "kWh"),
+    ):
+        entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, unique_id)
+        assert entity_id is not None
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert float(state.state) == pytest.approx(expected_value)
+        assert state.attributes["unit_of_measurement"] == unit
+
+
+async def test_captured_semsplus_inverter_without_homekit_reaches_sensors(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Normalize captured inverter responses without creating HomeKit sensors."""
+    del enable_custom_integrations
+    examples = Path(__file__).parent.parent / "api_examples"
+
+    def load_example(filename: str) -> Any:
+        return json.loads((examples / filename).read_text(encoding="utf-8"))["data"]
+
+    def captured_api_call(url_part: str, *args: Any, **kwargs: Any) -> Any:
+        if "all-status" in url_part:
+            return load_example("all_status.json")
+        if "stations/flow" in url_part:
+            return None
+        if "telemetry" in url_part:
+            return load_example("telemetry.json")
+        if "telecounting" in url_part:
+            return load_example("telecounting.json")
+        if "statistics" in url_part or "production" in url_part:
+            return None
+        raise AssertionError(f"Unexpected SEMS+ endpoint: {url_part}")
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi._make_api_call",
+            side_effect=captured_api_call,
+        ),
+        patch(
+            "custom_components.sems.sems_api.dt_util.now",
+            return_value=datetime(2026, 1, 1, 12),
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator_data = entry.runtime_data.coordinator.data
+    assert coordinator_data is not None
+    assert coordinator_data.homekit is None
+    assert len(coordinator_data.inverters) == 1
+    inverter_sn = next(iter(coordinator_data.inverters))
+    ent_reg = er.async_get(hass)
+
+    for unique_id, expected_value, unit in (
+        (f"{inverter_sn}-power", 1064, "W"),
+        (f"{inverter_sn}-eday", 12.34, "kWh"),
+    ):
+        entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, unique_id)
+        assert entity_id is not None
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert float(state.state) == pytest.approx(expected_value)
+        assert state.attributes["unit_of_measurement"] == unit
+
+    assert (
+        ent_reg.async_get_entity_id(
+            Platform.SENSOR, DOMAIN, f"{MOCK_STATION_SERIAL}-grid"
+        )
+        is None
+    )
+
+
+async def test_captured_semsplus_hybrid_and_statistics_reach_sensors(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Normalize captured hybrid, battery, and yearly data to HA sensor states."""
+    del enable_custom_integrations
+    examples = Path(__file__).parent.parent / "api_examples"
+    requested_years: list[int] = []
+
+    def load_example(filename: str) -> Any:
+        return json.loads((examples / filename).read_text(encoding="utf-8"))["data"]
+
+    def captured_api_call(url_part: str, *args: Any, **kwargs: Any) -> Any:
+        if "all-status" in url_part:
+            return load_example("semsplus_hybrid/all_status.json")
+        if "stations/flow" in url_part:
+            return load_example("semsplus_hybrid/station_flow.json")
+        if "relatedDevices" in url_part:
+            return load_example("semsplus_hybrid/related_devices_storage_cabinet.json")
+        if "telemetry" in url_part:
+            if "deviceType=BAT_SYS" in url_part:
+                return load_example("semsplus_hybrid/battery_system_telemetry.json")
+            if "deviceType=BATTERY_RACK" in url_part:
+                return []
+            return load_example("semsplus_hybrid/inverter_telemetry.json")
+        if "telecounting" in url_part:
+            if "deviceType=BATTERY_RACK" in url_part:
+                return []
+            return load_example("semsplus_hybrid/inverter_telecounting.json")
+        if "statistics" in url_part:
+            request = json.loads(kwargs["data"])
+            if request["dimension"] == "year":
+                year = int(request["startTime"][:4])
+                requested_years.append(year)
+                if year in (2025, 2026):
+                    return load_example(f"semsplus_hybrid/statistics_year_{year}.json")
+                return None
+            if request["startTime"] == "2026-09-24 00:00:00":
+                return load_example("semsplus_hybrid/statistics_day.json")
+            return None
+        if "production" in url_part:
+            return None
+        raise AssertionError(f"Unexpected SEMS+ endpoint: {url_part}")
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi._make_api_call",
+            side_effect=captured_api_call,
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
+            return_value={},
+        ),
+        patch(
+            "custom_components.sems.sems_api.dt_util.now",
+            return_value=datetime(2026, 9, 24, 12),
+        ),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator_data = entry.runtime_data.coordinator.data
+    assert coordinator_data is not None
+    assert coordinator_data.homekit is not None
+    inverter_sn, inverter_data = next(
+        (sn, data)
+        for sn, data in coordinator_data.inverters.items()
+        if data.get("deviceType") == "INVERTER"
+    )
+    assert inverter_data["battery_count"] == 1
+    assert len(inverter_data["more_batterys"]) == 1
+    assert sorted(requested_years) == [2025, 2026]
+    assert coordinator_data.homekit["Totals_sum"] == pytest.approx(7436.1)
+
+    entity_registry = er.async_get(hass)
+    homekit_sn = coordinator_data.homekit["sn"]
+    for unique_id, expected_value, unit in (
+        (f"{inverter_sn}-power", 897, "W"),
+        (f"{inverter_sn}-eChargeDay", 20.3, "kWh"),
+        (f"{inverter_sn}-0-pbattery", 796.08, "W"),
+        (f"{inverter_sn}-0-soc", 99, "%"),
+        (f"{inverter_sn}-0-bms_temperature", 23.9, "°C"),
+        (f"{homekit_sn}-pv", 77.72, "W"),
+        (f"{homekit_sn}-grid", -1, "W"),
+        (f"{homekit_sn}-battery", -762.45, "W"),
+        (f"{homekit_sn}-load", 841.17, "W"),
+        (f"{homekit_sn}-total-load-consumption", 15252.6, "kWh"),
+        (f"{homekit_sn}-total-self-use", 8671.06, "kWh"),
+        (f"{homekit_sn}-total-battery-charge", 7587.8, "kWh"),
+    ):
+        entity_id = entity_registry.async_get_entity_id(
+            Platform.SENSOR, DOMAIN, unique_id
+        )
+        assert entity_id is not None
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert float(state.state) == pytest.approx(expected_value)
+        assert state.attributes["unit_of_measurement"] == unit
 
 
 async def test_failed_smart_meter_telemetry_marks_only_meter_sensors_unavailable(

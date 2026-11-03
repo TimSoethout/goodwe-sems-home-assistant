@@ -1196,17 +1196,22 @@ class SemsApi:
                     )
                     for dimension, start, end in statistic_ranges
                 ]
-                historic_statistics_future = executor.submit(
-                    self._get_web_statistics,
-                    power_station_id,
-                    "year",
-                    datetime(install_year, 1, 1),
-                    datetime(current_year + 1, 1, 1) - timedelta(seconds=1),
-                )
+                historic_statistics_futures = [
+                    executor.submit(
+                        self._get_web_statistics,
+                        power_station_id,
+                        "year",
+                        datetime(year, 1, 1),
+                        datetime(year + 1, 1, 1) - timedelta(seconds=1),
+                    )
+                    for year in range(install_year, current_year + 1)
+                ]
 
                 production_data = production_future.result()
                 statistic_data = [future.result() for future in statistics_futures]
-                historic_statistics = historic_statistics_future.result()
+                historic_statistics_by_year = [
+                    future.result() for future in historic_statistics_futures
+                ]
 
             if production_data and isinstance(production_data.get("currency"), str):
                 currency = production_data.get("currency")
@@ -1241,11 +1246,15 @@ class SemsApi:
                 elif start == previous_month_start:
                     last_month_pv = sum(data.get("proSystemTotalStats", []))
 
-            if historic_statistics:
+            for historic_statistics in historic_statistics_by_year:
+                if not historic_statistics:
+                    continue
                 for item, values in historic_statistics.items():
                     mapped_target = _WEB_STATISTICS_KEY_MAP.get(item)
                     if mapped_target is not None:
-                        totals[mapped_target] = sum(values)
+                        totals[mapped_target] = totals.get(mapped_target, 0) + sum(
+                            values
+                        )
             self_use = totals.get("selfUseOfPv")
             consumption = totals.get("consumptionOfLoad")
             production_total = totals.get("sum")
