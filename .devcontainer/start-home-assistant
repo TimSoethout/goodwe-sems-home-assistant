@@ -7,12 +7,45 @@ python="$core_dir/.venv/bin/python"
 pid_file="/tmp/home-assistant.pid"
 log_file="/tmp/home-assistant.log"
 
+ha_pid_is_running() {
+  local pid="$1"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  [[ "$(ps -p "$pid" -o args=)" == *"-m homeassistant -c config"* ]]
+}
+
 if [[ ! -x "$python" ]]; then
   echo "Home Assistant is not set up. Run .devcontainer/setup.sh first." >&2
   exit 1
 fi
 
-if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+if [[ "${1:-}" == "--foreground" ]]; then
+  if [[ -f "$pid_file" ]]; then
+    existing_pid="$(cat "$pid_file")"
+    if ha_pid_is_running "$existing_pid"; then
+      echo "Stopping the existing Home Assistant process"
+      kill -TERM "$existing_pid"
+      for _ in {1..30}; do
+        if ! ha_pid_is_running "$existing_pid"; then
+          break
+        fi
+        sleep 1
+      done
+      if ha_pid_is_running "$existing_pid"; then
+        echo "Home Assistant did not stop within 30 seconds" >&2
+        exit 1
+      fi
+    fi
+  fi
+
+  echo "Home Assistant is starting at http://localhost:8123"
+  echo "Task termination will stop Home Assistant"
+  printf '%s\n' "$$" >"$pid_file"
+  cd "$core_dir"
+  exec "$python" -m homeassistant -c config
+fi
+
+if [[ -f "$pid_file" ]] && ha_pid_is_running "$(cat "$pid_file")"; then
   echo "Home Assistant is already running"
 else
   (
