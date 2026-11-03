@@ -104,3 +104,33 @@ evidence and fixture-backed regression coverage where practical.
   power. Current issue-reported samples do not cover all of these responses.
   Keep chargers separate and do not merge charger power into inverter power by
   default (#182, #240).
+
+## Home Assistant quality-scale follow-up
+
+- [ ] Add a reconfigure flow for changing account identity or station settings
+  that are not covered by the update-interval options flow and password
+  reauthentication. Preserve shared-account behavior and validate credentials
+  before updating entries.
+- [ ] Add repair issues only for actionable persistent conditions not already
+  handled by Home Assistant's reauthentication and config-entry errors; include
+  translated issue text and recovery steps.
+- [ ] Complete entity and exception translations for inverter, battery, and
+  HomeKit entities, and add `icons.json` mappings where icons can be expressed
+  from entity state. Check translation-key coverage and locale drift in tests.
+- [ ] Document uninstall and troubleshooting steps, provide a supported-device
+  summary based on verified captures, and add copyable dashboard or automation
+  examples.
+- [ ] Handle in-session changes to the inverter and battery device set: add
+  newly reported devices and retire stale entities safely without treating a
+  temporary API omission as device removal. Cover both cases with sanitized
+  fixtures.
+- [ ] Define and test an explicit `PARALLEL_UPDATES` policy for entity
+  platforms sharing the account-level API client, especially for concurrent
+  control requests and rate limits.
+- [ ] Evaluate migrating synchronous `requests` calls to Home Assistant's
+  injected async web session to meet the async-dependency quality rule. Preserve
+  shared-account authentication, bounded retries, rate limiting, and redacted
+  logging; current requests already run in executor jobs to avoid blocking the
+  event loop.
+- [ ] Make the strict mypy check a required CI check. The current code passes
+  strict typing, but the quality-scale reporting step is advisory.
