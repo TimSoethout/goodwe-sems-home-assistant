@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -204,6 +206,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool
     entry.runtime_data = SemsRuntimeData(api=sems_api, coordinator=coordinator)
 
     try:
+        # Spread first refreshes over a short, deterministic startup window.
+        # Keep the delay bounded to avoid Home Assistant bootstrap timeouts.
+        digest = hashlib.sha256(str(coordinator.station_id).encode()).digest()
+        startup_delay = (int.from_bytes(digest[8:16], "big") % 12_000) / 1000.0
+        if not hass.is_running and startup_delay:
+            await asyncio.sleep(startup_delay)
         await coordinator.async_config_entry_first_refresh()
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except BaseException:
@@ -375,6 +383,13 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         """Initialize."""
         self.sems_api = sems_api
         self.station_id = entry.data[CONF_STATION_ID]
+        # Defer the one-off stagger until AFTER Home Assistant is fully running.
+        # Never slow the mandatory first refresh during bootstrap.
+        digest = hashlib.sha256(str(self.station_id).encode()).digest()
+        self._post_boot_stagger_seconds = (
+            int.from_bytes(digest[:8], "big") % 45_000
+        ) / 1000.0
+        self._post_boot_stagger_pending = True
 
         update_interval = timedelta(
             seconds=scan_interval_seconds(entry.data, entry.options)
@@ -596,6 +611,12 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
+        # Once HA is running, shift each station's next refresh by a stable
+        # offset. Subsequent coordinator refreshes inherit this shifted phase.
+        if self._post_boot_stagger_pending and self.hass.is_running:
+            self._post_boot_stagger_pending = False
+            await asyncio.sleep(self._post_boot_stagger_seconds)
+
         # Note: asyncio.TimeoutError and aiohttp.ClientError are already
         # handled by the data update coordinator.
         # async with async_timeout.timeout(10):
