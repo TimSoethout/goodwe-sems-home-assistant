@@ -90,7 +90,8 @@ These are undocumented APIs, and the inverter can take a few minutes to pick
 up a change. It takes approximately 60 seconds to start again when the
 inverter is in downtime mode. If both control APIs fail, Home Assistant
 reports the inverter name, serial number, and station in the service error.
-Re-register the integration with the GoodWe account that has remote-control
+This can happen when the integration uses a read-only Visitor account. If so,
+reconfigure it with a non-Visitor GoodWe account that has remote-control
 permission.
 
 ### GoodWe EV charger (HCA wallbox)
