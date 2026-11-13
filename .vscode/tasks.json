@@ -26,7 +26,7 @@
       "problemMatcher": []
     },
     {
-      "label": "SEMS: start Home Assistant",
+      "label": "SEMS: run Home Assistant",
       "type": "shell",
       "command": "bash .devcontainer/start-home-assistant --foreground",
       "problemMatcher": []

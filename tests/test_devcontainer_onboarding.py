@@ -12,10 +12,37 @@ from urllib.error import HTTPError
 HELPER = (
     Path(__file__).resolve().parents[1] / ".devcontainer" / "onboard-home-assistant.py"
 )
+REPO_ROOT = HELPER.parents[1]
 SPEC = importlib.util.spec_from_file_location("devcontainer_onboarding", HELPER)
 assert SPEC is not None and SPEC.loader is not None
 ONBOARDING = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ONBOARDING)
+
+
+def test_home_assistant_lifecycle_is_controlled_by_tasks() -> None:
+    devcontainer = json.loads(
+        (REPO_ROOT / ".devcontainer" / "devcontainer.json").read_text(encoding="utf-8")
+    )
+    tasks = json.loads(
+        (REPO_ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8")
+    )["tasks"]
+    startup_script = (REPO_ROOT / ".devcontainer" / "start-home-assistant").read_text(
+        encoding="utf-8"
+    )
+
+    assert "postStartCommand" not in devcontainer
+    lifecycle_tasks = {
+        task["label"]: task["command"]
+        for task in tasks
+        if "start-home-assistant" in task["command"]
+        or "terminate-home-assistant" in task["command"]
+    }
+    assert lifecycle_tasks == {
+        "SEMS: run Home Assistant": "bash .devcontainer/start-home-assistant --foreground",
+    }
+    assert '"$python" "$repo_root/.devcontainer/onboard-home-assistant.py"' in (
+        startup_script
+    )
 
 
 def test_wait_for_home_assistant_accepts_unauthorized_api_response() -> None:

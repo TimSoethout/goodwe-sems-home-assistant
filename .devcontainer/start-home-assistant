@@ -5,13 +5,17 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 core_dir="${HA_CORE_DIR:-"$repo_root/.ha-core"}"
 python="$core_dir/.venv/bin/python"
 pid_file="/tmp/home-assistant.pid"
-log_file="/tmp/home-assistant.log"
+ha_pid=""
+onboarding_pid=""
 
 ha_pid_is_running() {
   local pid="$1"
+  local -a process_args
   [[ "$pid" =~ ^[0-9]+$ ]] || return 1
   kill -0 "$pid" 2>/dev/null || return 1
-  [[ "$(ps -p "$pid" -o args=)" == *"-m homeassistant -c config"* ]]
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  mapfile -d '' -t process_args <"/proc/$pid/cmdline"
+  [[ "${process_args[*]}" == *"-m homeassistant -c config"* ]]
 }
 
 if [[ ! -x "$python" ]]; then
@@ -19,45 +23,52 @@ if [[ ! -x "$python" ]]; then
   exit 1
 fi
 
-if [[ "${1:-}" == "--foreground" ]]; then
-  if [[ -f "$pid_file" ]]; then
-    existing_pid="$(cat "$pid_file")"
-    if ha_pid_is_running "$existing_pid"; then
-      echo "Stopping the existing Home Assistant process"
-      kill -TERM "$existing_pid"
-      for _ in {1..30}; do
-        if ! ha_pid_is_running "$existing_pid"; then
-          break
-        fi
-        sleep 1
-      done
-      if ha_pid_is_running "$existing_pid"; then
-        echo "Home Assistant did not stop within 30 seconds" >&2
-        exit 1
-      fi
-    fi
+if [[ "${1:-}" != "--foreground" ]]; then
+  echo "Run Home Assistant with the VS Code task: SEMS: run Home Assistant" >&2
+  exit 2
+fi
+
+if [[ -f "$pid_file" ]]; then
+  existing_pid="$(cat "$pid_file")"
+  if ha_pid_is_running "$existing_pid"; then
+    echo "Home Assistant is already running (PID $existing_pid)." >&2
+    echo "Terminate the existing run task before starting another." >&2
+    exit 1
   fi
-
-  echo "Home Assistant is starting at http://localhost:8123"
-  echo "Task termination will stop Home Assistant"
-  printf '%s\n' "$$" >"$pid_file"
-  cd "$core_dir"
-  exec "$python" -m homeassistant -c config
+  rm -f "$pid_file"
 fi
 
-if [[ -f "$pid_file" ]] && ha_pid_is_running "$(cat "$pid_file")"; then
-  echo "Home Assistant is already running"
-else
-  (
-    cd "$core_dir"
-    nohup "$python" -m homeassistant -c config >"$log_file" 2>&1 &
-    echo $! >"$pid_file"
-  )
+cleanup() {
+  local child_pid
+  trap - EXIT INT TERM
+  for child_pid in "$onboarding_pid" "$ha_pid"; do
+    if [[ "$child_pid" =~ ^[0-9]+$ ]] && kill -0 "$child_pid" 2>/dev/null; then
+      kill -TERM "$child_pid" 2>/dev/null || true
+    fi
+  done
+  for child_pid in "$onboarding_pid" "$ha_pid"; do
+    if [[ "$child_pid" =~ ^[0-9]+$ ]]; then
+      wait "$child_pid" 2>/dev/null || true
+    fi
+  done
+  rm -f "$pid_file"
+}
 
-  echo "Home Assistant is starting at http://localhost:8123"
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+echo "Home Assistant is starting at http://localhost:8123"
+cd "$core_dir"
+"$python" -m homeassistant -c config &
+ha_pid="$!"
+printf '%s\n' "$ha_pid" >"$pid_file"
+
+"$python" "$repo_root/.devcontainer/onboard-home-assistant.py" "$core_dir" &
+onboarding_pid="$!"
+if ! wait "$onboarding_pid"; then
+  echo "Home Assistant onboarding failed; complete onboarding in the UI." >&2
 fi
+onboarding_pid=""
 
-echo "Logs: $log_file"
-
-uv run --no-project --python "$python" \
-  "$repo_root/.devcontainer/onboard-home-assistant.py" "$core_dir"
+wait "$ha_pid"
