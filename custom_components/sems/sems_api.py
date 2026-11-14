@@ -2837,6 +2837,15 @@ class SemsApi:
                         address = str(address)
                         function_id = str(function_id)
                         value = int(control_attr["value"])
+                        _LOGGER.debug(
+                            "SEMS+ Web inverter command for %s: %s -> %s "
+                            "(address %s, value %s)",
+                            device_name,
+                            log_name,
+                            log_action,
+                            address,
+                            value,
+                        )
                         web_control_succeeded = self.setDeviceFunctionParameters(
                             plant_id,
                             inverterSn,

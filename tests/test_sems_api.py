@@ -2841,7 +2841,7 @@ class TestSemsApi:
         [(1, "restart", 1), (2, "stop", 2), (4, "start_up", 4)],
     )
     def test_change_status_uses_captured_status_setting_function(
-        self, status, action, value
+        self, status, action, value, caplog
     ):
         """Test the shared status_setting function uses its captured action value."""
         capture = json.loads((API_EXAMPLES_DIR / "device_start_stop.json").read_text())[
@@ -2851,17 +2851,25 @@ class TestSemsApi:
         function_response = capture["latest_inverter_function_capture"]["response"][
             "data"
         ]
-        with patch.object(
-            self.api,
-            "_make_api_call",
-            side_effect=[device_tabs, function_response, {}],
-        ) as mock_api_call:
+        with (
+            caplog.at_level("DEBUG", logger="custom_components.sems.sems_api"),
+            patch.object(
+                self.api,
+                "_make_api_call",
+                side_effect=[device_tabs, function_response, {}],
+            ) as mock_api_call,
+        ):
             self.api.change_status(
                 "inverter123",
                 status,
                 plant_id="station123",
                 device_name="Inverter",
             )
+
+        assert (
+            f"SEMS+ Web inverter command for Inverter: status_setting -> {action} "
+            f"(address 80017, value {value})"
+        ) in caplog.text
 
         assert json.loads(mock_api_call.call_args_list[2].kwargs["data"]) == {
             "sn": "inverter123",
