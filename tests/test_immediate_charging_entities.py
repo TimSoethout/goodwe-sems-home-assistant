@@ -207,6 +207,33 @@ async def test_control_entities_execute_and_reject_missing_coordinator_data(
             coordinator.data = coordinator_data
 
 
+@pytest.mark.parametrize(
+    ("status", "expected_command"),
+    [(0, 1), (3, 1), (1, 4)],
+)
+async def test_inverter_switch_turn_on_command_depends_on_status(
+    hass: HomeAssistant, status: int, expected_command: int
+) -> None:
+    """Switching on from Standby ("Waiting") restarts; otherwise it starts up."""
+    entry = await _setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    inverter_switch = next(
+        entity
+        for platform in async_get_platforms(hass, DOMAIN)
+        for entity in platform.entities.values()
+        if entity.unique_id == f"{INVERTER_SERIAL}-switch"
+    )
+    coordinator.data.inverters[INVERTER_SERIAL]["status"] = status
+
+    with (
+        patch.object(coordinator, "async_control", new_callable=AsyncMock) as control,
+        patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock),
+    ):
+        await inverter_switch.async_turn_on()
+
+    assert control.await_args.args[2] == expected_command
+
+
 async def test_battery_control_services_send_expected_api_payloads(
     hass: HomeAssistant,
 ) -> None:
