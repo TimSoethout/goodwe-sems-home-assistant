@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest an improvement to the GoodWe SEMS integration
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem should this solve?
+      description: Describe the use case or limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+      description: Describe the behavior you expect.
+    validations:
+      required: true
+  - type: textarea
+    id: device
+    attributes:
+      label: GoodWe device and SEMS version
+      description: Include device type/model and relevant SEMS or SEMS+ details.
+    validations:
+      required: false
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Add sanitized logs, screenshots, or API evidence if useful. Remove credentials and identifying data.
+    validations:
+      required: false
