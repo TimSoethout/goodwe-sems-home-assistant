@@ -55,10 +55,15 @@ jobs:
       with:
         version: "0.13.1"
         enable-cache: true
-        cache-dependency-glob: requirements.test.txt
+        cache-dependency-glob: |
+          requirements*.txt
+          hacs.json
 
     - name: Install dependencies
-      run: uv pip install --system -r requirements.test.txt
+      run: |
+        version="$(python3 scripts/homeassistant_version.py)"
+        uv pip install --system -r requirements.test.txt \
+          "homeassistant==$version" "pytest-homeassistant==$version"
 
     - name: Run tests with coverage
       run: |
@@ -130,10 +135,14 @@ jobs:
       with:
         version: "0.13.1"
         enable-cache: true
-        cache-dependency-glob: requirements.lint.txt
+        cache-dependency-glob: |
+          requirements*.txt
+          hacs.json
 
     - name: Install linting dependencies
-      run: uv pip install --system -r requirements.lint.txt
+      run: |
+        version="$(python3 scripts/homeassistant_version.py)"
+        uv pip install --system -r requirements.lint.txt "homeassistant==$version"
 
     - name: Run ruff (lint)
       run: ruff check custom_components/

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.sems import SemsData
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN

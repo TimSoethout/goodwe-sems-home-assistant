@@ -19,7 +19,7 @@
   "forwardPorts": [
     8123
   ],
-  "postCreateCommand": "uv venv \"$UV_PROJECT_ENVIRONMENT\" && uv pip install --python \"$UV_PROJECT_ENVIRONMENT/bin/python\" -r requirements.test.txt mypy ruff && bash .devcontainer/setup.sh",
+  "postCreateCommand": "uv venv \"$UV_PROJECT_ENVIRONMENT\" && version=$(python3 scripts/homeassistant_version.py) && uv pip install --python \"$UV_PROJECT_ENVIRONMENT/bin/python\" -r requirements.test.txt \"homeassistant==$version\" \"pytest-homeassistant==$version\" mypy ruff && bash .devcontainer/setup.sh",
   "customizations": {
     "vscode": {
       "extensions": [

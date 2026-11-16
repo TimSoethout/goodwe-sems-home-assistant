@@ -28,7 +28,9 @@ python -m pytest tests/ \
 If you are running these tests inside the Home Assistant core repository workspace (where `/workspaces/home-assistant/pyproject.toml` exists), pytest may try to load Home Assistant's own `tests/conftest.py` and fail. In that case, run with `--confcutdir`:
 
 ```bash
-uv pip install -r config/goodwe-sems-home-assistant/requirements.test.txt
+ha_version="$(python3 config/goodwe-sems-home-assistant/scripts/homeassistant_version.py)"
+uv pip install -r config/goodwe-sems-home-assistant/requirements.test.txt \
+  "homeassistant==$ha_version" "pytest-homeassistant==$ha_version"
 python -m pytest config/goodwe-sems-home-assistant/tests/ -v --confcutdir=config/goodwe-sems-home-assistant # run from /workspaces/home-assistant in HA dev-container
 ```
 

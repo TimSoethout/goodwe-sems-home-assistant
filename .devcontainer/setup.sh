@@ -3,9 +3,9 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 core_dir="${HA_CORE_DIR:-"$repo_root/.ha-core"}"
-core_ref="$(sed -n 's/^homeassistant==\([^[:space:]#]*\).*$/\1/p' "$repo_root/requirements.test.txt")"
+core_ref="$(python3 "$repo_root/scripts/homeassistant_version.py")"
 if [[ -z "$core_ref" ]]; then
-  echo "No exact homeassistant version found in requirements.test.txt" >&2
+  echo "No Home Assistant version found in hacs.json" >&2
   exit 1
 fi
 ha_python="$core_dir/.venv/bin/python"
