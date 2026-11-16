@@ -6,7 +6,7 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-import voluptuous as vol
+import probatio
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
@@ -27,19 +27,19 @@ from .sems_api import SemsApi, SemsRateLimitedError
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL_VALIDATOR = vol.All(
-    vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
+SCAN_INTERVAL_VALIDATOR = probatio.All(
+    probatio.Coerce(int), probatio.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
 )
-STEP_USER_DATA_SCHEMA = vol.Schema(
+STEP_USER_DATA_SCHEMA = probatio.Schema(
     {
-        vol.Required(CONF_USERNAME): str,
-        vol.Required(CONF_PASSWORD): str,
-        vol.Optional(
+        probatio.Required(CONF_USERNAME): str,
+        probatio.Required(CONF_PASSWORD): str,
+        probatio.Optional(
             CONF_SCAN_INTERVAL, description={"suggested_value": DEFAULT_SCAN_INTERVAL}
         ): SCAN_INTERVAL_VALIDATOR,
     }
 )
-STEP_REAUTH_DATA_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
+STEP_REAUTH_DATA_SCHEMA = probatio.Schema({probatio.Required(CONF_PASSWORD): str})
 
 
 @callback
@@ -272,9 +272,9 @@ class SemsOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
+            data_schema=probatio.Schema(
                 {
-                    vol.Required(
+                    probatio.Required(
                         CONF_SCAN_INTERVAL,
                         default=scan_interval_seconds(entry.data, entry.options),
                     ): SCAN_INTERVAL_VALIDATOR,
