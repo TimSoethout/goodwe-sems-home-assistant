@@ -2765,6 +2765,7 @@ class TestSemsApi:
         [
             (4, "start_up", "40330", "1991318013509906434"),
             (2, "shutdown", "40331", "1991318013509906435"),
+            (1, "restart", "40332", "1991318013514100737"),
         ],
     )
     def test_change_status_uses_discovered_web_control(
@@ -2837,10 +2838,10 @@ class TestSemsApi:
 
     @pytest.mark.parametrize(
         ("status", "action", "value"),
-        [(2, "stop", 2), (4, "start_up", 4)],
+        [(1, "restart", 1), (2, "stop", 2), (4, "start_up", 4)],
     )
     def test_change_status_uses_captured_status_setting_function(
-        self, status, action, value
+        self, status, action, value, caplog
     ):
         """Test the shared status_setting function uses its captured action value."""
         capture = json.loads((API_EXAMPLES_DIR / "device_start_stop.json").read_text())[
@@ -2850,17 +2851,25 @@ class TestSemsApi:
         function_response = capture["latest_inverter_function_capture"]["response"][
             "data"
         ]
-        with patch.object(
-            self.api,
-            "_make_api_call",
-            side_effect=[device_tabs, function_response, {}],
-        ) as mock_api_call:
+        with (
+            caplog.at_level("DEBUG", logger="custom_components.sems.sems_api"),
+            patch.object(
+                self.api,
+                "_make_api_call",
+                side_effect=[device_tabs, function_response, {}],
+            ) as mock_api_call,
+        ):
             self.api.change_status(
                 "inverter123",
                 status,
                 plant_id="station123",
                 device_name="Inverter",
             )
+
+        assert (
+            f"SEMS+ Web inverter command for Inverter: status_setting -> {action} "
+            f"(address 80017, value {value})"
+        ) in caplog.text
 
         assert json.loads(mock_api_call.call_args_list[2].kwargs["data"]) == {
             "sn": "inverter123",
@@ -3034,13 +3043,45 @@ class TestSemsApi:
     ):
         self.api.change_status(
             "inverter123",
-            1,
+            3,
             plant_id="station123",
             device_name="Inverter",
         )
 
         mock_functions.assert_not_called()
         mock_control_call.assert_called_once()
+
+    @patch.object(SemsApi, "_make_control_api_call", return_value=True)
+    @patch.object(SemsApi, "setDeviceFunctionParameters", return_value=True)
+    @patch.object(
+        SemsApi,
+        "getInverterControlFunctions",
+        return_value={
+            "functions": [
+                {
+                    "translateKey": "start_up",
+                    "address": "40330",
+                    "id": "function123",
+                    "controlAttr": '[{"transKey":"start_up","value":"0"}]',
+                }
+            ]
+        },
+    )
+    def test_change_status_restart_falls_back_to_discovered_start_up(
+        self, mock_functions, mock_set_parameters, mock_control_call
+    ):
+        """Restart without a discovered restart action uses Start up, not legacy 1."""
+        self.api.change_status(
+            "inverter123",
+            1,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        assert mock_functions.call_count == 2
+        mock_set_parameters.assert_called_once()
+        assert mock_set_parameters.call_args.args[3] == {"40330": 0}
+        mock_control_call.assert_not_called()
 
     @patch.object(SemsApi, "_make_control_api_call", return_value=True)
     @patch.object(SemsApi, "setDeviceFunctionParameters")

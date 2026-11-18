@@ -2752,7 +2752,11 @@ class SemsApi:
         """Change inverter status through SEMS+ Web, falling back to legacy API."""
         if plant_id is not None and device_name is not None:
             web_status = str(status)
-            function_name = {"2": "shutdown", "4": "start_up"}.get(web_status)
+            function_name = {
+                "1": "restart",
+                "2": "shutdown",
+                "4": "start_up",
+            }.get(web_status)
             if function_name is not None:
                 try:
                     function_menus = self.getInverterControlFunctions(
@@ -2833,6 +2837,15 @@ class SemsApi:
                         address = str(address)
                         function_id = str(function_id)
                         value = int(control_attr["value"])
+                        _LOGGER.debug(
+                            "SEMS+ Web inverter command for %s: %s -> %s "
+                            "(address %s, value %s)",
+                            device_name,
+                            log_name,
+                            log_action,
+                            address,
+                            value,
+                        )
                         web_control_succeeded = self.setDeviceFunctionParameters(
                             plant_id,
                             inverterSn,
@@ -2850,6 +2863,20 @@ class SemsApi:
                         web_control_succeeded = False
                     if web_control_succeeded:
                         return
+                if web_status == "1":
+                    # The legacy API has no known restart command; Start up is
+                    # the closest equivalent when no restart was discovered.
+                    _LOGGER.warning(
+                        "SEMS+ Web restart command unavailable; trying Start up"
+                    )
+                    return self.change_status(
+                        inverterSn,
+                        4,
+                        plant_id,
+                        device_name,
+                        renewToken=renewToken,
+                        maxTokenRetries=maxTokenRetries,
+                    )
                 _LOGGER.warning(
                     "SEMS+ Web inverter status command failed; trying legacy API"
                 )
@@ -2868,7 +2895,9 @@ class SemsApi:
         )
 
         if not success:
-            action = {"2": "stop", "4": "start"}.get(str(status), str(status))
+            action = {"1": "restart", "2": "stop", "4": "start"}.get(
+                str(status), str(status)
+            )
             device = device_name or inverterSn
             station = f" at station {plant_id}" if plant_id else ""
             message = (
