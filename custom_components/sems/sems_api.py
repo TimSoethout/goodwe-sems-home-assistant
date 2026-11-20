@@ -149,6 +149,14 @@ _WEB_TELEMETRY_ENDPOINT = ApiEndpoint(
 _WEB_TELECOUNTING_ENDPOINT = ApiEndpoint(
     "/sems-plant/api/equipments/{serial_number}/telecounting", "web"
 )
+_WEB_TELECOUNTING_REAL_GROUP = "telecounting_real"
+_WEB_TELECOUNTING_FAST_GROUPS = ("telecounting_today", "telecounting_lifetime")
+_WEB_TELECOUNTING_SLOW_GROUPS = (
+    "telecounting_week",
+    "telecounting_month",
+    "telecounting_year",
+)
+_WEB_TELECOUNTING_SLOW_GROUPS_TTL_SECONDS = 600
 _WEB_STATION_FLOW_ENDPOINT = ApiEndpoint("/sems-plant/api/stations/flow", "web")
 _WEB_STATION_LIST_ENDPOINT = ApiEndpoint("/sems-plant/api/portal/stations/page", "web")
 _WEB_STATION_STATISTICS_ENDPOINT = ApiEndpoint(
@@ -1641,16 +1649,26 @@ class SemsApi:
             (_WEB_TELECOUNTING_ENDPOINT, "telecounting"),
         ):
             try:
-                result = self._make_api_call(
-                    f"{endpoint.url_part.format(serial_number=serial_number)}"
-                    f"?deviceType=EV_CHARGER&pwId={powerStationId}",
-                    method="GET",
-                    renewToken=renewToken,
-                    maxTokenRetries=maxTokenRetries,
-                    operation_name=f"getWebEvCharger {name} API call",
-                    is_web=True,
-                    token_type=endpoint.token_type,
-                )
+                if endpoint is _WEB_TELECOUNTING_ENDPOINT:
+                    result: Any = self._fetch_web_telecounting_groups(
+                        powerStationId,
+                        serial_number,
+                        "EV_CHARGER",
+                        renewToken,
+                        maxTokenRetries,
+                        f"getWebEvCharger {name} API call",
+                    )
+                else:
+                    result = self._make_api_call(
+                        f"{endpoint.url_part.format(serial_number=serial_number)}"
+                        f"?deviceType=EV_CHARGER&pwId={powerStationId}",
+                        method="GET",
+                        renewToken=renewToken,
+                        maxTokenRetries=maxTokenRetries,
+                        operation_name=f"getWebEvCharger {name} API call",
+                        is_web=True,
+                        token_type=endpoint.token_type,
+                    )
             except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
                 _LOGGER.debug("SEMS EV charger %s unavailable: %s", name, err)
                 unavailable_sources.add(name)
@@ -2077,6 +2095,81 @@ class SemsApi:
                     telemetry[target] = value * multiplier
         return telemetry
 
+    def _fetch_web_telecounting_groups(
+        self,
+        powerStationId: str,
+        serialNumber: str,
+        device_type: str,
+        renewToken: bool,
+        maxTokenRetries: int,
+        operation_name: str,
+    ) -> list[dict[str, Any]] | None:
+        """Fetch SEMS+ telecounting factor groups.
+
+        Since 2026-11-19 SEMS+ rejects telecounting requests without ``groups``
+        parameters (A0400, #294), and also rejects requesting every group at
+        once. Each request therefore asks for ``telecounting_real`` plus one
+        period group. Today and lifetime are polled every cycle; the slower
+        week/month/year groups are refreshed at most every few minutes.
+        """
+        base_url = (
+            f"{_WEB_TELECOUNTING_ENDPOINT.url_part.format(serial_number=serialNumber)}"
+            f"?deviceType={device_type}&pwId={powerStationId}"
+        )
+        cache_key = f"telecounting_slow:{powerStationId}:{serialNumber}:{device_type}"
+        cached = self._get_web_cache_entry(cache_key)
+        now = time.monotonic()
+        refresh_slow = (
+            cached is None
+            or now - cached[0] >= _WEB_TELECOUNTING_SLOW_GROUPS_TTL_SECONDS
+        )
+        groups = list(_WEB_TELECOUNTING_FAST_GROUPS)
+        if refresh_slow:
+            groups.extend(_WEB_TELECOUNTING_SLOW_GROUPS)
+
+        merged: list[dict[str, Any]] = []
+        slow_groups: list[dict[str, Any]] = []
+        last_error: Exception | None = None
+        succeeded = 0
+        for group in groups:
+            try:
+                result = self._make_api_call(
+                    f"{base_url}&groups={_WEB_TELECOUNTING_REAL_GROUP}&groups={group}",
+                    method="GET",
+                    renewToken=renewToken,
+                    maxTokenRetries=maxTokenRetries,
+                    operation_name=operation_name,
+                    is_web=True,
+                    token_type=_WEB_TELECOUNTING_ENDPOINT.token_type,
+                )
+            except (OutOfRetries, SemsRateLimitedError) as err:
+                last_error = err
+                continue
+            if result is None:
+                continue
+            succeeded += 1
+            if isinstance(result, list):
+                group_items = [item for item in result if isinstance(item, dict)]
+                merged.extend(group_items)
+                if group in _WEB_TELECOUNTING_SLOW_GROUPS:
+                    slow_groups.extend(
+                        item
+                        for item in group_items
+                        if item.get("code") != _WEB_TELECOUNTING_REAL_GROUP
+                    )
+
+        if succeeded == 0:
+            if last_error is not None:
+                raise last_error
+            return None
+
+        if refresh_slow and slow_groups:
+            self._set_web_cache_entry(cache_key, (now, slow_groups))
+        elif cached is not None and isinstance(cached[1], list):
+            # Cached groups go first so freshly fetched factors take precedence.
+            merged = [*cached[1], *merged]
+        return merged
+
     def getWebInverterTelecounting(
         self,
         powerStationId: str,
@@ -2086,15 +2179,13 @@ class SemsApi:
         device_type: str = "INVERTER",
     ) -> dict[str, Any]:
         """Get normalized inverter energy counters from SEMS+ Web."""
-        result = self._make_api_call(
-            f"{_WEB_TELECOUNTING_ENDPOINT.url_part.format(serial_number=serialNumber)}"
-            f"?deviceType={device_type}&pwId={powerStationId}",
-            method="GET",
-            renewToken=renewToken,
-            maxTokenRetries=maxTokenRetries,
-            operation_name="getWebInverterTelecounting API call",
-            is_web=True,
-            token_type=_WEB_TELECOUNTING_ENDPOINT.token_type,
+        result = self._fetch_web_telecounting_groups(
+            powerStationId,
+            serialNumber,
+            device_type,
+            renewToken,
+            maxTokenRetries,
+            "getWebInverterTelecounting API call",
         )
         if result is None:
             raise OutOfRetries("SEMS+ counter request failed")
