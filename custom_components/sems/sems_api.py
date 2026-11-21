@@ -2132,6 +2132,9 @@ class SemsApi:
             "PHASE-B:Vac": "vac2",
             "PHASE-C:Vac": "vac3",
             "Iac": "iac1",
+            "PHASE-A:Iac": "iac1",
+            "PHASE-B:Iac": "iac2",
+            "PHASE-C:Iac": "iac3",
             "Fac": "fac1",
             "gridPF": "power_factor",
         }
