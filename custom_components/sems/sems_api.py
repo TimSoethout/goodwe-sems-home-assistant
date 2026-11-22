@@ -157,6 +157,16 @@ _WEB_TELECOUNTING_SLOW_GROUPS = (
     "telecounting_year",
 )
 _WEB_TELECOUNTING_SLOW_GROUPS_TTL_SECONDS = 600
+
+
+def _in_midnight_rollover(now: datetime) -> bool:
+    """Return True while SEMS may still report the previous day's counters.
+
+    23:58-00:20 is the window users in #94 have relied on for years.
+    """
+    return (now.hour == 23 and now.minute >= 58) or (now.hour == 0 and now.minute < 20)
+
+
 _WEB_STATION_FLOW_ENDPOINT = ApiEndpoint("/sems-plant/api/stations/flow", "web")
 _WEB_STATION_LIST_ENDPOINT = ApiEndpoint("/sems-plant/api/portal/stations/page", "web")
 _WEB_STATION_STATISTICS_ENDPOINT = ApiEndpoint(
@@ -2111,6 +2121,12 @@ class SemsApi:
         once. Each request therefore asks for ``telecounting_real`` plus one
         period group. Today and lifetime are polled every cycle; the slower
         week/month/year groups are refreshed at most every few minutes.
+
+        Cached slow groups are only reused on the local day they were fetched,
+        and never cached during the midnight rollover window: SEMS can report
+        the previous period's totals for several minutes after midnight (#94),
+        and publishing one of those in the new period would make the
+        decreasing-counter guard reject the correct, smaller values after it.
         """
         base_url = (
             f"{_WEB_TELECOUNTING_ENDPOINT.url_part.format(serial_number=serialNumber)}"
@@ -2119,8 +2135,19 @@ class SemsApi:
         cache_key = f"telecounting_slow:{powerStationId}:{serialNumber}:{device_type}"
         cached = self._get_web_cache_entry(cache_key)
         now = time.monotonic()
+        local_now = dt_util.now()
+        today = local_now.date().isoformat()
+        cached_groups: list[dict[str, Any]] | None = None
+        if (
+            cached is not None
+            and isinstance(cached[1], dict)
+            and cached[1].get("date") == today
+            and isinstance(cached[1].get("groups"), list)
+        ):
+            cached_groups = cached[1]["groups"]
         refresh_slow = (
-            cached is None
+            cached_groups is None
+            or cached is None
             or now - cached[0] >= _WEB_TELECOUNTING_SLOW_GROUPS_TTL_SECONDS
         )
         groups = list(_WEB_TELECOUNTING_FAST_GROUPS)
@@ -2164,10 +2191,13 @@ class SemsApi:
             return None
 
         if refresh_slow and slow_groups:
-            self._set_web_cache_entry(cache_key, (now, slow_groups))
-        elif cached is not None and isinstance(cached[1], list):
+            if not _in_midnight_rollover(local_now):
+                self._set_web_cache_entry(
+                    cache_key, (now, {"date": today, "groups": slow_groups})
+                )
+        elif cached_groups is not None:
             # Cached groups go first so freshly fetched factors take precedence.
-            merged = [*cached[1], *merged]
+            merged = [*cached_groups, *merged]
         return merged
 
     def getWebInverterTelecounting(
@@ -2218,7 +2248,7 @@ class SemsApi:
         # several minutes after the reset (#94). Don't publish or cache them
         # before the portal has settled.
         # 23:58-00:20 is the window users in #94 have relied on for years.
-        if (now.hour == 23 and now.minute >= 58) or (now.hour == 0 and now.minute < 20):
+        if _in_midnight_rollover(now):
             _LOGGER.debug(
                 "Keeping SEMS+ counters for %s during the midnight rollover",
                 serialNumber,

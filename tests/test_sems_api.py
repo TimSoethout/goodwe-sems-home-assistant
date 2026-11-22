@@ -2134,6 +2134,61 @@ class TestSemsApi:
         self.api.getWebInverterTelecounting("station", "SN1")
         assert mock_api_call.call_count == 5
 
+    @patch("custom_components.sems.sems_api.time.monotonic")
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_slow_groups_not_cached_at_rollover(
+        self, mock_api_call, mock_now, mock_monotonic
+    ):
+        """Test a stale weekly total from the rollover window is not reused.
+
+        SEMS can keep reporting last week's total for minutes after midnight
+        (#94). If that value were cached and published after the hold window,
+        the decreasing-counter guard would reject the correct values for the
+        rest of the week.
+        """
+        week = {"value": "60"}
+
+        def fake_api_call(url_part, *args, **kwargs):
+            group = url_part.split("&groups=")[-1]
+            code, value = {
+                "telecounting_today": ("proPvStatsToday", "1"),
+                "telecounting_lifetime": ("proPvStatsTotal", "1000"),
+                "telecounting_week": ("proPvStatsWeek", week["value"]),
+                "telecounting_month": ("proPvStatsMonth", "200"),
+                "telecounting_year": ("proPvStatsYear", "900"),
+            }[group]
+            return [{"code": group, "factors": [{"code": code, "data": value}]}]
+
+        mock_api_call.side_effect = fake_api_call
+
+        # Sunday afternoon: weekly total cached.
+        mock_now.return_value = datetime(2026, 11, 22, 15)
+        mock_monotonic.return_value = 0.0
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 60
+
+        # Monday 00:12, inside the hold window: SEMS still reports last week.
+        mock_now.return_value = datetime(2026, 11, 23, 0, 12)
+        mock_monotonic.return_value = 33_120.0
+        week["value"] = "62"
+        self.api.getWebInverterTelecounting("station", "SN1")
+
+        # Monday 00:21, within the slow-group TTL of the 00:12 poll: the stale
+        # weekly total must be fetched again, not served from the cache.
+        mock_now.return_value = datetime(2026, 11, 23, 0, 21)
+        mock_monotonic.return_value = 33_660.0
+        week["value"] = "0.5"
+        mock_api_call.reset_mock()
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 0.5
+        assert mock_api_call.call_count == 5
+
+        # Later polls on the same day reuse the fresh cache.
+        mock_now.return_value = datetime(2026, 11, 23, 0, 25)
+        mock_monotonic.return_value = 33_900.0
+        mock_api_call.reset_mock()
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 0.5
+        assert mock_api_call.call_count == 2
+
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telecounting_partial_failure(self, mock_api_call):
         """Test one rejected group does not drop the other counters."""
