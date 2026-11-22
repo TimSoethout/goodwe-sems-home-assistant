@@ -4,6 +4,7 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
 from threading import Event
 from unittest.mock import Mock, call, patch
@@ -2255,6 +2256,111 @@ class TestSemsApi:
         """Test counters are reported unavailable when every group fails."""
         with pytest.raises(OutOfRetries):
             self.api.getWebInverterTelecounting("station", "SN1")
+
+    def _poll_smart_meter(
+        self,
+        mock_api_call: Mock,
+        mock_now: Mock,
+        now: datetime,
+        buy: float,
+        sell: float,
+        total_buy: float | None = None,
+    ) -> dict:
+        """Poll smart-meter counters with the given daily import/export."""
+        mock_now.return_value = now
+        factors = [
+            {"code": "proPurchaseStatsToday", "data": str(buy)},
+            {"code": "proGridStatsToday", "data": str(sell)},
+        ]
+        if total_buy is not None:
+            factors.append({"code": "proPurchaseStatsTotal", "data": str(total_buy)})
+        mock_api_call.return_value = [{"code": "telecounting", "factors": factors}]
+        return self.api.getWebInverterTelecounting(
+            "station", "METER1", device_type="SMART_METER"
+        )
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_counters_hold_single_poll_zero(self, mock_api_call, mock_now):
+        """Test a one-poll zero does not reset smart-meter import/export.
+
+        HA treats the zero as a meter reset of a total_increasing sensor and
+        books the whole day's import/export again.
+        """
+        poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
+        counters = poll(datetime(2026, 11, 22, 12), 3.84, 1.5, total_buy=800)
+        assert counters["proPurchaseStatsToday"] == 3.84
+
+        counters = poll(datetime(2026, 11, 22, 12, 2), 0, 0, total_buy=0)
+        assert counters["proPurchaseStatsToday"] == 3.84
+        assert counters["proGridStatsToday"] == 1.5
+        assert counters["proPurchaseStatsTotal"] == 800
+
+        counters = poll(datetime(2026, 11, 22, 12, 3), 4.05, 1.6, total_buy=800.2)
+        assert counters["proPurchaseStatsToday"] == 4.05
+        assert counters["proGridStatsToday"] == 1.6
+
+        # A later single dip is held again: the drop count was reset.
+        counters = poll(datetime(2026, 11, 22, 12, 5), 0, 0)
+        assert counters["proPurchaseStatsToday"] == 4.05
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_counters_accept_persistent_drop(self, mock_api_call, mock_now):
+        """Test a drop seen on consecutive polls is eventually accepted."""
+        poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
+        poll(datetime(2026, 11, 22, 12), 5.0, 2.0)
+        assert (
+            poll(datetime(2026, 11, 22, 12, 1), 1.0, 2.0)["proPurchaseStatsToday"]
+            == 5.0
+        )
+        assert (
+            poll(datetime(2026, 11, 22, 12, 2), 1.0, 2.0)["proPurchaseStatsToday"]
+            == 5.0
+        )
+        assert (
+            poll(datetime(2026, 11, 22, 12, 3), 1.0, 2.0)["proPurchaseStatsToday"]
+            == 1.0
+        )
+        assert (
+            poll(datetime(2026, 11, 22, 12, 4), 1.1, 2.0)["proPurchaseStatsToday"]
+            == 1.1
+        )
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_counters_reset_at_midnight(self, mock_api_call, mock_now):
+        """Test the real daily reset and a late reset are both accepted."""
+        poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
+        poll(datetime(2026, 11, 21, 23, 50), 7.88, 3.0)
+
+        # On time: the new day's small value is accepted immediately.
+        assert (
+            poll(datetime(2026, 11, 22, 0, 21), 0.08, 0)["proPurchaseStatsToday"]
+            == 0.08
+        )
+
+        # Late: SEMS still reports yesterday's total after the hold window,
+        # then resets. The reset is accepted after a few polls.
+        poll(datetime(2026, 11, 23, 0, 21), 9.5, 3.0)
+        poll(datetime(2026, 11, 23, 0, 22), 0.05, 0)
+        poll(datetime(2026, 11, 23, 0, 23), 0.06, 0)
+        assert (
+            poll(datetime(2026, 11, 23, 0, 24), 0.07, 0)["proPurchaseStatsToday"]
+            == 0.07
+        )
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_lifetime_zero_without_history_is_skipped(
+        self, mock_api_call, mock_now
+    ):
+        """Test a zero lifetime import total after a restart is not published."""
+        counters = self._poll_smart_meter(
+            mock_api_call, mock_now, datetime(2026, 11, 22, 12), 1.0, 0.5, 0
+        )
+        assert "proPurchaseStatsTotal" not in counters
+        assert counters["proPurchaseStatsToday"] == 1.0
 
     @patch.object(SemsApi, "_make_api_call")
     @patch("custom_components.sems.sems_api.dt_util.now")
