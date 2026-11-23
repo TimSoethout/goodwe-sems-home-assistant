@@ -2146,7 +2146,8 @@ class SemsApi:
         ):
             cached_groups = cached[1]["groups"]
         refresh_slow = (
-            cached_groups is None
+            cached is None
+            or cached_groups is None
             or now - cached[0] >= _WEB_TELECOUNTING_SLOW_GROUPS_TTL_SECONDS
         )
         groups = list(_WEB_TELECOUNTING_FAST_GROUPS)
