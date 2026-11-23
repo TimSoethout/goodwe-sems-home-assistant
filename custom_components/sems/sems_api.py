@@ -167,6 +167,21 @@ def _in_midnight_rollover(now: datetime) -> bool:
     return (now.hour == 23 and now.minute >= 58) or (now.hour == 0 and now.minute < 20)
 
 
+_SMART_METER_COUNTER_PREFIXES = ("proPurchaseStats", "proGridStats")
+_SMART_METER_COUNTER_KEYS = tuple(
+    f"{prefix}{period}"
+    for period in ("Today", "Week", "Month", "Year", "Total")
+    for prefix in _SMART_METER_COUNTER_PREFIXES
+)
+_LIFETIME_COUNTER_KEYS = (
+    "etotal",
+    "echarge_total",
+    "edischarge_total",
+    "proPurchaseStatsTotal",
+    "proGridStatsTotal",
+)
+# A smart-meter counter drop seen on this many consecutive polls is accepted.
+_SMART_METER_DROP_ACCEPT_POLLS = 3
 _WEB_STATION_FLOW_ENDPOINT = ApiEndpoint("/sems-plant/api/stations/flow", "web")
 _WEB_STATION_LIST_ENDPOINT = ApiEndpoint("/sems-plant/api/portal/stations/page", "web")
 _WEB_STATION_STATISTICS_ENDPOINT = ApiEndpoint(
@@ -2242,6 +2257,10 @@ class SemsApi:
         ):
             if (value := self._numeric_web_factor(factors, source)) is not None:
                 counters[target] = value
+        if device_type == "SMART_METER":
+            for key in _SMART_METER_COUNTER_KEYS:
+                if (value := self._numeric_web_factor(factors, key)) is not None:
+                    counters[key] = value
         cache_key = f"counters:{powerStationId}:{serialNumber}:{device_type}"
         cached = self._get_web_cache_entry(cache_key)
         previous = cached[1] if cached and isinstance(cached[1], dict) else {}
@@ -2275,6 +2294,22 @@ class SemsApi:
             "eChargeDay": now.date().isoformat(),
             "eDischargeDay": now.date().isoformat(),
         }
+        for prefix in _SMART_METER_COUNTER_PREFIXES:
+            counter_periods.update(
+                {
+                    f"{prefix}Today": counter_periods["eday"],
+                    f"{prefix}Week": counter_periods["eweek"],
+                    f"{prefix}Month": counter_periods["thismonthetotle"],
+                    f"{prefix}Year": counter_periods["eyear"],
+                }
+            )
+        counter_periods = {
+            key: period for key, period in counter_periods.items() if key in counters
+        }
+        previous_drops = previous.get("_drops", {})
+        if not isinstance(previous_drops, dict):
+            previous_drops = {}
+        drops: dict[str, int] = {}
         for key in (
             "eday",
             "eweek",
@@ -2285,16 +2320,13 @@ class SemsApi:
             "eDischargeDay",
             "echarge_total",
             "edischarge_total",
+            *_SMART_METER_COUNTER_KEYS,
         ):
             value = counters.get(key)
             if value is None:
                 continue
             old_value = previous.get(key)
-            if (
-                key in ("etotal", "echarge_total", "edischarge_total")
-                and value <= 0
-                and old_value is None
-            ):
+            if key in _LIFETIME_COUNTER_KEYS and value <= 0 and old_value is None:
                 # Lifetime totals of a commissioned inverter are never 0.
                 # Without a cached value (after a restart) publish nothing.
                 del counters[key]
@@ -2308,6 +2340,32 @@ class SemsApi:
                 and old_value > 0
                 and (value <= 0 or value < old_value)
             ):
+                if key in _SMART_METER_COUNTER_KEYS:
+                    # SEMS+ sometimes returns 0 for a single poll (#295). Hold
+                    # the previous value, but accept a drop that persists, so
+                    # a late or genuine reset is not held for the whole period.
+                    drop_count = int(previous_drops.get(key, 0)) + 1
+                    if drop_count >= _SMART_METER_DROP_ACCEPT_POLLS:
+                        _LOGGER.info(
+                            "Accepting SEMS+ %s counter drop for %s after %s "
+                            "polls: %s after %s",
+                            key,
+                            serialNumber,
+                            drop_count,
+                            value,
+                            old_value,
+                        )
+                        continue
+                    drops[key] = drop_count
+                    _LOGGER.debug(
+                        "Holding SEMS+ %s counter for %s: %s after %s",
+                        key,
+                        serialNumber,
+                        value,
+                        old_value,
+                    )
+                    counters[key] = old_value
+                    continue
                 _LOGGER.warning(
                     "Ignoring invalid SEMS+ %s counter for %s: %s after %s",
                     key,
@@ -2316,14 +2374,6 @@ class SemsApi:
                     old_value,
                 )
                 counters[key] = old_value
-        if device_type == "SMART_METER":
-            for period in ("Today", "Week", "Month", "Year", "Total"):
-                for source, target in (
-                    (f"proPurchaseStats{period}", f"proPurchaseStats{period}"),
-                    (f"proGridStats{period}", f"proGridStats{period}"),
-                ):
-                    if (value := self._numeric_web_factor(factors, source)) is not None:
-                        counters[target] = value
         if counters:
             self._set_web_cache_entry(
                 cache_key,
@@ -2333,6 +2383,7 @@ class SemsApi:
                         **previous,
                         **counters,
                         "_periods": {**previous_periods, **counter_periods},
+                        "_drops": drops,
                     },
                 ),
             )

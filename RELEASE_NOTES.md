@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+## 11.13.3 - 2026-11-23
+
+## Prevent smart-meter energy resets from transient counter drops
+
+- Hold single-poll zero or decreasing smart-meter import/export readings, so
+  Home Assistant does not treat them as meter resets and duplicate daily energy.
+- Preserve the previous period metadata when a counter group fails, allowing the
+  first valid reading in a new period to be accepted immediately.
+- Accept persistent counter drops on the third consecutive poll, while allowing
+  legitimate reporting-period resets.
+
+### Compatibility and limitations
+
+- No configuration changes are required; existing entity IDs and units are
+  unchanged.
+
+### Related
+
+- [#297](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/297) -
+  smart-meter counter protection and rollover metadata.
+- [#298](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/298) -
+  SEMS+ telecounting group failures.
+
+### Contributors
+
+- [@mholka](https://github.com/mholka) - smart-meter counter protection.
+- [@claude](https://github.com/claude) - initial implementation.
+- [@TimSoethout](https://github.com/TimSoethout) - review feedback and regression
+  scenario.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression tests.
+
 ## 11.13.2 - 2026-11-23
 
 ## Restore SEMS+ lifetime statistics across years
