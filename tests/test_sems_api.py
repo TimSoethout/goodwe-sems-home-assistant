@@ -2352,6 +2352,51 @@ class TestSemsApi:
 
     @patch("custom_components.sems.sems_api.dt_util.now")
     @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_missing_today_group_does_not_advance_period(
+        self, mock_api_call, mock_now
+    ):
+        """Test a missing daily group keeps its previous period metadata."""
+        values = {"today": 7.88, "total": 800.0}
+        fail_today = False
+
+        def fake_api_call(url_part, *args, **kwargs):
+            group = url_part.split("&groups=")[-1]
+            if group == "telecounting_today":
+                if fail_today:
+                    raise OutOfRetries("A0400")
+                factors = [
+                    {"code": "proPurchaseStatsToday", "data": str(values["today"])}
+                ]
+            elif group == "telecounting_lifetime":
+                factors = [
+                    {"code": "proPurchaseStatsTotal", "data": str(values["total"])}
+                ]
+            else:
+                return None
+            return [{"code": group, "factors": factors}]
+
+        mock_api_call.side_effect = fake_api_call
+
+        def poll(now: datetime) -> dict:
+            mock_now.return_value = now
+            return self.api.getWebInverterTelecounting(
+                "station", "METER1", device_type="SMART_METER"
+            )
+
+        assert poll(datetime(2026, 11, 22, 23, 50))["proPurchaseStatsToday"] == 7.88
+
+        # At rollover, today's request fails but the lifetime group succeeds.
+        fail_today = True
+        mock_now.return_value = datetime(2026, 11, 23, 0, 20)
+        assert poll(datetime(2026, 11, 23, 0, 20)) == {"proPurchaseStatsTotal": 800.0}
+
+        # The next daily value belongs to a new period and must not be held.
+        fail_today = False
+        values["today"] = 0.05
+        assert poll(datetime(2026, 11, 23, 0, 21))["proPurchaseStatsToday"] == 0.05
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
     def test_smart_meter_lifetime_zero_without_history_is_skipped(
         self, mock_api_call, mock_now
     ):

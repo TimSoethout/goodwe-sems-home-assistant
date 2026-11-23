@@ -2303,6 +2303,9 @@ class SemsApi:
                     f"{prefix}Year": counter_periods["eyear"],
                 }
             )
+        counter_periods = {
+            key: period for key, period in counter_periods.items() if key in counters
+        }
         previous_drops = previous.get("_drops", {})
         if not isinstance(previous_drops, dict):
             previous_drops = {}
