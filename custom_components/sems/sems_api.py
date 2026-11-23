@@ -2147,7 +2147,6 @@ class SemsApi:
             cached_groups = cached[1]["groups"]
         refresh_slow = (
             cached_groups is None
-            or cached is None
             or now - cached[0] >= _WEB_TELECOUNTING_SLOW_GROUPS_TTL_SECONDS
         )
         groups = list(_WEB_TELECOUNTING_FAST_GROUPS)
@@ -2156,6 +2155,7 @@ class SemsApi:
 
         merged: list[dict[str, Any]] = []
         slow_groups: list[dict[str, Any]] = []
+        slow_groups_received: set[str] = set()
         last_error: Exception | None = None
         succeeded = 0
         for group in groups:
@@ -2179,6 +2179,8 @@ class SemsApi:
                 group_items = [item for item in result if isinstance(item, dict)]
                 merged.extend(group_items)
                 if group in _WEB_TELECOUNTING_SLOW_GROUPS:
+                    if any(item.get("code") == group for item in group_items):
+                        slow_groups_received.add(group)
                     slow_groups.extend(
                         item
                         for item in group_items
@@ -2190,7 +2192,9 @@ class SemsApi:
                 raise last_error
             return None
 
-        if refresh_slow and slow_groups:
+        if refresh_slow and all(
+            group in slow_groups_received for group in _WEB_TELECOUNTING_SLOW_GROUPS
+        ):
             if not _in_midnight_rollover(local_now):
                 self._set_web_cache_entry(
                     cache_key, (now, {"date": today, "groups": slow_groups})
