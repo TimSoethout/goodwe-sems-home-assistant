@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+## 11.13.2 - 2026-11-23
+
+## Restore SEMS+ lifetime statistics across years
+
+- Query historical statistics one calendar year at a time and sum the results,
+  restoring lifetime totals for installations spanning multiple years.
+
+## Restore SEMS+ energy counters after the telecounting API change
+
+- Request telecounting by group, restoring energy counters for inverters, smart
+  meters, storage cabinets, and EV chargers.
+- Keep successful group results when another group fails; counters are
+  unavailable only when every group request fails.
+
+### Compatibility and limitations
+
+- No configuration changes are required; existing entity IDs and units are
+  unchanged.
+- Today and lifetime groups refresh every poll. Week, month, and year groups
+  refresh at most every 10 minutes; cached values are reused only on the local
+  day they were fetched and are not cached during the 23:58–00:20 rollover
+  window.
+
+### Related
+
+- [#289](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/289) -
+  lifetime statistics across years.
+- [#294](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/294) -
+  SEMS+ telecounting API change.
+- [#295](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/295) -
+  per-group telecounting requests and rollover-safe caching.
+- [#94](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/94) -
+  midnight counter rollover.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - lifetime-statistics fix,
+  captures, and regression tests.
+- [@mholka](https://github.com/mholka) - per-group telecounting implementation.
+- [@SMac3265](https://github.com/SMac3265) - identified the API group
+  requirement.
+- [@Robernator](https://github.com/Robernator) - identified the rollover-cache
+  edge case.
+- [@claude](https://github.com/claude) - initial implementation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression tests.
+
 ## 11.13.1 - 2026-11-02
 
 This stable release includes all changes shipped in 11.13.1-beta.1 and
