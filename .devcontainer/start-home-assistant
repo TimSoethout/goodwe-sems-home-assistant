@@ -8,6 +8,28 @@ pid_file="/tmp/home-assistant.pid"
 ha_pid=""
 onboarding_pid=""
 
+terminate_running_instance() {
+  local pid
+  if [[ ! -f "$pid_file" ]]; then
+    echo "Home Assistant is not running." >&2
+    return 0
+  fi
+  pid="$(cat "$pid_file")"
+  if ! ha_pid_is_running "$pid"; then
+    rm -f "$pid_file"
+    echo "Home Assistant is not running." >&2
+    return 0
+  fi
+  echo "Stopping Home Assistant (PID $pid)..."
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in {1..60}; do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  rm -f "$pid_file"
+  echo "Home Assistant stopped."
+}
+
 ha_pid_is_running() {
   local pid="$1"
   local -a process_args
@@ -23,10 +45,20 @@ if [[ ! -x "$python" ]]; then
   exit 1
 fi
 
-if [[ "${1:-}" != "--foreground" ]]; then
-  echo "Run Home Assistant with the VS Code task: SEMS: run Home Assistant" >&2
+if [[ $# -gt 1 || ( "${1:-}" != "" && "${1:-}" != "--foreground" && "${1:-}" != "--terminate" && "${1:-}" != "--restart" ) ]]; then
+  echo "Usage: bash .devcontainer/start-home-assistant [--foreground|--terminate|--restart]" >&2
   exit 2
 fi
+
+case "${1:-}" in
+  --terminate)
+    terminate_running_instance
+    exit 0
+    ;;
+  --restart)
+    terminate_running_instance
+    ;;
+esac
 
 if [[ -f "$pid_file" ]]; then
   existing_pid="$(cat "$pid_file")"

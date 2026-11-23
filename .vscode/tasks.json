@@ -30,6 +30,19 @@
       "type": "shell",
       "command": "bash .devcontainer/start-home-assistant --foreground",
       "problemMatcher": []
+    },
+    {
+      "label": "SEMS: restart Home Assistant",
+      "type": "shell",
+      "command": "bash .devcontainer/start-home-assistant --restart",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "SEMS: terminate Home Assistant",
+      "type": "shell",
+      "command": "bash .devcontainer/start-home-assistant --terminate",
+      "problemMatcher": []
     }
   ]
 }
