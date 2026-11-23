@@ -2035,7 +2035,9 @@ def test_web_inverter_skips_sensors_without_sems_plus_source(
     with patch.object(
         api,
         "_make_api_call",
-        side_effect=[capture(telemetry_capture), capture(counter_capture)],
+        side_effect=lambda url_part, *args, **kwargs: capture(
+            counter_capture if "telecounting" in url_part else telemetry_capture
+        ),
     ):
         inverter = {
             "sn": "INV1",

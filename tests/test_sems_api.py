@@ -2075,9 +2075,186 @@ class TestSemsApi:
             mock_api_call.call_args_list[1]
             .args[0]
             .endswith(
-                "telecounting?deviceType=ENERGY_STORAGE_INTEGRATED_CABINET&pwId=station"
+                "telecounting?deviceType=ENERGY_STORAGE_INTEGRATED_CABINET"
+                "&pwId=station&groups=telecounting_real&groups=telecounting_today"
             )
         )
+
+    @patch("custom_components.sems.sems_api.time.monotonic")
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_requests_groups(
+        self, mock_api_call, mock_now, mock_monotonic
+    ):
+        """Test SEMS+ counters are requested one period group at a time (#294)."""
+        mock_now.return_value = datetime(2026, 11, 20, 12)
+        mock_monotonic.return_value = 1000.0
+        factors = {
+            "telecounting_today": ("proPvStatsToday", "1.5"),
+            "telecounting_lifetime": ("proPvStatsTotal", "100"),
+            "telecounting_week": ("proPvStatsWeek", "10"),
+            "telecounting_month": ("proPvStatsMonth", "20"),
+            "telecounting_year": ("proPvStatsYear", "30"),
+        }
+
+        def fake_api_call(url_part, *args, **kwargs):
+            groups = url_part.split("&groups=")[1:]
+            assert len(groups) == 2
+            assert groups[0] == "telecounting_real"
+            code, value = factors[groups[1]]
+            return [
+                {"code": "telecounting_real", "factors": []},
+                {"code": groups[1], "factors": [{"code": code, "data": value}]},
+            ]
+
+        mock_api_call.side_effect = fake_api_call
+        expected = {
+            "eday": 1.5,
+            "etotal": 100.0,
+            "eweek": 10.0,
+            "thismonthetotle": 20.0,
+            "eyear": 30.0,
+        }
+        assert self.api.getWebInverterTelecounting("station", "SN1") == expected
+        assert mock_api_call.call_count == 5
+
+        # Within the slow-group TTL only today and lifetime are refreshed.
+        mock_api_call.reset_mock()
+        mock_monotonic.return_value = 1300.0
+        factors["telecounting_today"] = ("proPvStatsToday", "2.5")
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            **expected,
+            "eday": 2.5,
+        }
+        assert mock_api_call.call_count == 2
+
+        # After the TTL the slow groups are fetched again.
+        mock_api_call.reset_mock()
+        mock_monotonic.return_value = 1700.0
+        self.api.getWebInverterTelecounting("station", "SN1")
+        assert mock_api_call.call_count == 5
+
+    @patch("custom_components.sems.sems_api.time.monotonic")
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_slow_groups_not_cached_at_rollover(
+        self, mock_api_call, mock_now, mock_monotonic
+    ):
+        """Test a stale weekly total from the rollover window is not reused.
+
+        SEMS can keep reporting last week's total for minutes after midnight
+        (#94). If that value were cached and published after the hold window,
+        the decreasing-counter guard would reject the correct values for the
+        rest of the week.
+        """
+        week = {"value": "60"}
+
+        def fake_api_call(url_part, *args, **kwargs):
+            group = url_part.split("&groups=")[-1]
+            code, value = {
+                "telecounting_today": ("proPvStatsToday", "1"),
+                "telecounting_lifetime": ("proPvStatsTotal", "1000"),
+                "telecounting_week": ("proPvStatsWeek", week["value"]),
+                "telecounting_month": ("proPvStatsMonth", "200"),
+                "telecounting_year": ("proPvStatsYear", "900"),
+            }[group]
+            return [{"code": group, "factors": [{"code": code, "data": value}]}]
+
+        mock_api_call.side_effect = fake_api_call
+
+        # Sunday afternoon: weekly total cached.
+        mock_now.return_value = datetime(2026, 11, 22, 15)
+        mock_monotonic.return_value = 0.0
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 60
+
+        # Monday 00:12, inside the hold window: SEMS still reports last week.
+        mock_now.return_value = datetime(2026, 11, 23, 0, 12)
+        mock_monotonic.return_value = 33_120.0
+        week["value"] = "62"
+        self.api.getWebInverterTelecounting("station", "SN1")
+
+        # Monday 00:21, within the slow-group TTL of the 00:12 poll: the stale
+        # weekly total must be fetched again, not served from the cache.
+        mock_now.return_value = datetime(2026, 11, 23, 0, 21)
+        mock_monotonic.return_value = 33_660.0
+        week["value"] = "0.5"
+        mock_api_call.reset_mock()
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 0.5
+        assert mock_api_call.call_count == 5
+
+        # Later polls on the same day reuse the fresh cache.
+        mock_now.return_value = datetime(2026, 11, 23, 0, 25)
+        mock_monotonic.return_value = 33_900.0
+        mock_api_call.reset_mock()
+        assert self.api.getWebInverterTelecounting("station", "SN1")["eweek"] == 0.5
+        assert mock_api_call.call_count == 2
+
+    @patch("custom_components.sems.sems_api.time.monotonic")
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telecounting_partial_failure_does_not_cache(
+        self, mock_api_call, mock_now, mock_monotonic
+    ):
+        """Test a partial slow-group refresh retains cached values and retries."""
+        mock_now.return_value = datetime(2026, 11, 20, 12)
+        mock_monotonic.return_value = 1000.0
+        factors = {
+            "telecounting_today": ("proPvStatsToday", "1.5"),
+            "telecounting_lifetime": ("proPvStatsTotal", "100"),
+            "telecounting_week": ("proPvStatsWeek", "10"),
+            "telecounting_month": ("proPvStatsMonth", "20"),
+            "telecounting_year": ("proPvStatsYear", "30"),
+        }
+        failed_group: str | None = None
+
+        def fake_api_call(url_part, *args, **kwargs):
+            group = url_part.split("&groups=")[-1]
+            if group == failed_group:
+                raise OutOfRetries("A0400")
+            code, value = factors[group]
+            return [
+                {"code": "telecounting_real", "factors": []},
+                {"code": group, "factors": [{"code": code, "data": value}]},
+            ]
+
+        mock_api_call.side_effect = fake_api_call
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 1.5,
+            "etotal": 100.0,
+            "eweek": 10.0,
+            "thismonthetotle": 20.0,
+            "eyear": 30.0,
+        }
+
+        factors["telecounting_week"] = ("proPvStatsWeek", "11")
+        factors["telecounting_month"] = ("proPvStatsMonth", "21")
+        factors["telecounting_year"] = ("proPvStatsYear", "31")
+        failed_group = "telecounting_month"
+        mock_monotonic.return_value = 1700.0
+        mock_api_call.reset_mock()
+        assert self.api.getWebInverterTelecounting("station", "SN1") == {
+            "eday": 1.5,
+            "etotal": 100.0,
+            "eweek": 11.0,
+            "thismonthetotle": 20.0,
+            "eyear": 31.0,
+        }
+        assert mock_api_call.call_count == 5
+
+        failed_group = None
+        mock_monotonic.return_value = 1701.0
+        mock_api_call.reset_mock()
+        assert (
+            self.api.getWebInverterTelecounting("station", "SN1")["thismonthetotle"]
+            == 21.0
+        )
+        assert mock_api_call.call_count == 5
+
+    @patch.object(SemsApi, "_make_api_call", side_effect=OutOfRetries("A0400"))
+    def test_get_web_inverter_telecounting_all_groups_fail(self, mock_api_call):
+        """Test counters are reported unavailable when every group fails."""
+        with pytest.raises(OutOfRetries):
+            self.api.getWebInverterTelecounting("station", "SN1")
 
     @patch.object(SemsApi, "_make_api_call")
     @patch("custom_components.sems.sems_api.dt_util.now")
