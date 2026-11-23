@@ -2131,6 +2131,27 @@ class TestSemsApi:
             "ppv1": 991.38,
         }
 
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telemetry_phase_currents(self, mock_api_call):
+        """Test mapping of per-phase SEMS+ current factors."""
+        # Synthetic factors; confirm these names against a production capture when available.
+        mock_api_call.return_value = [
+            {
+                "code": "ac",
+                "factors": [
+                    {"code": "PHASE-A:Iac", "data": "4.3"},
+                    {"code": "PHASE-B:Iac", "data": "4.4"},
+                    {"code": "PHASE-C:Iac", "data": "4.5"},
+                ],
+            }
+        ]
+
+        assert self.api.getWebInverterTelemetry("station", "SN1") == {
+            "iac1": 4.3,
+            "iac2": 4.4,
+            "iac3": 4.5,
+        }
+
     @pytest.mark.parametrize(
         "method_name",
         ("getWebInverterTelemetry", "getWebInverterTelecounting"),
