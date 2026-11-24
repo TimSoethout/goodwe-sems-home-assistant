@@ -509,6 +509,13 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                         err,
                     )
                     continue
+                except SemsRateLimitedError as err:
+                    _LOGGER.debug(
+                        "Battery functions request rate limited for %s: %s",
+                        redact_for_log(sn),
+                        err,
+                    )
+                    return self.data.batteries if self.data is not None else None
                 battery_general_functions[sn][bat.get("translateCode")] = functions
 
         batteries: dict[str, dict[str, dict[str, Any]]] = {}
@@ -562,7 +569,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 immediate_charging_result = await self.hass.async_add_executor_job(
                     self.sems_api.getBatteryImmediateChargingStates, inverter_sn
                 )
-            except (OutOfRetries, SemsPermissionError) as err:
+            except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
                 immediate_charging_result = None
                 _LOGGER.debug(
                     "Immediate-charging state request failed for %s: %s",
@@ -611,7 +618,31 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             energy_storage_cabinets = await self._async_get_energy_storage_cabinets(
                 data_result
             )
-            batteries = await self._async_get_battery_functions(energy_storage_cabinets)
+            unavailable_data_sources = data_result.get("unavailable_data_sources", {})
+            raw_unavailable_inverter_sources = (
+                unavailable_data_sources.get("inverters", {})
+                if isinstance(unavailable_data_sources, dict)
+                else {}
+            )
+            cabinets_unavailable = (
+                any(
+                    "cabinets" in sources
+                    for sources in raw_unavailable_inverter_sources.values()
+                    if isinstance(sources, set)
+                )
+                if isinstance(raw_unavailable_inverter_sources, dict)
+                else False
+            )
+            if (
+                cabinets_unavailable
+                and not energy_storage_cabinets
+                and self.data is not None
+            ):
+                batteries = self.data.batteries
+            else:
+                batteries = await self._async_get_battery_functions(
+                    energy_storage_cabinets
+                )
             immediate_charging = await self._async_get_immediate_charging(batteries)
 
         except SemsAuthError as err:

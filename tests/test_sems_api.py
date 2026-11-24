@@ -1638,6 +1638,38 @@ class TestSemsApi:
             recovered_inverter["sn"]
         ] == {"device_status"}
 
+    def test_get_web_data_fetches_station_flow_before_device_burst(self):
+        """A device-loop rate limit cannot skip station power flow."""
+        calls = []
+
+        def flow(*args, **kwargs):
+            calls.append("flow")
+            return {"pAc": 1.5}
+
+        def telemetry(*args, **kwargs):
+            calls.append("telemetry")
+            raise SemsRateLimitedError(retry_after=60)
+
+        with (
+            patch.object(
+                self.api,
+                "getWebInverterDevices",
+                return_value=[{"sn": "SN1", "deviceType": "INVERTER"}],
+            ),
+            patch.object(self.api, "getWebStationFlow", side_effect=flow),
+            patch.object(self.api, "getWebInverterTelemetry", side_effect=telemetry),
+            patch.object(
+                self.api,
+                "getWebInverterTelecounting",
+                side_effect=SemsRateLimitedError(retry_after=60),
+            ),
+            patch.object(self.api, "_get_web_energy_statistics", return_value=None),
+        ):
+            result = self.api.getWebData("station")
+
+        assert calls == ["flow", "telemetry"]
+        assert result["hasPowerflow"] is True
+
     def test_get_web_data_does_not_reuse_inventory_after_successful_empty_response(
         self,
     ):

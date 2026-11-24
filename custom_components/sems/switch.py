@@ -24,7 +24,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import SemsCoordinator
 from .const import CONF_STATION_ID, DOMAIN, INVERTER_ON_STATUSES
 from .device import device_info_for_inverter, is_inverter
-from .ev_charger import async_add_ev_charger_entities, ev_charger_switches
+from .ev_charger import async_add_coordinator_entities, ev_charger_switches
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -191,25 +191,16 @@ def _async_remove_non_inverter_switches(
         )
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up SEMS switches from a config entry."""
-    coordinator = config_entry.runtime_data.coordinator
-
+def _switch_entities(
+    coordinator: SemsCoordinator, config_entry: ConfigEntry
+) -> list[SwitchEntity]:
+    """Build switch entities for the coordinator's current capabilities."""
     switch_entities: list[SwitchEntity] = []
 
-    non_inverters: list[str] = []
     for sn, inverter_data in coordinator.data.inverters.items():
         # Dongles and battery racks do not accept inverter start/stop commands.
         if is_inverter(inverter_data):
             switch_entities.append(SemsInverterSwitch(coordinator, sn))
-        else:
-            non_inverters.append(sn)
-    _async_remove_non_inverter_switches(hass, config_entry, non_inverters)
-
     for sn, bats in (coordinator.data.batteries or {}).items():
         for bat_id, bat_data in bats.items():
             functions = bat_data["functions"]
@@ -225,7 +216,31 @@ async def async_setup_entry(
                     )
                 )
 
-    async_add_entities(switch_entities)
-    async_add_ev_charger_entities(
-        coordinator, config_entry, async_add_entities, ev_charger_switches
+    return switch_entities
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up SEMS switches from a config entry."""
+    coordinator = config_entry.runtime_data.coordinator
+    _async_remove_non_inverter_switches(
+        hass,
+        config_entry,
+        [
+            sn
+            for sn, inverter_data in coordinator.data.inverters.items()
+            if not is_inverter(inverter_data)
+        ],
+    )
+    async_add_coordinator_entities(
+        coordinator,
+        config_entry,
+        async_add_entities,
+        lambda coordinator: [
+            *_switch_entities(coordinator, config_entry),
+            *ev_charger_switches(coordinator),
+        ],
     )

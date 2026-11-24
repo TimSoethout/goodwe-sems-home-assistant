@@ -268,8 +268,10 @@ def test_http_429_on_login_pauses_further_logins(requests_mock) -> None:
     assert requests_mock.call_count == 1
 
 
-def test_cooldown_grows_exponentially_and_resets_on_success(requests_mock) -> None:
-    """Consecutive rate limits double the pause up to the cap."""
+def test_cooldown_grows_exponentially_and_resets_after_clean_poll(
+    requests_mock,
+) -> None:
+    """Consecutive rate limits double; a clean poll starts a new sequence."""
     api = SemsApi(Mock(), MOCK_USERNAME, MOCK_PASSWORD)
     api._web_token = _web_token("valid-token")
     requests_mock.get(FLOW_URL, status_code=429)
@@ -283,8 +285,8 @@ def test_cooldown_grows_exponentially_and_resets_on_success(requests_mock) -> No
 
     assert delays == [60, 120, 240, 480, 900, 900]
 
-    requests_mock.get(FLOW_URL, json={"code": "00000", "data": {"pAc": 1.0}})
-    api.getWebStationFlow(MOCK_STATION_ID_1)
+    api._cooldown_until = 0.0
+    api._reset_cooldown_after_poll(api._cooldown_strikes)
     requests_mock.get(FLOW_URL, status_code=429)
     with pytest.raises(SemsRateLimitedError) as err:
         api.getWebStationFlow(MOCK_STATION_ID_1)

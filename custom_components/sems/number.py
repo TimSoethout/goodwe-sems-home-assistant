@@ -11,7 +11,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import SemsConfigEntry, SemsCoordinator
 from .const import CONF_STATION_ID
 from .device import device_info_for_inverter
-from .ev_charger import async_add_ev_charger_entities, ev_charger_numbers
+from .ev_charger import async_add_coordinator_entities, ev_charger_numbers
 
 type SetBatteryValueMethod = Callable[[str, str, str, int, str, str], None]
 
@@ -83,14 +83,10 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
         await self.coordinator.async_request_refresh()
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    config_entry: SemsConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up SEMS number entities from a config entry."""
-    coordinator: SemsCoordinator = config_entry.runtime_data.coordinator
-
+def _number_entities(
+    coordinator: SemsCoordinator, config_entry: SemsConfigEntry
+) -> list[NumberEntity]:
+    """Build number entities for the coordinator's current capabilities."""
     number_entities: list[NumberEntity] = []
 
     for sn, bats in (coordinator.data.batteries or {}).items():
@@ -126,7 +122,21 @@ async def async_setup_entry(
                         )
                     )
 
-    async_add_entities(number_entities)
-    async_add_ev_charger_entities(
-        coordinator, config_entry, async_add_entities, ev_charger_numbers
+    return number_entities
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: SemsConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up SEMS number entities from a config entry."""
+    async_add_coordinator_entities(
+        config_entry.runtime_data.coordinator,
+        config_entry,
+        async_add_entities,
+        lambda coordinator: [
+            *_number_entities(coordinator, config_entry),
+            *ev_charger_numbers(coordinator),
+        ],
     )

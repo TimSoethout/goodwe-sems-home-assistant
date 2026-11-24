@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+## 11.13.4 - 2026-11-24
+
+## Recover entities after SEMS+ rate limits
+
+- Fetch station power flow before the per-device telemetry and counter burst,
+  keeping HomeKit data available when a later request reaches the rate limit.
+- Add HomeKit, statistics, battery, and optional control entities when their
+  data becomes available after the initial refresh.
+- Keep optional battery-control capability data across temporary rate limits,
+  while marking failed live control-state reads unavailable.
+- Preserve rate-limit backoff across unrelated successful requests until a
+  complete polling pass recovers.
+
+### Compatibility and limitations
+
+- No configuration changes are required; existing entity IDs and history are
+  preserved.
+- SEMS+ can still return HTTP 429 for a cold-cache request burst. Missing data
+  now recovers on a later refresh instead of making its entities disappear.
+
+### Related
+
+- [#304](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/304) -
+  HomeKit and Battery 0 entities missing after restart.
+- [#306](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/306) -
+  rate-limit recovery and late entity discovery.
+
+### Contributors
+
+- [@donok1](https://github.com/donok1) - diagnosis, proposed patch, and
+  installation validation.
+- [@TimSoethout](https://github.com/TimSoethout) - implementation review and
+  release preparation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression tests.
+
 ## 11.13.3 - 2026-11-23
 
 ## Prevent smart-meter energy resets from transient counter drops

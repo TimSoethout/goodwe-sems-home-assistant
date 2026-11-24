@@ -26,6 +26,7 @@ from custom_components.sems.sems_api import (
     OutOfRetries,
     SemsAuthError,
     SemsPermissionError,
+    SemsRateLimitedError,
 )
 from tests.fixtures import MOCK_GET_DATA_RESULT_MINIMAL
 
@@ -306,8 +307,9 @@ async def _refresh_with_states(hass: HomeAssistant, entry: MockConfigEntry, **st
         {"return_value": None},
         {"return_value": {"sn": INVERTER_SERIAL, "data": None}},
         {"side_effect": OutOfRetries("state request failed")},
+        {"side_effect": SemsRateLimitedError(retry_after=60)},
     ],
-    ids=["no-result", "no-data", "out-of-retries"],
+    ids=["no-result", "no-data", "out-of-retries", "rate-limited"],
 )
 async def test_failed_state_read_marks_entities_unavailable(
     hass: HomeAssistant, states: dict
@@ -456,8 +458,8 @@ async def test_denied_battery_functions_keep_station_data(
     assert INVERTER_SERIAL in coordinator.data.inverters
 
 
-async def test_entities_are_not_added_after_discovery(hass: HomeAssistant) -> None:
-    """Platforms only create entities during entry setup."""
+async def test_entities_are_added_after_discovery(hass: HomeAssistant) -> None:
+    """Platforms add battery controls when capability data appears later."""
     entry = await _setup_entry(hass, functions={})
     coordinator = entry.runtime_data.coordinator
 
@@ -468,7 +470,7 @@ async def test_entities_are_not_added_after_discovery(hass: HomeAssistant) -> No
         ),
         patch(
             "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
-            return_value=[],
+            return_value=CABINETS,
         ),
         patch(
             "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
@@ -482,13 +484,50 @@ async def test_entities_are_not_added_after_discovery(hass: HomeAssistant) -> No
         await coordinator.async_refresh()
         await hass.async_block_till_done()
 
+    assert er.async_get(hass).async_get_entity_id(
+        Platform.NUMBER,
+        DOMAIN,
+        f"{INVERTER_SERIAL}-{BATTERY_ID}-end_charge_soc",
+    )
+    assert er.async_get(hass).async_get_entity_id(
+        Platform.SWITCH,
+        DOMAIN,
+        f"{INVERTER_SERIAL}-{BATTERY_ID}-battery_immediate_charging",
+    )
+
+
+async def test_rate_limited_functions_keep_discovered_controls(
+    hass: HomeAssistant,
+) -> None:
+    """A temporary function lookup failure keeps existing capabilities."""
+    entry = await _setup_entry(hass)
+
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getData",
+            return_value=MOCK_GET_DATA_RESULT_MINIMAL,
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getEnergyStorageIntegratedCabinets",
+            return_value=CABINETS,
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
+            side_effect=SemsRateLimitedError(retry_after=60),
+        ),
+        patch(
+            "custom_components.sems.sems_api.SemsApi.getBatteryImmediateChargingStates",
+            return_value=STATES,
+        ),
+    ):
+        await entry.runtime_data.coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    assert entry.runtime_data.coordinator.last_update_success
+    assert entry.runtime_data.coordinator.data.batteries is not None
     assert (
-        er.async_get(hass).async_get_entity_id(
-            Platform.NUMBER,
-            DOMAIN,
-            f"{INVERTER_SERIAL}-{BATTERY_ID}-end_charge_soc",
-        )
-        is None
+        hass.states.get(_entity_id(hass, Platform.NUMBER, "end_charge_soc")).state
+        == "75.0"
     )
 
 
