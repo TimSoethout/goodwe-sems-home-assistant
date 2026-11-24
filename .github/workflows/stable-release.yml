@@ -24,7 +24,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: "Checkout the repository"
-        uses: "actions/checkout@v4.1.7"
+        uses: "actions/checkout@v7"
 
       - name: "Publish stable release"
         run: "python3 .github/scripts/publish_stable_release.py"
