@@ -214,6 +214,45 @@ class TestSemsApi:
             assert self.api._get_web_statistics("station", "day", start, end) is None
             assert self.api._get_web_statistics("station", "day", start, end) is None
 
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OutOfRetries("statistics unavailable"),
+            SemsPermissionError("statistics", "denied"),
+            SemsRateLimitedError(retry_after=60),
+        ],
+        ids=["retry", "permission", "rate-limit"],
+    )
+    def test_web_energy_statistics_keeps_cached_result_after_optional_error(
+        self, error
+    ) -> None:
+        """Keep the same-day aggregate when an optional statistics call fails."""
+        with (
+            patch(
+                "custom_components.sems.sems_api.dt_util.now",
+                return_value=datetime(2026, 9, 24, 12),
+            ),
+            patch.object(
+                self.api,
+                "_get_web_statistics",
+                return_value={"proSystemTotalStats": [12.5]},
+            ),
+            patch.object(
+                self.api, "_get_web_production", return_value={"currency": "EUR"}
+            ),
+        ):
+            cached = self.api._get_web_energy_statistics("station", [])
+
+        with (
+            patch(
+                "custom_components.sems.sems_api.dt_util.now",
+                return_value=datetime(2026, 9, 24, 12),
+            ),
+            patch.object(self.api, "_get_web_statistics", side_effect=error),
+            patch.object(self.api, "_get_web_production", side_effect=error),
+        ):
+            assert self.api._get_web_energy_statistics("station", []) == cached
+
     @patch.object(
         SemsApi,
         "_get_web_statistics",
@@ -1709,6 +1748,33 @@ class TestSemsApi:
         assert recovered["unavailable_data_sources"]["inverters"][
             recovered_inverter["sn"]
         ] == {"device_status"}
+
+    def test_get_web_data_keeps_live_flow_when_optional_statistics_fail(self):
+        """Optional statistics permission errors must not fail the live poll."""
+        with (
+            patch.object(
+                self.api,
+                "getWebInverterDevices",
+                return_value=[{"sn": "SN1", "deviceType": "INVERTER"}],
+            ),
+            patch.object(
+                self.api,
+                "getWebStationFlow",
+                return_value={"pAc": 1.5, "pGrid": -0.5, "pConsum": 2.0},
+            ),
+            patch.object(self.api, "getWebInverterTelemetry", return_value={}),
+            patch.object(self.api, "getWebInverterTelecounting", return_value={}),
+            patch.object(
+                self.api,
+                "_get_web_energy_statistics",
+                side_effect=SemsPermissionError("statistics", "denied"),
+            ),
+        ):
+            result = self.api.getWebData("station")
+
+        assert result["hasPowerflow"] is True
+        assert result["powerflow"]["grid"] == -500
+        assert result["unavailable_data_sources"]["homekit"] == {"statistics"}
 
     def test_get_web_data_fetches_station_flow_before_device_burst(self):
         """A device-loop rate limit cannot skip station power flow."""

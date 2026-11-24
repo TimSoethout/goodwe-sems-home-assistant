@@ -582,6 +582,8 @@ def sensor_options_for_data(
                 """Apply the grid status sign to the given value."""
                 if value is None or value == "":
                     return None
+                if data.get("isSemsPlusFlow") and status_path == ["gridStatus"]:
+                    return value
                 grid_status = get_value_from_path(data, status_path)
                 if grid_status is None:
                     return value
@@ -1146,6 +1148,14 @@ class SemsInverterSensor(SemsSensor):
         """Return whether this inverter sensor's source was available."""
         if not super().available:
             return False
+        if self.coordinator.data is None:
+            return False
+        inverter_sn = self._value_path[0] if self._value_path else None
+        if (
+            not isinstance(inverter_sn, str)
+            or inverter_sn not in self.coordinator.data.inverters
+        ):
+            return False
         if self._get_native_value_from_coordinator() is not None:
             return True
         return not self._source_unavailable()
@@ -1196,15 +1206,26 @@ class SemsHomekitSensor(SemsSensor):
 
     def _source_unavailable(self) -> bool:
         """Return whether this sensor's HomeKit data source failed."""
-        return (
+        if self.coordinator.data.homekit is None:
+            return True
+        if (
             self._data_source is not None
             and self._data_source in self.coordinator.data.unavailable_homekit_sources
+        ):
+            return True
+        field = self._value_path[-1] if self._value_path else None
+        return (
+            isinstance(field, str)
+            and field.startswith(("Charts_", "Totals_"))
+            and "statistics" in self.coordinator.data.unavailable_homekit_sources
         )
 
     @property
     def available(self) -> bool:
         """Return whether this HomeKit sensor's source was available."""
         if not super().available:
+            return False
+        if self.coordinator.data is None or self.coordinator.data.homekit is None:
             return False
         if self._get_native_value_from_coordinator() is not None:
             return True

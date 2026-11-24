@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -206,6 +207,16 @@ async def test_control_entities_execute_and_reject_missing_coordinator_data(
                 await battery_switch.async_turn_on()
         finally:
             coordinator.data = coordinator_data
+
+    coordinator.async_set_updated_data(replace(coordinator.data, inverters={}))
+    await hass.async_block_till_done()
+    assert not inverter_switch.available
+    assert not battery_switch.available
+    assert not battery_number.available
+    with patch.object(coordinator, "async_control", new_callable=AsyncMock) as control:
+        with pytest.raises(HomeAssistantError, match="inverter is unavailable"):
+            await inverter_switch.async_turn_on()
+        control.assert_not_awaited()
 
 
 async def test_battery_control_services_send_expected_api_payloads(

@@ -49,8 +49,12 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
     @property
     def available(self) -> bool:
         """Return whether the immediate-charging state could be read."""
-        return super().available and self.serial_number in (
-            self.coordinator.data.immediate_charging or {}
+        data = self.coordinator.data
+        return (
+            super().available
+            and data is not None
+            and self.serial_number in data.inverters
+            and self.serial_number in (data.immediate_charging or {})
         )
 
     @property

@@ -73,10 +73,32 @@ class SemsInverterSwitch(SemsSwitchBase):
 
     @property
     def is_on(self) -> bool | None:
+        data = self.coordinator.data
+        if data is None:
+            return None
         return (
-            self.coordinator.data.inverters.get(self.serial_number, {}).get("status")
+            data.inverters.get(self.serial_number, {}).get("status")
             in INVERTER_ON_STATUSES
         )
+
+    @property
+    def available(self) -> bool:
+        """Return whether the inverter is present in the latest refresh."""
+        data = self.coordinator.data
+        return (
+            super().available
+            and data is not None
+            and self.serial_number in data.inverters
+        )
+
+    def _inverter_name(self) -> str:
+        """Return the latest inverter name or reject a stale command."""
+        data = self.coordinator.data
+        if data is None or self.serial_number not in data.inverters:
+            raise HomeAssistantError(
+                f"Unable to update {self.entity_id}: inverter is unavailable"
+            )
+        return data.inverters[self.serial_number].get("name", self.serial_number)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._async_execute(
@@ -84,9 +106,7 @@ class SemsInverterSwitch(SemsSwitchBase):
             self.serial_number,
             _COMMAND_TURN_ON,
             self.coordinator.station_id,
-            self.coordinator.data.inverters[self.serial_number].get(
-                "name", self.serial_number
-            ),
+            self._inverter_name(),
         )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -95,9 +115,7 @@ class SemsInverterSwitch(SemsSwitchBase):
             self.serial_number,
             _COMMAND_TURN_OFF,
             self.coordinator.station_id,
-            self.coordinator.data.inverters[self.serial_number].get(
-                "name", self.serial_number
-            ),
+            self._inverter_name(),
         )
 
 
@@ -126,8 +144,12 @@ class SemsBatteryImmediateChargingSwitch(SemsSwitchBase):
     @property
     def available(self) -> bool:
         """Return whether the immediate-charging state could be read."""
-        return super().available and self.serial_number in (
-            self.coordinator.data.immediate_charging or {}
+        data = self.coordinator.data
+        return (
+            super().available
+            and data is not None
+            and self.serial_number in data.inverters
+            and self.serial_number in (data.immediate_charging or {})
         )
 
     @property
