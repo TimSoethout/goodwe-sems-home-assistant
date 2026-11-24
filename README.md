@@ -204,18 +204,10 @@ the container if a different branch or tag is required.
 Set `HA_CORE_DIR` to use a different writable Home Assistant Core checkout
 location.
 
-To use host-installed Copilot skills, set `COPILOT_SKILLS_DIR` on the host
-before launching VS Code. It must point to a directory whose children are
-skill folders containing `SKILL.md` files (for an installed plugin, this is
-typically its `skills` subdirectory). The devcontainer bind-mounts that
-directory read-only at `/home/vscode/.copilot/skills`. For example:
-
-```bash
-export COPILOT_SKILLS_DIR="/path/to/agentPlugins/<plugin>/skills"
-code .
-```
-
-The source directory must exist when the devcontainer is created.
+Host-installed Copilot plugins are available automatically in the devcontainer.
+The standard `~/.copilot/installed-plugins` directory is bind-mounted read-only
+at `/root/.copilot/installed-plugins`, so the container can load its skills
+without receiving writable access to the host Copilot state.
 
 The Home Assistant log is available at `/tmp/home-assistant.log` inside the
 container. VS Code tasks are provided for testing, linting, bootstrapping, and

@@ -10,9 +10,10 @@
     }
   },
   "mounts": [
-    "type=bind,source=${localEnv:HOME}/.copilot,target=/root/.copilot",
+    "type=bind,source=${localEnv:HOME}/.copilot/installed-plugins,target=/root/.copilot/installed-plugins,readonly",
     "type=bind,source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,readonly"
   ],
+  "initializeCommand": "mkdir -p \"${localEnv:HOME}/.copilot/installed-plugins\"",
   "containerEnv": {
     "GIT_EDITOR": "code --wait"
   },

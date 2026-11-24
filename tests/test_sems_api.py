@@ -22,7 +22,6 @@ from custom_components.sems.sems_api import (
     SemsAuthExpiredError,
     SemsPermissionError,
     SemsRateLimitedError,
-    _LegacyApiFallback,
 )
 
 # Test data constants - anonymized for privacy
@@ -55,7 +54,10 @@ class TestSemsApi:
         self, mock_web_login, mock_get_login_token
     ):
         """Test Web authentication is reused for station discovery."""
-        web_token = {"client": "semsPlusWeb", "api": "https://api.test.com"}
+        web_token = {
+            "client": "semsPlusWeb",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
         mock_web_login.return_value = web_token
 
         assert self.api.test_authentication() is True
@@ -400,7 +402,26 @@ class TestSemsApi:
             data='{"test": "data"}',
             json=None,
             timeout=30,
+            allow_redirects=False,
         )
+
+    @patch("custom_components.sems.sems_api.requests.Session.request")
+    def test_make_http_request_rejects_redirects(self, mock_request):
+        """Do not forward request bodies or token headers to another origin."""
+        response = Mock(
+            status_code=302,
+            headers={"Location": "https://attacker.invalid"},
+        )
+        mock_request.return_value = response
+
+        with pytest.raises(requests.HTTPError, match="unexpected redirect"):
+            self.api._make_http_request(
+                "https://eu.semsportal.com/api",
+                {"token": "secret"},
+                operation_name="device telemetry",
+            )
+
+        mock_request.assert_called_once()
 
     @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_validation_failure(self, mock_request):
@@ -536,7 +557,7 @@ class TestSemsApi:
         mock_response = {
             "code": 0,
             "data": {"uid": "test-uid", "token": "test-token", "timestamp": 1234567890},
-            "api": "https://api.test.com/",
+            "api": "https://eu.semsportal.com/api/",
         }
         mock_http_request.return_value = mock_response
 
@@ -546,7 +567,7 @@ class TestSemsApi:
             "uid": "test-uid",
             "token": "test-token",
             "timestamp": 1234567890,
-            "api": "https://api.test.com/",
+            "api": "https://eu.semsportal.com/api/",
         }
         assert result == expected_token
         mock_http_request.assert_called_once()
@@ -581,16 +602,28 @@ class TestSemsApi:
             is None
         )
         assert self.api._extract_login_token(
-            {"code": 0, "data": {"api": "https://nested.example", "token": "t"}},
+            {
+                "code": 0,
+                "data": {
+                    "api": "https://eu-gateway.semsportal.com/web/sems",
+                    "token": "t",
+                },
+            },
             "new",
             "login API call",
-        ) == {"api": "https://nested.example", "token": "t"}
+        ) == {
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+            "token": "t",
+        }
         assert self.api._extract_login_token(
             {"code": 0, "data": {"token": "t"}},
             "new",
             "login API call",
-            fallback_api_url="https://fallback.example",
-        ) == {"api": "https://fallback.example", "token": "t"}
+            fallback_api_url="https://eu-gateway.semsportal.com/web/sems",
+        ) == {
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+            "token": "t",
+        }
         assert (
             self.api._extract_login_token(
                 {"code": 0, "data": {"api": "https://api.example"}},
@@ -600,9 +633,33 @@ class TestSemsApi:
             is None
         )
 
+    @pytest.mark.parametrize(
+        "api_base",
+        [
+            "http://eu.semsportal.com/api",
+            "https://eu.semsportal.com.evil.invalid/api",
+            "https://evil.invalid?target=eu.semsportal.com/api",
+            "https://user:password@eu.semsportal.com/api",
+            "https://eu.semsportal.com:444/api",
+            "https://eu.semsportal.com/api?target=1",
+            "https://eu.semsportal.com/api#fragment",
+            "https://attacker.invalid/web/sems",
+        ],
+    )
+    def test_extract_login_token_rejects_untrusted_api_bases(self, api_base):
+        """Reject attacker-controlled login destinations before storing tokens."""
+        assert (
+            self.api._extract_login_token(
+                {"code": 0, "api": api_base, "data": {"token": "secret"}},
+                "new",
+                "login API call",
+                fallback_api_url="https://eu-gateway.semsportal.com/web/sems",
+            )
+            is None
+        )
+
     def test_powerstation_route_normalizes_regional_hosts(self):
         """Route control requests to the resolved regional SEMS host."""
-        self.api._token = {"region": "eu"}
         assert (
             self.api._extract_gateway_region(
                 "https://eu-gateway.semsportal.com/web/sems"
@@ -613,12 +670,11 @@ class TestSemsApi:
         assert self.api._extract_gateway_region("https://gateway.invalid/api") is None
         assert (
             self.api._normalize_powerstation_api_base(
-                "https://gateway.invalid/web/sems",
+                "https://eu-gateway.semsportal.com/web/sems",
                 "/PowerStation/SaveRemoteControlInverter",
             )
             == "https://eu.semsportal.com/api"
         )
-        self.api._token = {}
         assert (
             self.api._normalize_powerstation_api_base(
                 "https://eu-gateway.semsportal.com/web/sems",
@@ -628,24 +684,22 @@ class TestSemsApi:
         )
         assert (
             self.api._normalize_powerstation_api_base(
-                "https://gateway.invalid/web/sems", "/other/route"
+                "https://eu-gateway.semsportal.com/web/sems", "/other/route"
             )
-            == "https://gateway.invalid/web/sems"
+            == "https://eu-gateway.semsportal.com/web/sems"
         )
-        assert (
+        with pytest.raises(ValueError, match="unsupported API base"):
             self.api._normalize_powerstation_api_base(
                 "https://gateway.invalid/web/sems",
                 "/PowerStation/SaveRemoteControlInverter",
             )
-            == _LegacyApiFallback
-        )
 
     def test_get_login_token_new_success_skips_legacy(self):
         """Test new login success without calling the legacy fallback."""
         new_token = {
             "uid": "legacy-uid",
             "token": "legacy-token",
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
 
         with (
@@ -666,7 +720,7 @@ class TestSemsApi:
         legacy_token = {
             "uid": "new-uid",
             "token": "new-token",
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
 
         with (
@@ -709,7 +763,7 @@ class TestSemsApi:
         web_token = {
             "uid": "web-uid",
             "token": "web-token",
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
 
         with (
@@ -738,7 +792,7 @@ class TestSemsApi:
         legacy_token = {
             "uid": "legacy-uid",
             "token": "legacy-token",
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
 
         with (
@@ -759,7 +813,7 @@ class TestSemsApi:
         web_token = {
             "uid": "web-uid",
             "token": "web-token",
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
         self.api._preferred_login_mode = "web"
 
@@ -1122,7 +1176,7 @@ class TestSemsApi:
         self.api._web_token = {
             "uid": "uid",
             "token": "token",
-            "api": "https://example.test",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
             "client": "semsPlusWeb",
         }
 
@@ -1212,7 +1266,7 @@ class TestSemsApi:
                 "timestamp": 1234567890,
                 "client": "semsPlusWeb",
             },
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
         mock_http_request.return_value = mock_response
 
@@ -1223,7 +1277,7 @@ class TestSemsApi:
             "token": "test-token",
             "timestamp": 1234567890,
             "client": "semsPlusWeb",
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
         assert result == expected_token
         mock_http_request.assert_called_once()
@@ -1238,7 +1292,7 @@ class TestSemsApi:
                     "uid": "test-uid",
                     "token": "test-token",
                     "client": "semsPlusWeb",
-                    "api": "https://api.test.com/",
+                    "api": "https://eu-gateway.semsportal.com/web/sems",
                 },
             },
         )
@@ -1261,7 +1315,7 @@ class TestSemsApi:
             "token": "test-token",
             "timestamp": 1234567890,
             "client": "semsPlusWeb",
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
 
         assert self.api._generate_signature(token) == (
@@ -1278,7 +1332,7 @@ class TestSemsApi:
             "token": "test-token",
             "timestamp": 1234567890,
             "client": "semsPlusWeb",
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
         mock_login.return_value = mock_token
 
@@ -1306,7 +1360,7 @@ class TestSemsApi:
             "token": "test-token",
             "timestamp": 1234567890,
             "client": "semsPlus",
-            "api": "https://api.test.com/",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
         }
         mock_login.return_value = mock_token
         mock_http_request.return_value = {"code": 0, "data": {"result": "success"}}
@@ -1328,7 +1382,10 @@ class TestSemsApi:
     def test_make_api_call_success(self, mock_http_request, mock_login):
         """Test successful API call."""
         # Set up token
-        self.api._token = {"token": "test-token", "api": "https://api.test.com"}
+        self.api._token = {
+            "token": "test-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
 
         mock_response = {"code": 0, "data": {"result": "success"}}
         mock_http_request.return_value = mock_response
@@ -1373,7 +1430,10 @@ class TestSemsApi:
         self.api._token = None
         self.api._web_token = {"token": "stale-web-token"}
 
-        mock_login.return_value = {"token": "new-token", "api": "https://api.test.com"}
+        mock_login.return_value = {
+            "token": "new-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
 
         mock_response = {"code": 0, "data": {"result": "success"}}
         mock_http_request.return_value = mock_response
@@ -1404,7 +1464,10 @@ class TestSemsApi:
     def test_make_api_call_retry_on_failure(self, mock_http_request, mock_login):
         """Test API call retry on validation failure."""
         # Set up token
-        self.api._token = {"token": "test-token", "api": "https://api.test.com"}
+        self.api._token = {
+            "token": "test-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
 
         # First call is rejected for its token, second succeeds
         mock_http_request.side_effect = [
@@ -1412,7 +1475,10 @@ class TestSemsApi:
             {"code": 0, "data": {"result": "success"}},
         ]
 
-        mock_login.return_value = {"token": "new-token", "api": "https://api.test.com"}
+        mock_login.return_value = {
+            "token": "new-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
 
         result = self.api._make_api_call(
             "/test/endpoint", operation_name="test API call", maxTokenRetries=2
@@ -1428,7 +1494,10 @@ class TestSemsApi:
         self, mock_http_request, mock_login
     ):
         """Test other API errors fail without fetching a new token."""
-        self.api._token = {"token": "test-token", "api": "https://api.test.com"}
+        self.api._token = {
+            "token": "test-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
         mock_http_request.return_value = None
 
         with pytest.raises(OutOfRetries):
@@ -1474,7 +1543,10 @@ class TestSemsApi:
     @patch.object(SemsApi, "_make_http_request")
     def test_make_api_call_rate_limit_propagates(self, mock_http_request):
         """Test API call propagates rate limit errors to coordinator layer."""
-        self.api._token = {"token": "test-token", "api": "https://api.test.com"}
+        self.api._token = {
+            "token": "test-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
         mock_http_request.side_effect = SemsRateLimitedError(retry_after=300)
 
         with pytest.raises(SemsRateLimitedError):
@@ -3020,7 +3092,10 @@ class TestSemsApi:
     def test_make_control_api_call_success(self, mock_http_request, mock_login):
         """Test successful control API call."""
         # Set up token
-        self.api._token = {"token": "test-token", "api": "https://api.test.com"}
+        self.api._token = {
+            "token": "test-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
 
         # Control API doesn't validate response code, just HTTP status
         mock_http_request.return_value = {"status": "success"}
@@ -3037,7 +3112,10 @@ class TestSemsApi:
     def test_make_control_api_call_http_error(self, mock_http_request, mock_login):
         """Test control API call with HTTP error."""
         # Set up token
-        self.api._token = {"token": "test-token", "api": "https://api.test.com"}
+        self.api._token = {
+            "token": "test-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
 
         # Mock HTTP error
         mock_response = Mock()
@@ -3046,7 +3124,10 @@ class TestSemsApi:
         http_error.response = mock_response
         mock_http_request.side_effect = http_error
 
-        mock_login.return_value = {"token": "new-token", "api": "https://api.test.com"}
+        mock_login.return_value = {
+            "token": "new-token",
+            "api": "https://eu-gateway.semsportal.com/web/sems",
+        }
 
         # Should retry once and then raise OutOfRetries
         with pytest.raises(OutOfRetries):
@@ -3503,7 +3584,7 @@ class TestSemsApi:
         requests_mock.post(OLD_LOGIN_URL, json=login_response)
 
         endpoint = (
-            "https://eu.semsportal.com/api//PowerStation/SaveRemoteControlInverter"
+            "https://eu.semsportal.com/api/PowerStation/SaveRemoteControlInverter"
         )
         requests_mock.post(endpoint, json={"status": "success"}, status_code=200)
 

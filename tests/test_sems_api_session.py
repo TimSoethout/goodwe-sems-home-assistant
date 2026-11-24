@@ -21,7 +21,7 @@ from custom_components.sems.sems_api import (
     SemsRateLimitedError,
 )
 
-API_BASE = "https://eu-gateway.example.test/web/sems"
+API_BASE = "https://eu-gateway.semsportal.com/web/sems"
 FLOW_URL = f"{API_BASE}/sems-plant/api/stations/flow"
 STATISTICS_URL = f"{API_BASE}/sems-plant/api/stations/statistics"
 PRODUCTION_URL = f"{API_BASE}/sems-plant/api/stations/production"
@@ -349,8 +349,8 @@ def test_parse_retry_after(header: str | None, expected: int | None) -> None:
 def test_control_call_renews_rejected_legacy_token() -> None:
     """A control command rejected for its token is retried with a new login."""
     api = SemsApi(Mock(), MOCK_USERNAME, MOCK_PASSWORD)
-    api._token = {"token": "stale", "api": "https://eu.semsportal.example"}
-    fresh = {"token": "fresh", "api": "https://eu.semsportal.example"}
+    api._token = {"token": "stale", "api": "https://eu.semsportal.com/api"}
+    fresh = {"token": "fresh", "api": "https://eu.semsportal.com/api"}
 
     with (
         patch.object(api, "getLoginToken", return_value=fresh) as mock_login,
