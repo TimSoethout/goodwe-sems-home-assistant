@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-summary_file="${GITHUB_STEP_SUMMARY:?}"
+summary_file="${GITHUB_STEP_SUMMARY:-/dev/null}"
 mypy_output=$(mktemp)
 passed=false
 trap 'rm -f "$mypy_output"' EXIT
@@ -17,6 +17,18 @@ else
     printf '```\n\n'
   } >> "$summary_file"
   printf '%s\n' '::warning title=Platinum strict typing::mypy --strict reported issues; see the job summary.'
+  if [[ "$summary_file" == /dev/null ]]; then
+    cat "$mypy_output" >&2
+  fi
 fi
 
 jq -n --argjson passed "$passed" '{available: true, passed: $passed}' > quality-scale-strict-typing.json
+
+if [[ "$passed" != true ]]; then
+  printf '%s\n' \
+    "Home Assistant strict-typing check failed; see quality-scale-strict-typing.json." \
+    >&2
+  exit 1
+fi
+
+printf '%s\n' "Home Assistant strict-typing check passed."
