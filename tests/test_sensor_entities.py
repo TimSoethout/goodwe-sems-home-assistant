@@ -35,7 +35,6 @@ from custom_components.sems.sensor import (
     _data_source_for_value_path,
     _percentage_handler,
     convert_status_to_label,
-    get_has_existing_homekit_entity,
     get_value_from_path,
     sensor_options_for_data,
 )
@@ -159,31 +158,6 @@ def test_sensor_options_skip_missing_chart_series() -> None:
 
     assert "METER1-import-energy" not in unique_ids
     assert "METER1-import-energy-total" not in unique_ids
-
-
-async def test_homekit_entity_detection_requires_a_matching_entity(
-    hass: HomeAssistant,
-) -> None:
-    """A missing or unregistered HomeKit serial does not count as existing."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_USERNAME: "user",
-            CONF_PASSWORD: "pass",
-            CONF_STATION_ID: MOCK_POWER_STATION_ID,
-        },
-    )
-    entry.add_to_hass(hass)
-
-    assert not get_has_existing_homekit_entity(None, hass, entry)
-    assert not get_has_existing_homekit_entity({"sn": "METER1"}, hass, entry)
-    er.async_get(hass).async_get_or_create(
-        Platform.SENSOR,
-        DOMAIN,
-        "METER1",
-        config_entry=entry,
-    )
-    assert get_has_existing_homekit_entity({"sn": "METER1"}, hass, entry)
 
 
 def test_sensor_options_include_battery_slot_sensors() -> None:

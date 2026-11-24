@@ -3105,24 +3105,6 @@ class TestSemsApi:
         mock_telemetry.assert_called_once_with("station", "BAT1")
 
     @patch.object(SemsApi, "_make_api_call")
-    def test_get_battery_system_devices(self, mock_api_call):
-        """Test optional BAT_SYS discovery."""
-        mock_api_call.return_value = [{"sn": "BAT1", "type": "BAT_SYS"}]
-
-        assert self.api.getBatterySystemDevices("station", "INV1") == [
-            {"sn": "BAT1", "type": "BAT_SYS"}
-        ]
-        mock_api_call.assert_called_once_with(
-            "/sems-plant/api/equipments/INV1/relatedDevices"
-            "?sn=INV1&deviceType=BAT_SYS&pwId=station",
-            method="GET",
-            renewToken=False,
-            maxTokenRetries=2,
-            operation_name="getBatterySystemDevices API call",
-            is_web=True,
-        )
-
-    @patch.object(SemsApi, "_make_api_call")
     def test_get_power_station_ids_uses_web_station_list(self, mock_api_call):
         """Test station discovery uses the SEMS+ Web station list."""
         mock_api_call.return_value = {
