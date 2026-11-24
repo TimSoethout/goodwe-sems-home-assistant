@@ -509,6 +509,13 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                         err,
                     )
                     continue
+                except SemsRateLimitedError as err:
+                    _LOGGER.debug(
+                        "Battery functions rate limited; retaining previous state "
+                        "(retry after %ss)",
+                        err.retry_after,
+                    )
+                    return self.data.batteries if self.data is not None else None
                 battery_general_functions[sn][bat.get("translateCode")] = functions
 
         batteries: dict[str, dict[str, dict[str, Any]]] = {}
@@ -569,6 +576,18 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                     redact_for_log(inverter_sn),
                     err,
                 )
+            except SemsRateLimitedError as err:
+                _LOGGER.debug(
+                    "Immediate-charging state rate limited; retaining previous state "
+                    "(retry after %ss)",
+                    err.retry_after,
+                )
+                previous = (
+                    self.data.immediate_charging if self.data is not None else None
+                )
+                if previous and inverter_sn in previous:
+                    immediate_charging[inverter_sn] = previous[inverter_sn]
+                continue
             state_data = (
                 immediate_charging_result.get("data")
                 if isinstance(immediate_charging_result, dict)

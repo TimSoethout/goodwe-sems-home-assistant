@@ -3595,6 +3595,43 @@ class TestSemsApi:
         )
         mock_flow.assert_called_once_with("station", False, 2)
 
+    def test_get_web_data_fetches_flow_before_telemetry_rate_limit(self):
+        """A device-loop rate limit does not prevent the station flow request."""
+        calls = []
+
+        def get_flow(*args, **kwargs):
+            calls.append("flow")
+            return {"pAc": 2.5, "pGrid": -1}
+
+        def get_telemetry(*args, **kwargs):
+            calls.append("telemetry")
+            return {}
+
+        def get_telecounting(*args, **kwargs):
+            calls.append("telecounting")
+            raise SemsRateLimitedError(retry_after=60)
+
+        with (
+            patch.object(
+                SemsApi,
+                "getWebInverterDevices",
+                return_value=[
+                    {"sn": "SN1", "name": "Inverter", "deviceType": "INVERTER"}
+                ],
+            ),
+            patch.object(SemsApi, "getWebStationFlow", side_effect=get_flow),
+            patch.object(SemsApi, "getWebInverterTelemetry", side_effect=get_telemetry),
+            patch.object(
+                SemsApi, "getWebInverterTelecounting", side_effect=get_telecounting
+            ),
+            patch.object(SemsApi, "_get_web_energy_statistics", return_value=None),
+        ):
+            result = self.api.getWebData("station")
+
+        assert calls == ["flow", "telemetry", "telecounting"]
+        assert result["hasPowerflow"] is True
+        assert result["inverter"][0]["invert_full"]["pac"] == 2500
+
     @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
     @patch.object(
         SemsApi, "getWebStationFlow", return_value={"pAc": 0, "pGrid": 0, "pConsum": 0}

@@ -27,7 +27,7 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -935,14 +935,43 @@ async def async_setup_entry(
         },
     )
 
-    has_existing_homekit_entity = get_has_existing_homekit_entity(
-        coordinator.data.homekit, hass, config_entry
+    added_unique_ids: set[str | None] = set()
+
+    @callback
+    def add_new_sensors() -> None:
+        sensors = [
+            sensor
+            for sensor in _build_sensors(hass, config_entry, coordinator)
+            if sensor.unique_id not in added_unique_ids
+        ]
+        if sensors:
+            added_unique_ids.update(sensor.unique_id for sensor in sensors)
+            async_add_entities(sensors)
+
+    add_new_sensors()
+    config_entry.async_on_unload(coordinator.async_add_listener(add_new_sensors))
+    async_add_ev_charger_entities(
+        coordinator, config_entry, async_add_entities, ev_charger_sensors
     )
 
-    sensor_options: list[SemsSensorType] = sensor_options_for_data(
-        coordinator.data, has_existing_homekit_entity, coordinator.station_id
+
+def _build_sensors(
+    hass: HomeAssistant,
+    config_entry: SemsConfigEntry,
+    coordinator: SemsCoordinator,
+) -> list[SemsSensor]:
+    """Build sensors for the coordinator's current data."""
+    data = coordinator.data
+    if data is None:
+        return []
+
+    has_existing_homekit_entity = get_has_existing_homekit_entity(
+        data.homekit, hass, config_entry
     )
-    sensors = []
+    sensor_options: list[SemsSensorType] = sensor_options_for_data(
+        data, has_existing_homekit_entity, coordinator.station_id
+    )
+    sensors: list[SemsSensor] = []
     for sensor_option in sensor_options:
         sensor_class: type[SemsSensor]
         if isinstance(sensor_option, SemsLegacyPowerflowSensorType):
@@ -969,10 +998,7 @@ async def async_setup_entry(
                 sensor_option.disable_when_empty,
             )
         )
-    async_add_entities(sensors)
-    async_add_ev_charger_entities(
-        coordinator, config_entry, async_add_entities, ev_charger_sensors
-    )
+    return sensors
 
 
 def get_value_from_path(data: dict[str, Any], path: SemsValuePath) -> Any:

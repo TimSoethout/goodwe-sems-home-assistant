@@ -329,6 +329,68 @@ async def test_single_station_with_meter_serial_is_unchanged(
     assert _entity_id(hass, f"{_station_serial(MOCK_STATION_ID_1)}-load") is None
 
 
+async def test_sensors_are_added_when_data_appears_after_initial_refresh(
+    hass: HomeAssistant,
+) -> None:
+    """Create HomeKit, statistics, and battery sensors after a partial refresh."""
+    calls = 0
+
+    def get_data(station_id: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        data = _get_data(station_id)
+        inverter = data["inverter"][0]["invert_full"]
+        inverter.update(
+            {
+                "battery_count": 1,
+                "more_batterys": [{"pbattery": 123, "soc": 95}],
+            }
+        )
+        if calls == 1:
+            for key in (
+                "hasPowerflow",
+                "powerflow",
+                "hasEnergeStatisticsCharts",
+                "energeStatisticsCharts",
+                "energeStatisticsTotals",
+            ):
+                data.pop(key)
+            inverter.pop("battery_count")
+            inverter.pop("more_batterys")
+        return data
+
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    inverter_sn = f"GW0000SN{MOCK_STATION_ID_1[:8]}"
+    homekit_sn = _station_serial(MOCK_STATION_ID_1)
+
+    with (
+        patch.object(SemsApi, "getData", side_effect=get_data),
+        patch.object(SemsApi, "getEnergyStorageIntegratedCabinets", return_value=[]),
+        patch.object(SemsApi, "getBatteryGeneralFunctions", return_value={}),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        assert _entity_id(hass, f"{homekit_sn}-load") is None
+        assert _entity_id(hass, f"{homekit_sn}-import-energy-total") is None
+        assert _entity_id(hass, f"{inverter_sn}-0-pbattery") is None
+
+        await entry.runtime_data.coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    for unique_id, expected_value in (
+        (f"{homekit_sn}-load", "500"),
+        (f"{homekit_sn}-import-energy-total", "100"),
+        (f"{inverter_sn}-0-pbattery", "123"),
+    ):
+        entity_id = _entity_id(hass, unique_id)
+        assert entity_id is not None
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert state.state == expected_value
+
+
 async def test_homekit_devices_of_two_stations_with_serials_are_split(
     hass: HomeAssistant,
 ) -> None:

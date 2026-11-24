@@ -24,8 +24,10 @@ from pytest_homeassistant.common import MockConfigEntry
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
 from custom_components.sems.sems_api import (
     OutOfRetries,
+    SemsApi,
     SemsAuthError,
     SemsPermissionError,
+    SemsRateLimitedError,
 )
 from tests.fixtures import MOCK_GET_DATA_RESULT_MINIMAL
 
@@ -146,6 +148,58 @@ async def test_immediate_charging_entities(hass: HomeAssistant) -> None:
         ).state
         == "65.0"
     )
+
+
+async def test_rate_limited_battery_functions_keep_previous_data(
+    hass: HomeAssistant,
+) -> None:
+    """An optional battery-function rate limit does not fail the refresh."""
+    entry = await _setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    previous_batteries = coordinator.data.batteries
+
+    with (
+        patch.object(SemsApi, "getData", return_value=MOCK_GET_DATA_RESULT_MINIMAL),
+        patch.object(
+            SemsApi, "getEnergyStorageIntegratedCabinets", return_value=CABINETS
+        ),
+        patch.object(
+            SemsApi,
+            "getBatteryGeneralFunctions",
+            side_effect=SemsRateLimitedError(retry_after=60),
+        ),
+        patch.object(SemsApi, "getBatteryImmediateChargingStates", return_value=STATES),
+    ):
+        await coordinator.async_refresh()
+
+    assert coordinator.last_update_success
+    assert coordinator.data.batteries == previous_batteries
+
+
+async def test_rate_limited_immediate_charging_keeps_previous_state(
+    hass: HomeAssistant,
+) -> None:
+    """An immediate-charging rate limit retains the previous state."""
+    entry = await _setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    previous_state = coordinator.data.immediate_charging
+
+    with (
+        patch.object(SemsApi, "getData", return_value=MOCK_GET_DATA_RESULT_MINIMAL),
+        patch.object(
+            SemsApi, "getEnergyStorageIntegratedCabinets", return_value=CABINETS
+        ),
+        patch.object(SemsApi, "getBatteryGeneralFunctions", return_value=FUNCTIONS),
+        patch.object(
+            SemsApi,
+            "getBatteryImmediateChargingStates",
+            side_effect=SemsRateLimitedError(retry_after=60),
+        ),
+    ):
+        await coordinator.async_refresh()
+
+    assert coordinator.last_update_success
+    assert coordinator.data.immediate_charging == previous_state
 
 
 async def test_immediate_charging_entity_commands(hass: HomeAssistant) -> None:

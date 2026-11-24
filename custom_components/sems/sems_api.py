@@ -1390,6 +1390,14 @@ class SemsApi:
         else:
             self._set_web_cache_entry(device_cache_key, (time.monotonic(), devices))
 
+        flow_unavailable = False
+        try:
+            flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
+        except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
+            _LOGGER.debug("SEMS station flow unavailable: %s", err)
+            flow = {}
+            flow_unavailable = True
+
         for device in devices:
             serial_number = device.get("sn")
             if not isinstance(serial_number, str):
@@ -1515,11 +1523,7 @@ class SemsApi:
         result: dict[str, Any] = {"inverter": inverters}
         if ev_chargers:
             result["ev_chargers"] = ev_chargers
-        try:
-            flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
-        except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
-            _LOGGER.debug("SEMS station flow unavailable: %s", err)
-            flow = {}
+        if flow_unavailable:
             for charger in ev_chargers.values():
                 charger["unavailable_sources"].add("flow")
         if len(ev_chargers) == 1 and flow.get("pEvChar") is not None:
