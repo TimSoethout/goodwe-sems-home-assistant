@@ -608,17 +608,16 @@ def ev_charger_selects(coordinator: SemsCoordinator) -> list[SelectEntity]:
     ]
 
 
-def async_add_ev_charger_entities(
+def async_add_coordinator_entities(
     coordinator: SemsCoordinator,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
     factory: Callable[[SemsCoordinator], Sequence[Entity]],
 ) -> None:
-    """Add charger entities now and whenever a refresh reports new ones.
+    """Add coordinator-backed entities now and whenever discovery expands.
 
-    Factories only build entities for values SEMS+ reported, so a charger or
-    endpoint that comes back after a failure gets its entities on a later
-    refresh.
+    Factories only build entities for values SEMS+ reported, so an endpoint
+    that comes back after a failure gets its entities on a later refresh.
     """
     added: set[str | None] = set()
 

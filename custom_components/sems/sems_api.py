@@ -397,9 +397,6 @@ class SemsApi:
                     f"{operation_name} rejected the token with code {response_code}"
                 )
 
-            if response_code in _SuccessCodes:
-                self._reset_cooldown()
-
             # Validate response code if requested
             if validate_code:
                 if response_code not in _SuccessCodes:
@@ -462,10 +459,13 @@ class SemsApi:
             self._cooldown_until = now + delay
             return delay
 
-    def _reset_cooldown(self) -> None:
-        """Forget earlier failures after a successful response."""
-        if self._cooldown_strikes:
-            with self._cooldown_lock:
+    def _reset_cooldown_after_poll(self, starting_strikes: int) -> None:
+        """Forget earlier failures after a complete poll without another limit."""
+        with self._cooldown_lock:
+            if (
+                self._cooldown_strikes == starting_strikes
+                and self._cooldown_until <= time.monotonic()
+            ):
                 self._cooldown_strikes = 0
 
     def _raise_if_cooling_down(self, operation_name: str) -> None:
@@ -1359,6 +1359,7 @@ class SemsApi:
     ) -> dict[str, Any]:
         """Build the legacy coordinator shape from SEMS+ Web responses."""
         self._prune_web_cache()
+        cooldown_strikes = self._cooldown_strikes
         inverters: list[dict[str, Any]] = []
         smart_meters: list[dict[str, Any]] = []
         ev_chargers: dict[str, dict[str, Any]] = {}
@@ -1389,6 +1390,14 @@ class SemsApi:
             device_inventory_unavailable = True
         else:
             self._set_web_cache_entry(device_cache_key, (time.monotonic(), devices))
+
+        flow_unavailable = False
+        try:
+            flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
+        except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
+            _LOGGER.debug("SEMS station flow unavailable: %s", err)
+            flow = {}
+            flow_unavailable = True
 
         for device in devices:
             serial_number = device.get("sn")
@@ -1515,11 +1524,7 @@ class SemsApi:
         result: dict[str, Any] = {"inverter": inverters}
         if ev_chargers:
             result["ev_chargers"] = ev_chargers
-        try:
-            flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
-        except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
-            _LOGGER.debug("SEMS station flow unavailable: %s", err)
-            flow = {}
+        if flow_unavailable:
             for charger in ev_chargers.values():
                 charger["unavailable_sources"].add("flow")
         if len(ev_chargers) == 1 and flow.get("pEvChar") is not None:
@@ -1592,6 +1597,9 @@ class SemsApi:
                         serial_number,
                         err,
                     )
+                    unavailable_inverter_sources.setdefault(serial_number, set()).add(
+                        "cabinets"
+                    )
                     cabinets = []
                 if cabinets:
                     self._set_web_cache_entry(cache_key, (time.monotonic(), cabinets))
@@ -1644,6 +1652,7 @@ class SemsApi:
                 "inverters": unavailable_inverter_sources,
                 "homekit": unavailable_homekit_sources,
             }
+        self._reset_cooldown_after_poll(cooldown_strikes)
         return result
 
     def getWebEvCharger(

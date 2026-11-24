@@ -196,6 +196,41 @@ async def test_two_stations_without_meter_get_distinct_ids_and_devices(
     assert _entity_id(hass, f"{LEGACY_SERIAL}-load") is None
 
 
+async def test_homekit_entities_are_added_when_flow_returns(
+    hass: HomeAssistant,
+) -> None:
+    """Entities skipped by a rate-limited startup appear on the next refresh."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    calls = 0
+
+    def get_data(station_id: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        data = _get_data(station_id)
+        if calls == 1:
+            data.pop("hasPowerflow")
+            data.pop("powerflow")
+            data.pop("hasEnergeStatisticsCharts")
+            data.pop("energeStatisticsCharts")
+            data.pop("energeStatisticsTotals")
+        return data
+
+    with _mock_api(get_data):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        load_id = f"{_station_serial(MOCK_STATION_ID_1)}-load"
+        assert _entity_id(hass, load_id) is None
+
+        await entry.runtime_data.coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    entity_id = _entity_id(hass, load_id)
+    assert entity_id is not None
+    assert hass.states.get(entity_id) is not None
+
+
 @pytest.mark.parametrize("owner_first", [True, False])
 async def test_migration_keeps_history_of_the_owning_station(
     hass: HomeAssistant, owner_first: bool

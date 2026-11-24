@@ -6,7 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .ev_charger import async_add_ev_charger_entities, ev_charger_selects
+from .ev_charger import async_add_coordinator_entities, ev_charger_selects
 
 
 async def async_setup_entry(
@@ -15,7 +15,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SEMS select entities from a config entry."""
-    async_add_ev_charger_entities(
+    async_add_coordinator_entities(
         config_entry.runtime_data.coordinator,
         config_entry,
         async_add_entities,

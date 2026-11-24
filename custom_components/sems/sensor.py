@@ -45,7 +45,7 @@ from .const import (
     redact_for_log,
 )
 from .device import device_info_for_homekit, device_info_for_inverter
-from .ev_charger import async_add_ev_charger_entities, ev_charger_sensors
+from .ev_charger import async_add_coordinator_entities, ev_charger_sensors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -935,6 +935,23 @@ async def async_setup_entry(
         },
     )
 
+    async_add_coordinator_entities(
+        coordinator,
+        config_entry,
+        async_add_entities,
+        lambda coordinator: [
+            *_build_sensors(hass, config_entry, coordinator),
+            *ev_charger_sensors(coordinator),
+        ],
+    )
+
+
+def _build_sensors(
+    hass: HomeAssistant,
+    config_entry: SemsConfigEntry,
+    coordinator: SemsCoordinator,
+) -> list[SemsSensor]:
+    """Build sensor entities for the coordinator's current data."""
     has_existing_homekit_entity = get_has_existing_homekit_entity(
         coordinator.data.homekit, hass, config_entry
     )
@@ -942,7 +959,7 @@ async def async_setup_entry(
     sensor_options: list[SemsSensorType] = sensor_options_for_data(
         coordinator.data, has_existing_homekit_entity, coordinator.station_id
     )
-    sensors = []
+    sensors: list[SemsSensor] = []
     for sensor_option in sensor_options:
         sensor_class: type[SemsSensor]
         if isinstance(sensor_option, SemsLegacyPowerflowSensorType):
@@ -969,10 +986,7 @@ async def async_setup_entry(
                 sensor_option.disable_when_empty,
             )
         )
-    async_add_entities(sensors)
-    async_add_ev_charger_entities(
-        coordinator, config_entry, async_add_entities, ev_charger_sensors
-    )
+    return sensors
 
 
 def get_value_from_path(data: dict[str, Any], path: SemsValuePath) -> Any:
