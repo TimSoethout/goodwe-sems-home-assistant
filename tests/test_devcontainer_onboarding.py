@@ -39,6 +39,12 @@ def test_home_assistant_lifecycle_is_controlled_by_tasks() -> None:
     }
     assert lifecycle_tasks == {
         "SEMS: run Home Assistant": "bash .devcontainer/start-home-assistant --foreground",
+        "SEMS: restart Home Assistant": (
+            "bash .devcontainer/start-home-assistant --restart"
+        ),
+        "SEMS: terminate Home Assistant": (
+            "bash .devcontainer/start-home-assistant --terminate"
+        ),
     }
     assert '"$python" "$repo_root/.devcontainer/onboard-home-assistant.py"' in (
         startup_script
