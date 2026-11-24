@@ -19,6 +19,13 @@
   "forwardPorts": [
     8123
   ],
+  "portsAttributes": {
+    "8123": {
+      "label": "Home Assistant",
+      "protocol": "http",
+      "onAutoForward": "notify"
+    }
+  },
   "postCreateCommand": "uv venv \"$UV_PROJECT_ENVIRONMENT\" && version=$(python3 scripts/homeassistant_version.py) && uv pip install --python \"$UV_PROJECT_ENVIRONMENT/bin/python\" -r requirements.test.txt \"homeassistant==$version\" \"pytest-homeassistant==$version\" mypy ruff && bash .devcontainer/setup.sh",
   "customizations": {
     "vscode": {
