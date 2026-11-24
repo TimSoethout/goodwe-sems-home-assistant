@@ -2,6 +2,10 @@
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-p no:respx"
 asyncio_mode = "auto"
+filterwarnings = [
+	"ignore:Inheritance class HomeAssistantApplication from web.Application is discouraged:DeprecationWarning:homeassistant[.]components[.]http[.]server",
+	"ignore:'asyncio[.]iscoroutinefunction' is deprecated and slated for removal in Python 3[.]16; use inspect[.]iscoroutinefunction[()][()] instead:DeprecationWarning:backoff[.].*",
+]
 testpaths = ["tests"]
 
 [tool.ruff]
