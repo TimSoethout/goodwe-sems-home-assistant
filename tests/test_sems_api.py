@@ -2661,6 +2661,33 @@ class TestSemsApi:
 
     @patch("custom_components.sems.sems_api.dt_util.now")
     @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_counters_hold_stale_midnight_value_until_confirmed(
+        self, mock_api_call, mock_now
+    ):
+        """A stale post-window value stays held until the reset is confirmed."""
+        poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
+        poll(datetime(2026, 11, 22, 23, 50), 7.88, 3.0)
+
+        # SEMS can still return yesterday's high daily totals after the
+        # existing midnight hold window.
+        counters = poll(datetime(2026, 11, 23, 0, 21), 9.5, 3.5)
+        assert counters["proPurchaseStatsToday"] == 7.88
+        assert counters["proGridStatsToday"] == 3.0
+
+        counters = poll(datetime(2026, 11, 23, 0, 22), 0.05, 0.01)
+        assert counters["proPurchaseStatsToday"] == 7.88
+        assert counters["proGridStatsToday"] == 3.0
+
+        counters = poll(datetime(2026, 11, 23, 0, 23), 0.06, 0.02)
+        assert counters["proPurchaseStatsToday"] == 7.88
+        assert counters["proGridStatsToday"] == 3.0
+
+        counters = poll(datetime(2026, 11, 23, 0, 24), 0.07, 0.03)
+        assert counters["proPurchaseStatsToday"] == 0.07
+        assert counters["proGridStatsToday"] == 0.03
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
     def test_smart_meter_missing_today_group_does_not_advance_period(
         self, mock_api_call, mock_now
     ):
