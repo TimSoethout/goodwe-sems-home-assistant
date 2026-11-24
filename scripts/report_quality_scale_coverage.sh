@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-summary_file="${GITHUB_STEP_SUMMARY:?}"
+summary_file="${GITHUB_STEP_SUMMARY:-/dev/null}"
 report_path=coverage.json
 bronze_available=false
 bronze_covered=0
@@ -56,22 +56,22 @@ below_count=0
     if [[ -z "$module_rows" ]]; then
       printf '%s\n' '- **Silver: test-coverage:** No integration modules found in coverage.'
     else
-      mapfile -t modules <<< "$module_rows"
       silver_available=true
-      module_count=${#modules[@]}
+      module_count=0
       details=''
-      for row in "${modules[@]}"; do
+      while IFS= read -r row; do
         IFS=$'\t' read -r path percent statements <<< "$row"
+        module_count=$((module_count + 1))
         if (( statements == 0 )) || awk -v percent="$percent" 'BEGIN { exit !(percent <= 95) }'; then
           below_count=$((below_count + 1))
           details+="${details:+, }\`${path}\` (${percent}%)"
           printf '::warning file=%s::Silver test coverage is %s%%; it must exceed 95%%.\n' "$path" "$percent"
         fi
-      done
+      done <<< "$module_rows"
       if (( below_count > 0 )); then
         printf '%s\n' "- **Silver: test-coverage:** ${below_count} module(s) do not exceed 95%: ${details}."
       else
-        printf '%s\n' "- **Silver: test-coverage:** PASS; all ${#modules[@]} integration modules exceed 95%."
+        printf '%s\n' "- **Silver: test-coverage:** PASS; all ${module_count} integration modules exceed 95%."
       fi
     fi
   fi
@@ -97,3 +97,17 @@ jq -n \
       below: $below_count
     }
   }' > quality-scale-coverage.json
+
+if
+  [[ "$bronze_available" != true ]] ||
+  (( bronze_total == 0 || bronze_covered != bronze_total )) ||
+  [[ "$silver_available" != true ]] ||
+  (( module_count == 0 || below_count > 0 ))
+then
+  printf '%s\n' \
+    "Home Assistant quality-scale coverage checks failed; see quality-scale-coverage.json." \
+    >&2
+  exit 1
+fi
+
+printf '%s\n' "Home Assistant quality-scale coverage checks passed."

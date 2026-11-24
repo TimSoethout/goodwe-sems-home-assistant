@@ -44,6 +44,13 @@
   - `python -m pytest tests/ -v`
   - In HA core repo workspaces, add `--confcutdir=config/goodwe-sems-home-assistant`.
 - For any code change, run the narrowest relevant validation before wrapping up: format if needed, run `ruff check`, and run the most relevant tests for the touched area. Use the targeted test file(s) first, then expand only if necessary.
+- Before every push, run the full CI checks; do not push if any fail:
+  - `ruff check custom_components/`
+  - `ruff format --check custom_components/`
+  - `mypy custom_components/ --ignore-missing-imports --python-version 3.14`
+  - `python -m pytest tests/ --cov=custom_components.sems --cov-report=term-missing --cov-report=json:coverage.json --cov-fail-under=80`
+  - `bash scripts/report_quality_scale_coverage.sh`
+  - `bash scripts/report_quality_scale_strict_typing.sh`
 - Make sure all log messages are redacted of sensitive info (e.g., no email addresses, serial numbers, or API tokens in logs).
 - When discovering a new SEMS or SEMS+ endpoint or response shape, capture a
   sanitized response in [api_examples/](api_examples/), add the endpoint and
