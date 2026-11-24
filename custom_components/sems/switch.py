@@ -98,7 +98,8 @@ class SemsInverterSwitch(SemsSwitchBase):
             raise HomeAssistantError(
                 f"Unable to update {self.entity_id}: inverter is unavailable"
             )
-        return data.inverters[self.serial_number].get("name", self.serial_number)
+        name = data.inverters[self.serial_number].get("name")
+        return name if isinstance(name, str) else self.serial_number
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._async_execute(
