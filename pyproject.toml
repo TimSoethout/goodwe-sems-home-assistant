@@ -3,7 +3,9 @@ asyncio_default_fixture_loop_scope = "function"
 addopts = "-p no:respx"
 asyncio_mode = "auto"
 filterwarnings = [
+	# Home Assistant overrides aiohttp.web.Application by design.
 	"ignore:Inheritance class HomeAssistantApplication from web.Application is discouraged:DeprecationWarning:homeassistant[.]components[.]http[.]server",
+	# https://github.com/litl/backoff/pull/220 - no release containing the fix
 	"ignore:'asyncio[.]iscoroutinefunction' is deprecated and slated for removal in Python 3[.]16; use inspect[.]iscoroutinefunction[()][()] instead:DeprecationWarning:backoff[.].*",
 ]
 testpaths = ["tests"]
