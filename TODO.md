@@ -5,6 +5,47 @@ Architecture and evidence requirements are in
 is not yet complete. Before changing a mapping, add sanitized captured
 evidence and fixture-backed regression coverage where practical.
 
+## Repository audit findings (2026-11-24)
+
+### Must fix
+
+- [ ] Keep live station data available when optional statistics endpoints
+  return permission, retry, or rate-limit errors; preserve cached chart and
+  total values when available.
+- [ ] Mark existing entities unavailable when their inverter or HomeKit data
+  object is absent from a successful refresh, and guard control commands
+  against devices that disappeared between refreshes.
+- [ ] Fix SEMS+ HomeKit load-status direction so captured import and export
+  flows produce distinct values without applying legacy sign handling twice.
+- [ ] Paginate station discovery until the response's `total` number of
+  stations has been returned instead of stopping after the first 100.
+- [ ] Redact device serials, station IDs, and untrusted response bodies from
+  every normal, warning, error, and control-failure log path.
+- [ ] Pin and verify the dev-container HACS installer and CI actions instead
+  of running moving remote scripts or branch refs.
+
+### Should fix
+
+- [ ] Stagger or centrally queue multi-station polling for shared-account
+  clients so all station coordinators do not wait on the same minute.
+- [ ] Route EV-charger control failures through the coordinator control path
+  so rejected credentials start reauthentication consistently.
+- [ ] Keep failed login transport separate from rejected credentials in the
+  config flow; an offline SEMS service must not be presented as a bad
+  password.
+- [ ] Close temporary API clients after config-flow validation, station
+  discovery, reauthentication, and error paths.
+- [ ] Run tests for changes to release scripts and their workflows, and add
+  focused release-validation tests for upload and publishing decisions.
+
+### Nice to have
+
+- [ ] Remove the unused HomeKit registry helper/parameter and
+  `getBatterySystemDevices()` wrapper after confirming no dynamic callers.
+- [ ] Correct README references to the missing integration screenshot and the
+  nonexistent `.devcontainer/ha-core.ref`; document `hacs.json` as the actual
+  Home Assistant version source.
+
 ## SEMS+ behavior and entity coverage
 
 - [ ] Validate a multi-inverter station end to end (#215). Capture at least two
