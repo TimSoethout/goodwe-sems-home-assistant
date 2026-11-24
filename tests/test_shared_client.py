@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
@@ -260,6 +261,10 @@ async def test_entries_of_one_account_share_one_client(hass: HomeAssistant) -> N
         assert entry_1.runtime_data.coordinator is not (
             entry_2.runtime_data.coordinator
         )
+        assert (
+            entry_1.runtime_data.coordinator._poll_lock
+            is entry_2.runtime_data.coordinator._poll_lock
+        )
 
         assert await hass.config_entries.async_unload(entry_1.entry_id)
         await hass.async_block_till_done()
@@ -280,6 +285,69 @@ async def test_entries_of_one_account_share_one_client(hass: HomeAssistant) -> N
         assert await hass.config_entries.async_setup(entry_1.entry_id)
         await hass.async_block_till_done()
         assert entry_1.runtime_data.api is not shared
+
+
+async def test_shared_account_station_polls_are_serialized(
+    hass: HomeAssistant,
+) -> None:
+    """Queued station refreshes run one at a time and all receive a turn."""
+    entries = [_entry(MOCK_STATION_ID_1), _entry(MOCK_STATION_ID_2)]
+    for entry in entries:
+        entry.add_to_hass(hass)
+    api = SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD)
+    poll_lock = asyncio.Lock()
+    coordinators = [
+        SemsDataUpdateCoordinator(hass, api, entry, poll_lock=poll_lock)
+        for entry in entries
+    ]
+    started = asyncio.Event()
+    release = asyncio.Event()
+    active_calls = 0
+    maximum_active_calls = 0
+    call_order: list[str] = []
+
+    async def refresh(station_id: str) -> None:
+        nonlocal active_calls, maximum_active_calls
+        active_calls += 1
+        maximum_active_calls = max(maximum_active_calls, active_calls)
+        call_order.append(station_id)
+        try:
+            if station_id == MOCK_STATION_ID_1:
+                started.set()
+                await release.wait()
+            await asyncio.sleep(0)
+        finally:
+            active_calls -= 1
+
+    async def refresh_first() -> None:
+        await refresh(MOCK_STATION_ID_1)
+
+    async def refresh_second() -> None:
+        await refresh(MOCK_STATION_ID_2)
+
+    with (
+        patch.object(
+            coordinators[0],
+            "_async_update_data_unlocked",
+            side_effect=refresh_first,
+        ),
+        patch.object(
+            coordinators[1],
+            "_async_update_data_unlocked",
+            side_effect=refresh_second,
+        ),
+    ):
+        first = asyncio.create_task(coordinators[0]._async_update_data())
+        await started.wait()
+        second = asyncio.create_task(coordinators[1]._async_update_data())
+        await asyncio.sleep(0)
+
+        assert call_order == [MOCK_STATION_ID_1]
+        release.set()
+        await asyncio.gather(first, second)
+
+    assert call_order == [MOCK_STATION_ID_1, MOCK_STATION_ID_2]
+    assert maximum_active_calls == 1
 
 
 async def test_failed_setup_releases_client(hass: HomeAssistant) -> None:

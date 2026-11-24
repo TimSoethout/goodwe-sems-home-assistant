@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -96,6 +97,7 @@ class _SharedApi:
 
     api: SemsApi
     entry_ids: set[str]
+    poll_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def _is_shared_api_mapping(value: object) -> TypeGuard[dict[str, _SharedApi]]:
@@ -117,8 +119,8 @@ def _shared_clients(hass: HomeAssistant) -> dict[str, _SharedApi]:
     return clients
 
 
-def _acquire_api(hass: HomeAssistant, entry: ConfigEntry) -> SemsApi:
-    """Return the account's shared API client, creating it if needed.
+def _acquire_shared_api(hass: HomeAssistant, entry: ConfigEntry) -> _SharedApi:
+    """Return the account's shared API state, creating it if needed.
 
     SEMS+ keeps one web session per account, so the stations of an account
     must share one client and token instead of logging in against each other.
@@ -135,7 +137,7 @@ def _acquire_api(hass: HomeAssistant, entry: ConfigEntry) -> SemsApi:
         # The most recently set up entry carries the newest password.
         shared.api.update_credentials(entry.data[CONF_PASSWORD])
     shared.entry_ids.add(entry.entry_id)
-    return shared.api
+    return shared
 
 
 async def _async_release_api(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -199,8 +201,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: SemsConfigEntry) -> bool:
     """Set up sems from a config entry."""
     _async_migrate_station_scoped_homekit(hass, entry)
-    sems_api = _acquire_api(hass, entry)
-    coordinator = SemsDataUpdateCoordinator(hass, sems_api, entry)
+    shared = _acquire_shared_api(hass, entry)
+    sems_api = shared.api
+    coordinator = SemsDataUpdateCoordinator(
+        hass, sems_api, entry, poll_lock=shared.poll_lock
+    )
     entry.runtime_data = SemsRuntimeData(api=sems_api, coordinator=coordinator)
 
     try:
@@ -370,11 +375,17 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
     """Class to manage fetching data from the API."""
 
     def __init__(
-        self, hass: HomeAssistant, sems_api: SemsApi, entry: ConfigEntry
+        self,
+        hass: HomeAssistant,
+        sems_api: SemsApi,
+        entry: ConfigEntry,
+        *,
+        poll_lock: asyncio.Lock | None = None,
     ) -> None:
         """Initialize."""
         self.sems_api = sems_api
         self.station_id = entry.data[CONF_STATION_ID]
+        self._poll_lock = poll_lock if poll_lock is not None else asyncio.Lock()
 
         update_interval = timedelta(
             seconds=scan_interval_seconds(entry.data, entry.options)
@@ -598,6 +609,11 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         return immediate_charging
 
     async def _async_update_data(self) -> SemsData:
+        """Serialize station refreshes that share one account client."""
+        async with self._poll_lock:
+            return await self._async_update_data_unlocked()
+
+    async def _async_update_data_unlocked(self) -> SemsData:
         """Fetch data from API endpoint.
 
         This is the place to pre-process the data to lookup tables
