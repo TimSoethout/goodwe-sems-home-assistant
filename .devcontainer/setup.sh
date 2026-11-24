@@ -59,17 +59,6 @@ fi
 ln -sfn "$repo_root/custom_components/sems" \
   "$config_dir/custom_components/sems"
 
-hacs_dir="$config_dir/custom_components/hacs"
-if [[ -d "$hacs_dir" ]]; then
-  if [[ ! -f "$hacs_dir/manifest.json" ]]; then
-    echo "HACS exists but is incomplete at $hacs_dir; refusing to replace it." >&2
-    exit 1
-  fi
-else
-  (
-    cd "$config_dir"
-    wget -O - https://get.hacs.xyz | bash
-  )
-fi
+# Home Assistant 2026.11+ provides HACS through the built-in Marketplace.
 
 echo "SEMS is linked into $config_dir/custom_components/sems"

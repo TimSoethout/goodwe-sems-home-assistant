@@ -51,6 +51,15 @@ def test_home_assistant_lifecycle_is_controlled_by_tasks() -> None:
     )
 
 
+def test_devcontainer_uses_home_assistant_marketplace() -> None:
+    setup_script = (REPO_ROOT / ".devcontainer" / "setup.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "get.hacs.xyz" not in setup_script
+    assert "HACS through the built-in Marketplace" in setup_script
+
+
 def test_wait_for_home_assistant_accepts_unauthorized_api_response() -> None:
     unauthorized = HTTPError(
         url="http://localhost:8123/api/",
