@@ -5,12 +5,14 @@ import hashlib
 import json
 import logging
 import math
+import re
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Literal, NamedTuple, TypeGuard
+from urllib.parse import urlsplit
 
 import requests
 from homeassistant import exceptions
@@ -115,7 +117,12 @@ _NewSEMSPlusWebLoginHeaders = {
 
 
 _NewLoginFallbackApi = "https://eu-gateway.semsportal.com/web/sems"
-_LegacyApiFallback = "https://eu.semsportal.com/api"
+_SemsGatewayHostPattern = re.compile(
+    r"(?P<region>[a-z0-9]+(?:-[a-z0-9]+)*)-gateway\.semsportal\.com"
+)
+_SemsLegacyHostPattern = re.compile(
+    r"(?P<region>[a-z0-9]+(?:-[a-z0-9]+)*)\.semsportal\.com"
+)
 
 type TokenType = Literal["legacy", "new", "web"]
 type LoginHandler = Callable[[str, str], dict[str, Any] | None]
@@ -318,6 +325,13 @@ class SemsApi:
                     data=data,
                     json=json_data,
                     timeout=_RequestTimeout,
+                    allow_redirects=False,
+                )
+
+            if response.status_code in (301, 302, 303, 307, 308):
+                raise requests.HTTPError(
+                    f"{operation_name} returned an unexpected redirect",
+                    response=response,
                 )
 
             _LOGGER.debug("%s Response: %s", operation_name, response)
@@ -509,47 +523,72 @@ class SemsApi:
         )
 
     def _extract_gateway_region(self, api_base: str) -> str | None:
-        """Return the SEMS region prefix from a gateway API base."""
-        host = api_base.split("//", 1)[-1].split("/", 1)[0]
-        if host.endswith("-gateway.semsportal.com"):
-            return host.removesuffix("-gateway.semsportal.com") or None
+        """Return the region from a strictly validated SEMS API base."""
+        try:
+            parsed = urlsplit(api_base)
+            port = parsed.port
+        except ValueError:
+            return None
 
-        if host.endswith(".semsportal.com"):
-            return host.split(".", 1)[0] or None
+        if (
+            parsed.scheme != "https"
+            or parsed.username is not None
+            or parsed.password is not None
+            or port is not None
+            or parsed.query
+            or parsed.fragment
+            or parsed.hostname is None
+        ):
+            return None
+
+        path = parsed.path.rstrip("/")
+        if path == "/web/sems":
+            match = _SemsGatewayHostPattern.fullmatch(parsed.hostname)
+        elif path == "/api":
+            match = _SemsLegacyHostPattern.fullmatch(parsed.hostname)
+        else:
+            return None
+
+        if match is not None:
+            return match.group("region")
 
         return None
 
+    def _validated_api_base(self, api_base: str) -> str | None:
+        """Rebuild a validated SEMS API base from fixed URL components."""
+        region = self._extract_gateway_region(api_base)
+        if region is None:
+            return None
+
+        path = urlsplit(api_base).path
+        trailing_slash = "/" if path.endswith("/") else ""
+        if path.rstrip("/") == "/web/sems":
+            return f"https://{region}-gateway.semsportal.com/web/sems{trailing_slash}"
+        return f"https://{region}.semsportal.com/api{trailing_slash}"
+
     def _normalize_powerstation_api_base(self, api_base: str, url_part: str) -> str:
         """Return the effective API base for PowerStation requests."""
+        validated_base = self._validated_api_base(api_base)
+        if validated_base is None:
+            raise ValueError("SEMS login returned an unsupported API base")
+
         if not self._is_powerstation_route(url_part):
-            return api_base
+            return validated_base
 
-        if "/web/sems" not in api_base and "/sems/" not in api_base:
-            return api_base
+        if urlsplit(validated_base).path.rstrip("/") != "/web/sems":
+            return validated_base
 
-        region = None
-        if isinstance(self._token, dict) and isinstance(self._token.get("region"), str):
-            region = self._token["region"] or None
+        region = self._extract_gateway_region(validated_base)
         if region is None:
-            region = self._extract_gateway_region(api_base)
-
-        if region:
-            rewritten_base = f"https://{region}.semsportal.com/api"
-            _LOGGER.debug(
-                "SEMS - Rewriting API base from %s to %s for %s",
-                api_base,
-                rewritten_base,
-                url_part,
-            )
-            return rewritten_base
-
+            raise ValueError("SEMS login returned an unsupported API base")
+        rewritten_base = f"https://{region}.semsportal.com/api"
         _LOGGER.debug(
-            "SEMS - Rewriting API base from %s to fallback %s for %s",
-            api_base,
-            _LegacyApiFallback,
+            "SEMS - Rewriting API base from %s to %s for %s",
+            validated_base,
+            rewritten_base,
             url_part,
         )
-        return _LegacyApiFallback
+        return rewritten_base
 
     def _get_authenticated_request_context(
         self,
@@ -570,7 +609,7 @@ class SemsApi:
         )
 
         api_base = self._normalize_powerstation_api_base(token["api"], url_part)
-        api_url = api_base + url_part
+        api_url = f"{api_base.rstrip('/')}/{url_part.lstrip('/')}"
         headers = self._build_authenticated_headers(token)
 
         _LOGGER.debug(
@@ -715,7 +754,14 @@ class SemsApi:
             else token_data.get("api")
         )
         if isinstance(api_url, str) and api_url:
-            return api_url
+            validated_api_url = self._validated_api_base(api_url)
+            if validated_api_url is not None:
+                return validated_api_url
+            _LOGGER.error(
+                "SEMS %s login response contained an unsupported api host or path",
+                login_mode,
+            )
+            return None
 
         if fallback_api_url is None:
             _LOGGER.error(
@@ -725,12 +771,16 @@ class SemsApi:
             )
             return None
 
+        validated_fallback = self._validated_api_base(fallback_api_url)
+        if validated_fallback is None:
+            _LOGGER.error("SEMS %s login fallback api is invalid", login_mode)
+            return None
+
         _LOGGER.debug(
-            "SEMS %s login response missing api field, falling back to %s",
+            "SEMS %s login response missing api field, using configured fallback",
             login_mode,
-            fallback_api_url,
         )
-        return fallback_api_url
+        return validated_fallback
 
     def _extract_login_token(
         self,
