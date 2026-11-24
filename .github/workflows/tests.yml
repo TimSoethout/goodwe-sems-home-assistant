@@ -33,7 +33,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
@@ -119,7 +119,7 @@ jobs:
         verbose: false
 
   lint:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
@@ -175,7 +175,7 @@ jobs:
         retention-days: 1
 
   validate:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
