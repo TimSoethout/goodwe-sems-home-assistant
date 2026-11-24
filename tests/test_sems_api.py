@@ -1620,6 +1620,14 @@ class TestSemsApi:
         )
 
     @patch.object(SemsApi, "_make_api_call")
+    def test_get_power_station_ids_stops_on_malformed_station_list(self, mock_api_call):
+        """Malformed legacy-like responses retain empty station discovery."""
+        mock_api_call.return_value = {"dataList": "not-a-list"}
+
+        assert self.api.getPowerStationIds() == []
+        mock_api_call.assert_called_once()
+
+    @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_devices(self, mock_api_call):
         """Test SEMS+ inverter discovery normalization."""
         mock_api_call.return_value = {
