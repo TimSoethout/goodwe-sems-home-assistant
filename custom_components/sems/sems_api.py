@@ -1086,7 +1086,13 @@ class SemsApi:
             and time.monotonic() - cached[0] < refresh
         ):
             return cached_statistics
+        recent_failure = self._get_web_cache_entry(f"failed:{cache_key}")
         if self._recently_failed(cache_key):
+            if recent_failure and recent_failure[1] == "permission":
+                raise SemsPermissionError(
+                    "getWebStationStatistics",
+                    "denied by cached permission response",
+                )
             return cached_statistics
 
         try:
@@ -1106,7 +1112,10 @@ class SemsApi:
                 is_web=True,
                 token_type=_WEB_STATION_STATISTICS_ENDPOINT.token_type,
             )
-        except OutOfRetries as err:
+        except SemsPermissionError:
+            self._remember_failure(cache_key, "permission")
+            raise
+        except (OutOfRetries, SemsRateLimitedError) as err:
             _LOGGER.debug("SEMS %s statistics unavailable: %s", dimension, err)
             response = None
         if not isinstance(response, dict):
@@ -1219,15 +1228,16 @@ class SemsApi:
             failed and time.monotonic() - failed[0] < _WEB_FAILED_REQUEST_RETRY_SECONDS
         )
 
-    def _remember_failure(self, cache_key: str) -> None:
+    def _remember_failure(self, cache_key: str, reason: str | None = None) -> None:
         """Delay the next attempt of a failed optional request."""
-        self._set_web_cache_entry(f"failed:{cache_key}", (time.monotonic(), None))
+        self._set_web_cache_entry(f"failed:{cache_key}", (time.monotonic(), reason))
 
     def _get_web_energy_statistics(
         self,
         power_station_id: str,
         inverters: list[dict[str, Any]],
         include_last_month: bool = False,
+        unavailable_sources: set[str] | None = None,
     ) -> tuple[dict[str, Any], dict[str, float], str | None, float | None] | None:
         """Return chart and lifetime statistics without making them coordinator-critical."""
         try:
@@ -1296,6 +1306,14 @@ class SemsApi:
                     future.result() for future in historic_statistics_futures
                 ]
 
+            statistics_available = all(data is not None for data in statistic_data)
+            history_available = all(
+                data is not None for data in historic_statistics_by_year
+            )
+            if not statistics_available or not history_available:
+                if unavailable_sources is not None:
+                    unavailable_sources.add("counters")
+
             if production_data and isinstance(production_data.get("currency"), str):
                 currency = production_data.get("currency")
             for (_dimension, start, _), data in zip(
@@ -1329,15 +1347,16 @@ class SemsApi:
                 elif start == previous_month_start:
                     last_month_pv = sum(data.get("proSystemTotalStats", []))
 
-            for historic_statistics in historic_statistics_by_year:
-                if not historic_statistics:
-                    continue
-                for item, values in historic_statistics.items():
-                    mapped_target = _WEB_STATISTICS_KEY_MAP.get(item)
-                    if mapped_target is not None:
-                        totals[mapped_target] = totals.get(mapped_target, 0) + sum(
-                            values
-                        )
+            if history_available:
+                for historic_statistics in historic_statistics_by_year:
+                    if not historic_statistics:
+                        continue
+                    for item, values in historic_statistics.items():
+                        mapped_target = _WEB_STATISTICS_KEY_MAP.get(item)
+                        if mapped_target is not None:
+                            totals[mapped_target] = totals.get(mapped_target, 0) + sum(
+                                values
+                            )
             self_use = totals.get("selfUseOfPv")
             consumption = totals.get("consumptionOfLoad")
             production_total = totals.get("sum")
@@ -1347,8 +1366,13 @@ class SemsApi:
                 totals["selfUseRate"] = self_use / production_total
 
             return charts, totals, currency, last_month_pv
+        except SemsPermissionError as err:
+            _LOGGER.debug("SEMS station statistics unavailable: %s", err)
+            return None
         except (OutOfRetries, SemsRateLimitedError) as err:
             _LOGGER.debug("SEMS station statistics unavailable: %s", err)
+            if unavailable_sources is not None:
+                unavailable_sources.add("counters")
             return None
 
     def _get_web_production(
@@ -1391,7 +1415,7 @@ class SemsApi:
                 is_web=True,
                 token_type=_WEB_STATION_PRODUCTION_ENDPOINT.token_type,
             )
-        except OutOfRetries as err:
+        except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
             _LOGGER.debug("SEMS station production unavailable: %s", err)
             response = None
         if not isinstance(response, dict):
@@ -1663,11 +1687,14 @@ class SemsApi:
         if any(storage_cabinets.values()):
             result["info"] = {"is_stored": True}
             result["_energy_storage_cabinets"] = storage_cabinets
+        unavailable_statistics_sources: set[str] = set()
         statistics = self._get_web_energy_statistics(
             powerStationId,
             inverters,
             include_last_month=include_last_month,
+            unavailable_sources=unavailable_statistics_sources,
         )
+        unavailable_homekit_sources.update(unavailable_statistics_sources)
         charts, totals, currency, last_month_pv = (
             statistics if statistics is not None else ({}, {}, None, None)
         )
@@ -2481,18 +2508,23 @@ class SemsApi:
             serial_number = cabinet.get("sn")
             if not isinstance(serial_number, str):
                 continue
+            battery: dict[str, Any] = {"sn": serial_number}
             try:
                 telemetry = self.getBatterySystemTelemetry(
                     powerStationId, serial_number
                 )
-            except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
+            except (
+                OutOfRetries,
+                SemsPermissionError,
+                SemsRateLimitedError,
+            ) as err:
                 _LOGGER.debug(
                     "SEMS BAT_SYS telemetry unavailable for %s: %s",
                     serial_number,
                     err,
                 )
+                batteries.append(battery)
                 continue
-            battery: dict[str, Any] = {"sn": serial_number}
             for source, target in (
                 ("power", "pbattery"),
                 ("voltage", "vbattery"),
@@ -2505,8 +2537,7 @@ class SemsApi:
             ):
                 if (value := telemetry.get(source)) is not None:
                     battery[target] = value * 1000 if source == "power" else value
-            if len(battery) > 1:
-                batteries.append(battery)
+            batteries.append(battery)
         return batteries
 
     def getBatterySystemDevices(

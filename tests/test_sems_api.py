@@ -13,6 +13,7 @@ import pytest
 import requests
 from homeassistant.exceptions import HomeAssistantError
 
+from custom_components.sems import SemsData
 from custom_components.sems.const import redact_for_log
 from custom_components.sems.sems_api import (
     NEW_LOGIN_URL,
@@ -23,6 +24,7 @@ from custom_components.sems.sems_api import (
     SemsPermissionError,
     SemsRateLimitedError,
 )
+from custom_components.sems.sensor import sensor_options_for_data
 
 # Test data constants - anonymized for privacy
 MOCK_INVERTER_SN = "GW0000SN000TEST1"
@@ -214,6 +216,40 @@ class TestSemsApi:
             assert self.api._get_web_statistics("station", "day", start, end) is None
             assert self.api._get_web_statistics("station", "day", start, end) is None
 
+    def test_web_statistics_retains_cached_values_during_rate_limit(self):
+        """Reuse the last statistics response after its refresh window expires."""
+        start = datetime(2026, 9, 24)
+        end = datetime(2026, 9, 24, 23, 59, 59)
+        cache_key = f"station:day:{start.date()}:{end.date()}"
+        cached = {"proGridStats": [9.76]}
+        self.api._set_web_cache_entry(cache_key, (0.0, cached))
+
+        with (
+            patch("custom_components.sems.sems_api.time.monotonic", return_value=1000),
+            patch.object(
+                self.api,
+                "_make_api_call",
+                side_effect=SemsRateLimitedError(300),
+            ),
+        ):
+            assert self.api._get_web_statistics("station", "day", start, end) == cached
+
+    def test_web_statistics_backoff_preserves_permission_denial(self):
+        """Keep denied statistics optional without retrying every poll."""
+        start = datetime(2026, 9, 24)
+        end = datetime(2026, 9, 24, 23, 59, 59)
+
+        with patch.object(
+            self.api,
+            "_make_api_call",
+            side_effect=SemsPermissionError("statistics", "denied"),
+        ) as mock_api_call:
+            for _ in range(2):
+                with pytest.raises(SemsPermissionError):
+                    self.api._get_web_statistics("station", "day", start, end)
+
+        mock_api_call.assert_called_once()
+
     @patch.object(
         SemsApi,
         "_get_web_statistics",
@@ -281,6 +317,56 @@ class TestSemsApi:
         assert result is not None
         charts, _totals, _currency, _last_month = result
         assert charts == {"sum": 3.0}
+
+    @patch.object(SemsApi, "_get_web_production", return_value=None)
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_drops_incomplete_lifetime_totals(
+        self, mock_now, _mock_production
+    ):
+        """Never publish a lifetime total when one yearly request failed."""
+        mock_now.return_value = datetime(2026, 9, 25)
+        unavailable_sources: set[str] = set()
+
+        def statistics(_station, dimension, start, _end):
+            if dimension == "day":
+                return {"proPurchaseStats": [1.0]}
+            return None if start.year == 2021 else {"proGridStats": [2.0]}
+
+        with patch.object(self.api, "_get_web_statistics", side_effect=statistics):
+            charts, totals, _currency, _last_month = (
+                self.api._get_web_energy_statistics(
+                    "station",
+                    [{"invert_full": {"addTime": "1609459200000"}}],
+                    unavailable_sources=unavailable_sources,
+                )
+            )
+
+        assert charts == {"buy": 1.0}
+        assert totals == {}
+        assert unavailable_sources == {"counters"}
+
+    @patch.object(SemsApi, "_get_web_production", return_value=None)
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_permission_denial_is_not_transient(
+        self, mock_now, _mock_production
+    ):
+        """Do not create recovery entities for an endpoint the account cannot use."""
+        mock_now.return_value = datetime(2026, 9, 25)
+        unavailable_sources: set[str] = set()
+
+        with patch.object(
+            self.api,
+            "_get_web_statistics",
+            side_effect=SemsPermissionError("statistics", "denied"),
+        ):
+            result = self.api._get_web_energy_statistics(
+                "station",
+                [],
+                unavailable_sources=unavailable_sources,
+            )
+
+        assert result is None
+        assert unavailable_sources == set()
 
     @patch.object(
         SemsApi,
@@ -2932,20 +3018,17 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "getBatterySystemTelemetry", return_value={})
     def test_get_web_batteries_ignores_invalid_and_empty_devices(self, mock_telemetry):
-        """Skip malformed related devices and batteries with no reported values."""
-        assert (
-            self.api._get_web_batteries(
-                "station",
-                [
-                    None,
-                    {"type": "INVERTER", "sn": "INV1"},
-                    {"type": "BAT_SYS"},
-                    {"type": "BAT_SYS", "sn": 123},
-                    {"type": "BAT_SYS", "sn": "BAT1"},
-                ],
-            )
-            == []
-        )
+        """Keep valid battery slots while skipping malformed related devices."""
+        assert self.api._get_web_batteries(
+            "station",
+            [
+                None,
+                {"type": "INVERTER", "sn": "INV1"},
+                {"type": "BAT_SYS"},
+                {"type": "BAT_SYS", "sn": 123},
+                {"type": "BAT_SYS", "sn": "BAT1"},
+            ],
+        ) == [{"sn": "BAT1"}]
         mock_telemetry.assert_called_once_with("station", "BAT1")
 
     @patch.object(SemsApi, "_make_api_call")
@@ -3842,7 +3925,7 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "getBatterySystemTelemetry")
     def test_web_batteries_skip_denied_battery_telemetry(self, mock_telemetry):
-        """A denied BAT_SYS telemetry request only drops that battery."""
+        """A denied BAT_SYS telemetry request keeps the battery slot."""
         mock_telemetry.side_effect = [
             SemsPermissionError("BAT_SYS telemetry", "denied"),
             {"soc": 99.0, "power": 1.25},
@@ -3853,8 +3936,74 @@ class TestSemsApi:
         ]
 
         assert self.api._get_web_batteries("station", cabinets) == [
-            {"sn": "BAT_B", "soc": 99.0, "pbattery": 1250.0}
+            {"sn": "BAT_A"},
+            {"sn": "BAT_B", "soc": 99.0, "pbattery": 1250.0},
         ]
+
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
+    @patch.object(SemsApi, "getWebStationFlow", return_value={"pSystem": 1.0})
+    @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
+    @patch.object(SemsApi, "getWebInverterTelemetry", return_value={"pac": 1000.0})
+    @patch.object(SemsApi, "getWebInverterDevices")
+    @patch.object(SemsApi, "getEnergyStorageIntegratedCabinets")
+    @patch.object(SemsApi, "getBatterySystemTelemetry")
+    def test_partial_rate_limit_preserves_discovered_entities(
+        self,
+        mock_battery_telemetry,
+        mock_cabinets,
+        mock_devices,
+        _mock_telemetry,
+        _mock_telecounting,
+        _mock_flow,
+        _mock_statistics,
+    ):
+        """Keep all battery and statistics entities when a poll is rate limited."""
+        _mock_statistics.side_effect = lambda _station, _inverters, **kwargs: (
+            kwargs["unavailable_sources"].add("counters"),
+            None,
+        )[1]
+        mock_devices.return_value = [
+            {
+                "sn": "INV1",
+                "name": "Inverter",
+                "deviceType": "INVERTER",
+                "subtype": "store",
+            }
+        ]
+        mock_cabinets.return_value = [
+            {"sn": f"BAT{index}", "type": "BAT_SYS"} for index in range(6)
+        ]
+        mock_battery_telemetry.side_effect = [
+            {"soc": float(index), "power": 0.5} for index in range(4)
+        ] + [SemsRateLimitedError(300), SemsRateLimitedError(300)]
+
+        result = self.api.getWebData("station")
+
+        inverter = result["inverter"][0]["invert_full"]
+        assert inverter["battery_count"] == 6
+        assert len(inverter["more_batterys"]) == 6
+        assert result["unavailable_data_sources"]["homekit"] == {"counters"}
+
+        homekit = {
+            **result["powerflow"],
+            "sn": "station-powerflow",
+            "hasEnergeStatisticsCharts": True,
+        }
+        options = sensor_options_for_data(
+            SemsData(
+                inverters={"INV1": inverter},
+                homekit=homekit,
+                unavailable_homekit_sources={"counters"},
+            ),
+            station_id="station",
+        )
+        unique_ids = {option.unique_id for option in options}
+        assert {f"INV1-{index}-soc" for index in range(6)} <= unique_ids
+        assert {
+            "station-powerflow-import-energy",
+            "station-powerflow-export-energy",
+            "station-powerflow-daily-self-use",
+        } <= unique_ids
 
 
 class TestOutOfRetries:
