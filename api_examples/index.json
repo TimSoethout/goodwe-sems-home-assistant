@@ -37,7 +37,7 @@
     {"path": "api_examples/smart_meter_related_devices.json", "provenance": "api_capture"},
     {"path": "api_examples/smart_meter_telecounting.json", "provenance": "api_capture", "tests": ["tests/test_sems_api.py", "tests/test_sensor_entities.py"]},
     {"path": "api_examples/smart_meter_telemetry.json", "provenance": "api_capture", "tests": ["tests/test_sems_api.py", "tests/test_sensor_entities.py"]},
-    {"path": "api_examples/station_flow.json", "provenance": "api_capture"},
+    {"path": "api_examples/station_flow.json", "provenance": "api_capture", "tests": ["tests/test_sensor_entities.py"]},
     {"path": "api_examples/station_flow_battery_directions.json", "provenance": "issue_report", "tests": ["tests/test_sensor_entities.py"]},
     {"path": "api_examples/station_flow_import.json", "provenance": "api_capture", "tests": ["tests/test_sems_api.py", "tests/test_sensor_entities.py"]},
     {"path": "api_examples/station_flow_richaaldo_eu_battery_rack_schema.json", "provenance": "reported_schema"},

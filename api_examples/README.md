@@ -19,24 +19,51 @@ behavior.
 
 ## Capturing a new endpoint or response
 
+Treat this directory as a publishable, default-deny catalog.
+
+### Private or local capture
+
+Store raw and installation-specific captures under `local/` while sanitizing
+them. It is ignored by the directory-wide rule. Do not add local files to
+[`index.json`](./index.json), this README, or tests, because clean CI checkouts
+will not contain them.
+
+Ignore rules are not secure storage. Keep especially sensitive HAR, cookie,
+header, and authentication material outside the repository when possible.
+
+### Publishable capture
+
 1. Enable `custom_components.sems: debug` logging in Home Assistant.
-2. Reproduce the request or response shape and copy only the relevant redacted
-   response payload from the log. The integration logs SEMS+ response data in
-   redacted form; still review it manually before sharing or committing it.
-3. Add the sanitized JSON response under this directory. Put legacy SEMS
-   monitor responses in [`legacy/`](./legacy/); keep SEMS+ Web responses at the
-   top level.
-4. Add it to [`index.json`](./index.json), including provenance and any test
+2. Reproduce the request or response shape and copy the relevant payload into
+   `local/`. The integration logs SEMS+ response data in redacted form, but
+   always review it manually.
+3. Remove credentials, cookies, authorization headers, signatures, live
+   tokens, station IDs, serial numbers, trace IDs, personal names, precise
+   locations, and other installation-specific data. Replace them with stable
+   placeholders.
+4. Move the sanitized JSON into the appropriate publishable directory. Put
+   legacy monitor responses in [`legacy/`](./legacy/); keep SEMS+ Web
+   responses at the top level or in a purpose-specific subdirectory.
+5. Stage the reviewed file explicitly with `git add -f -- <path>`. This avoids
+   listing publishable or installation-specific capture names in
+   [`.gitignore`](./.gitignore), while retaining default-deny behavior for
+   future captures.
+
+   ```console
+   git add -f -- api_examples/path/to/sanitized_capture.json
+   ```
+
+6. Add it to [`index.json`](./index.json), including provenance and its test
    consumers. Update the response reference below with its endpoint and field
    details.
-5. Add or update a fixture-backed regression test before adding a production
+7. Add or update a fixture-backed regression test before adding a production
    mapping. Include units, device type, region, and known limitations in the
    fixture or test documentation.
 
-Never commit credentials, cookies, authorization headers, signatures, live
-tokens, station IDs, serial numbers, trace IDs, or personal names. Replace
-them with stable placeholders. Do not commit an unredacted browser HAR; extract
-the relevant JSON response and sanitize it instead.
+Anything named in `index.json`, this README, or tests must exist in a clean
+clone. Never reference a `local/` file from committed metadata, documentation,
+or tests. Extract and sanitize relevant JSON from browser captures; do not
+commit an unredacted HAR.
 
 ## Response reference
 

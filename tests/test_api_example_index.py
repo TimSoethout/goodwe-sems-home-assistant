@@ -95,3 +95,26 @@ def test_index_covers_all_shared_fixture_json() -> None:
     indexed = {example["path"] for example in catalog["examples"]}
 
     assert indexed == expected
+
+
+def test_unpublished_capture_locations_remain_ignored() -> None:
+    ignored = subprocess.run(
+        [
+            "git",
+            "check-ignore",
+            "--no-index",
+            "api_examples/local/raw.json",
+            "api_examples/unpublished.json",
+            "api_examples/semsplus_hybrid/unpublished.json",
+        ],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+
+    assert ignored.stdout.splitlines() == [
+        "api_examples/local/raw.json",
+        "api_examples/unpublished.json",
+        "api_examples/semsplus_hybrid/unpublished.json",
+    ]

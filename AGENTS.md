@@ -2,7 +2,7 @@
 
 ## API changes
 - Check real, sanitized captures in [api_examples/](api_examples/) before changing parsing, coordinator data, or entities. Verify endpoint, response shape, device/factor names, units, signs, and missing fields.
-- If no capture covers the response, obtain and sanitize one; add it and document the endpoint/fields in [api_examples/README.md](api_examples/README.md). Never guess payloads from names or mocks.
+- If no capture covers the response, obtain and sanitize one; keep raw or installation-specific material in ignored `api_examples/local/`, publish only a sanitized file by force-adding its exact path, catalog it, and document the endpoint/fields in [api_examples/README.md](api_examples/README.md). Never guess payloads from names or mocks.
 - Test captured fixtures through normalization to entity state. Use mocks only for errors, boundaries, missing fields, or cases that cannot be captured. Never call the live API or require credentials in tests.
 - Assert unit/sign conversions against captures. If a capture conflicts with code, stop and investigate; never alter a fixture to fit.
 - Never commit credentials, tokens, cookies, signatures, station IDs, serial numbers, trace IDs, precise locations or personal names.
@@ -52,12 +52,16 @@
   - `bash scripts/report_quality_scale_coverage.sh`
   - `bash scripts/report_quality_scale_strict_typing.sh`
 - Make sure all log messages are redacted of sensitive info (e.g., no email addresses, serial numbers, or API tokens in logs).
-- When discovering a new SEMS or SEMS+ endpoint or response shape, capture a
-  sanitized response in [api_examples/](api_examples/), add the endpoint and
-  field mapping to its README, and add a fixture-backed regression test before
-  relying on the response in integration code. Never commit credentials,
-  cookies, authorization headers, signatures, tokens, station IDs, serial
-  numbers, trace IDs, or personal names.
+- When discovering a new SEMS or SEMS+ endpoint or response shape, capture raw
+  or installation-specific material in ignored `api_examples/local/`, sanitize
+  it, and force-add only the reviewed file before publishing it. Add the
+  endpoint and field mapping to [api_examples/README.md](api_examples/README.md),
+  catalog it in `index.json`, and add a fixture-backed regression test before
+  relying on it in integration code. Never enumerate capture filenames in
+  `.gitignore`, reference local-only files from committed metadata,
+  documentation, or tests, or commit credentials, cookies, authorization
+  headers, signatures, tokens, station IDs, serial numbers, trace IDs, precise
+  locations, or personal names.
 - Prefer sanitized responses captured from the real API for integration tests (api_examples/):
   load them as fixtures and exercise the complete response-normalization and
   entity-creation path. Use hand-built mocks only for isolated error handling,
