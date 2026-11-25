@@ -111,12 +111,14 @@ def _data_source_for_value_path(path: SemsValuePath) -> str | None:
     """Return the SEMS+ data source used by a sensor value."""
     if not path:
         return None
+    if len(path) >= 3 and path[1] == "more_batterys":
+        return "battery_telemetry"
     field = path[-1]
     if not isinstance(field, str):
         return None
     if field == "status":
         return "device_status"
-    if field in _COUNTER_SENSOR_FIELDS:
+    if field in _COUNTER_SENSOR_FIELDS or field.startswith(("Charts_", "Totals_")):
         return "counters"
     if field in _TELEMETRY_SENSOR_FIELDS or field.startswith(
         ("vpv", "ipv", "ppv", "vac", "iac", "fac", "meter_")
@@ -750,7 +752,9 @@ def sensor_options_for_data(
                     )
                 )
         if data.homekit.get(GOODWE_SPELLING.hasEnergyStatisticsCharts):
-            if any(key.startswith("Charts_") for key in data.homekit):
+            if any(key.startswith("Charts_") for key in data.homekit) or (
+                "counters" in data.unavailable_homekit_sources
+            ):
                 sensors += [
                     SemsHomekitSensorType(
                         device_info,
@@ -827,7 +831,9 @@ def sensor_options_for_data(
                         custom_value_handler=_percentage_handler,
                     ),
                 ]
-            if any(key.startswith("Totals_") for key in data.homekit):
+            if any(key.startswith("Totals_") for key in data.homekit) or (
+                "counters" in data.unavailable_homekit_sources
+            ):
                 sensors += [
                     SemsHomekitSensorType(
                         device_info,
@@ -1136,6 +1142,18 @@ class SemsInverterSensor(SemsSensor):
         inverter_sn = self._value_path[0]
         if not isinstance(inverter_sn, str):
             return False
+        if self._data_source == "battery_telemetry":
+            battery_index = self._value_path[2]
+            if not isinstance(battery_index, int):
+                return False
+            batteries = get_value_from_path(
+                self.coordinator.data.inverters,
+                [inverter_sn, "more_batterys"],
+            )
+            if not isinstance(batteries, list) or battery_index >= len(batteries):
+                return True
+            battery = batteries[battery_index]
+            return isinstance(battery, dict) and not (battery.keys() - {"sn"})
         failed_sources = self.coordinator.data.unavailable_inverter_sources.get(
             inverter_sn, set()
         )

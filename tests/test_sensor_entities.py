@@ -681,6 +681,60 @@ async def test_sensor_not_disabled_when_its_source_failed_at_setup(
     assert entity_entry.disabled_by is expected_disabled_by
 
 
+async def test_partial_poll_entities_are_enabled_but_unavailable_at_setup(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Keep discovered battery and statistics entities available for recovery."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    inverter = {
+        **MOCK_GET_DATA_RESULT_MINIMAL["inverter"][0]["invert_full"],
+        "battery_count": 1,
+        "more_batterys": [
+            {
+                "sn": "BAT1",
+            }
+        ],
+    }
+    payload = {
+        "inverter": [{"invert_full": inverter}],
+        "hasPowerflow": True,
+        "powerflow": {"pv": 500},
+        "hasEnergeStatisticsCharts": True,
+        "unavailable_data_sources": {
+            "inverters": {},
+            "homekit": {"counters"},
+        },
+    }
+
+    with _mock_no_battery_api(payload):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    for unique_id in (
+        "GW0000SN000TEST1-0-soc",
+        f"{MOCK_STATION_SERIAL}-import-energy",
+        f"{MOCK_STATION_SERIAL}-daily-self-use",
+    ):
+        entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, unique_id)
+        assert entity_id is not None
+        entity_entry = ent_reg.async_get(entity_id)
+        assert entity_entry is not None
+        assert entity_entry.disabled_by is None
+        assert hass.states.get(entity_id).state == "unavailable"
+
+
 async def test_unique_id_migration_sn_to_sn_power(
     hass: HomeAssistant,
     enable_custom_integrations: None,
