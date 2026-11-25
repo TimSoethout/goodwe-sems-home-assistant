@@ -45,6 +45,7 @@
     {"path": "api_examples/station_statistics_richaaldo_eu_schema.json", "provenance": "reported_schema"},
     {"path": "api_examples/telecounting.json", "provenance": "api_capture", "tests": ["tests/test_sensor_entities.py"]},
     {"path": "api_examples/telemetry.json", "provenance": "api_capture", "tests": ["tests/test_sensor_entities.py"]},
+    {"path": "api_examples/telemetry_three_phase.json", "provenance": "api_capture", "tests": ["tests/test_sems_api.py"]},
     {"path": "api_examples/web_cross_login.json", "provenance": "api_capture", "tests": ["tests/test_config_flow.py"]},
     {"path": "tests/test-data/20250623_homekit_getData.json", "provenance": "api_capture", "tests": ["tests/test_sensor_entities.py"]},
     {"path": "tests/test-data/20260110_singleInverter_getData.json", "provenance": "api_capture", "tests": ["tests/test_sensor_entities.py"]}

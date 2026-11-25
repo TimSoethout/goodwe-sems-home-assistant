@@ -2131,6 +2131,18 @@ class TestSemsApi:
             "ppv1": 991.38,
         }
 
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_web_inverter_telemetry_phase_currents(self, mock_api_call):
+        """Map captured per-phase SEMS+ current factors."""
+        mock_api_call.return_value = json.loads(
+            (API_EXAMPLES_DIR / "telemetry_three_phase.json").read_text(
+                encoding="utf-8"
+            )
+        )["data"]
+
+        telemetry = self.api.getWebInverterTelemetry("station", "SN1")
+        assert [telemetry[f"iac{i}"] for i in range(1, 4)] == [3.2] * 3
+
     @pytest.mark.parametrize(
         "method_name",
         ("getWebInverterTelemetry", "getWebInverterTelecounting"),
@@ -2554,7 +2566,7 @@ class TestSemsApi:
     @patch("custom_components.sems.sems_api.dt_util.now")
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telecounting_holds_counters_at_midnight(
-        self: "TestSemsApi", mock_api_call: Mock, mock_now: Mock
+        self: TestSemsApi, mock_api_call: Mock, mock_now: Mock
     ) -> None:
         """Test previous-day readings after midnight do not stick (#94)."""
 
@@ -2608,7 +2620,7 @@ class TestSemsApi:
     @patch("custom_components.sems.sems_api.dt_util.now")
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telecounting_does_not_cache_midnight_cold_start(
-        self: "TestSemsApi", mock_api_call: Mock, mock_now: Mock
+        self: TestSemsApi, mock_api_call: Mock, mock_now: Mock
     ) -> None:
         """Test stale rollover readings on startup are not cached as current."""
         mock_api_call.return_value = [

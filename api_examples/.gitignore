@@ -24,6 +24,7 @@ legacy/*
 !station_flow_battery_directions.json
 !telecounting.json
 !telemetry.json
+!telemetry_three_phase.json
 !smart_meter_all_status.json
 !smart_meter_related_devices.json
 !smart_meter_telecounting.json
