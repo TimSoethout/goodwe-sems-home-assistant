@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+## 11.13.5-beta.1 - 2026-11-25
+
+## Keep entities stable during partial SEMS+ polls
+
+- Preserve every discovered battery slot when one battery's telemetry is
+  temporarily empty, denied, or rate-limited, so batteries do not disappear or
+  move to another entity's index.
+- Keep daily and lifetime energy entities registered during transient
+  statistics failures, while withholding lifetime totals until every required
+  historical year is available.
+- Cache permission-denied statistics responses separately from temporary
+  failures, avoiding repeated requests without creating permanent recovery
+  entities for unsupported endpoints.
+
+### Compatibility and limitations
+
+- No configuration changes or entity migrations are required; existing battery
+  index IDs and Energy dashboard history are preserved.
+- A battery whose current telemetry is unavailable reports `unavailable` until
+  SEMS+ returns supported data again.
+- A live six-battery installation was not available during development, so the
+  reporter's exact SEMS rate-limit boundary remains unverified.
+
+### Related
+
+- [#319](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/319) -
+  missing battery and daily energy entities.
+
+### Contributors
+
+- [@bogpopa](https://github.com/bogpopa) - issue report and battery-system
+  details.
+- [@TimSoethout](https://github.com/TimSoethout) - diagnosis and release
+  preparation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression tests.
+
 ## 11.13.4 - 2026-11-24
 
 ## Recover entities after SEMS+ rate limits
