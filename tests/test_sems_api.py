@@ -13,6 +13,7 @@ import pytest
 import requests
 from homeassistant.exceptions import HomeAssistantError
 
+from custom_components.sems import SemsData
 from custom_components.sems.const import (
     redact_for_log,
     redact_sensitive_text,
@@ -29,6 +30,7 @@ from custom_components.sems.sems_api import (
     SemsRateLimitedError,
     _safe_url_for_log,
 )
+from custom_components.sems.sensor import sensor_options_for_data
 
 # Test data constants - anonymized for privacy
 MOCK_INVERTER_SN = "GW0000SN000TEST1"
@@ -241,6 +243,22 @@ class TestSemsApi:
             end = datetime(2026, 2, 2)
             assert self.api._get_web_statistics("station", "day", start, end) is None
             assert self.api._get_web_statistics("station", "day", start, end) is None
+
+    def test_web_statistics_backoff_preserves_permission_denial(self):
+        """Keep denied statistics optional without retrying every poll."""
+        start = datetime(2026, 9, 24)
+        end = datetime(2026, 9, 24, 23, 59, 59)
+
+        with patch.object(
+            self.api,
+            "_make_api_call",
+            side_effect=SemsPermissionError("statistics", "denied"),
+        ) as mock_api_call:
+            for _ in range(2):
+                with pytest.raises(SemsPermissionError):
+                    self.api._get_web_statistics("station", "day", start, end)
+
+        mock_api_call.assert_called_once()
 
     @pytest.mark.parametrize(
         "error",
@@ -4184,6 +4202,53 @@ class TestSemsApi:
         ]
         assert "BAT_A" not in caplog.text
         assert redact_value("BAT_A") in caplog.text
+
+    @patch.object(SemsApi, "_get_web_energy_statistics", return_value=None)
+    @patch.object(SemsApi, "getWebStationFlow", return_value={"pSystem": 1.0})
+    @patch.object(SemsApi, "getWebInverterTelecounting", return_value={})
+    @patch.object(SemsApi, "getWebInverterTelemetry", return_value={"pac": 1000.0})
+    @patch.object(SemsApi, "getWebInverterDevices")
+    @patch.object(SemsApi, "getEnergyStorageIntegratedCabinets")
+    @patch.object(SemsApi, "getBatterySystemTelemetry")
+    def test_partial_rate_limit_preserves_discovered_entities(
+        self,
+        mock_battery_telemetry,
+        mock_cabinets,
+        mock_devices,
+        _mock_telemetry,
+        _mock_telecounting,
+        _mock_flow,
+        _mock_statistics,
+    ):
+        """Keep every discovered battery slot after partial rate limiting."""
+        mock_devices.return_value = [
+            {
+                "sn": "INV1",
+                "name": "Inverter",
+                "deviceType": "INVERTER",
+                "subtype": "store",
+            }
+        ]
+        mock_cabinets.return_value = [
+            {"sn": f"BAT{index}", "type": "BAT_SYS"} for index in range(6)
+        ]
+        mock_battery_telemetry.side_effect = [
+            {"soc": float(index), "power": 0.5} for index in range(4)
+        ] + [SemsRateLimitedError(300), SemsRateLimitedError(300)]
+
+        result = self.api.getWebData("station")
+
+        inverter = result["inverter"][0]["invert_full"]
+        assert inverter["battery_count"] == 6
+        assert [battery["sn"] for battery in inverter["more_batterys"]] == [
+            f"BAT{index}" for index in range(6)
+        ]
+        options = sensor_options_for_data(
+            SemsData(inverters={"INV1": inverter}),
+            station_id="station",
+        )
+        unique_ids = {option.unique_id for option in options}
+        assert {f"INV1-{index}-soc" for index in range(6)} <= unique_ids
 
 
 class TestOutOfRetries:

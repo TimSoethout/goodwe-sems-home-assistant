@@ -1168,7 +1168,13 @@ class SemsApi:
             and time.monotonic() - cached[0] < refresh
         ):
             return cached_statistics
+        recent_failure = self._get_web_cache_entry(f"failed:{cache_key}")
         if self._recently_failed(cache_key):
+            if recent_failure and recent_failure[1] == "permission":
+                raise SemsPermissionError(
+                    "getWebStationStatistics",
+                    "denied by cached permission response",
+                )
             return cached_statistics
 
         try:
@@ -1188,7 +1194,10 @@ class SemsApi:
                 is_web=True,
                 token_type=_WEB_STATION_STATISTICS_ENDPOINT.token_type,
             )
-        except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
+        except SemsPermissionError:
+            self._remember_failure(cache_key, "permission")
+            raise
+        except (OutOfRetries, SemsRateLimitedError) as err:
             _LOGGER.debug(
                 "SEMS %s statistics unavailable (%s)",
                 dimension,
@@ -1293,9 +1302,9 @@ class SemsApi:
             failed and time.monotonic() - failed[0] < _WEB_FAILED_REQUEST_RETRY_SECONDS
         )
 
-    def _remember_failure(self, cache_key: str) -> None:
+    def _remember_failure(self, cache_key: str, reason: str | None = None) -> None:
         """Delay the next attempt of a failed optional request."""
-        self._set_web_cache_entry(f"failed:{cache_key}", (time.monotonic(), None))
+        self._set_web_cache_entry(f"failed:{cache_key}", (time.monotonic(), reason))
 
     def _get_web_energy_statistics(
         self,
@@ -1471,7 +1480,12 @@ class SemsApi:
             if cache_key is not None:
                 self._set_web_cache_entry(cache_key, (time.monotonic(), result))
             return result
-        except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
+        except SemsPermissionError as err:
+            _LOGGER.debug(
+                "SEMS station statistics unavailable (%s)", type(err).__name__
+            )
+            return cached_statistics
+        except (OutOfRetries, SemsRateLimitedError) as err:
             _LOGGER.debug(
                 "SEMS station statistics unavailable (%s)", type(err).__name__
             )

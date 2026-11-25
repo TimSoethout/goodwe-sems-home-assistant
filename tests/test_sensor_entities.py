@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -30,6 +30,7 @@ from custom_components.sems.const import (
 )
 from custom_components.sems.sems_api import SemsApi
 from custom_components.sems.sensor import (
+    SemsInverterSensor,
     SemsLegacyPowerflowSensor,
     SemsSensor,
     _data_source_for_value_path,
@@ -179,6 +180,36 @@ def test_sensor_options_include_battery_slot_sensors() -> None:
         "INV1-0-ibattery",
         "INV1-0-bms_temperature",
     } <= {sensor.unique_id for sensor in sensors}
+
+
+@pytest.mark.parametrize(
+    ("battery_index", "unavailable"),
+    [("invalid", False), (1, True)],
+)
+def test_battery_source_unavailable_handles_malformed_paths(
+    battery_index: str | int, unavailable: bool
+) -> None:
+    """Only treat valid missing battery slots as unavailable."""
+    coordinator = Mock(
+        data=SemsData(
+            inverters={
+                "INV1": {
+                    "battery_count": 1,
+                    "more_batterys": [{"sn": "BAT1", "soc": 90}],
+                }
+            }
+        )
+    )
+    sensor = SemsInverterSensor(
+        coordinator,
+        {},
+        "INV1-battery-test",
+        "Battery test",
+        ["INV1", "more_batterys", battery_index, "soc"],
+        int,
+    )
+
+    assert sensor._source_unavailable() is unavailable
 
 
 def test_legacy_powerflow_helpers_handle_invalid_values() -> None:
@@ -1194,6 +1225,51 @@ async def test_failed_statistics_mark_existing_chart_sensors_unavailable(
         ).state
         == "1351"
     )
+
+
+async def test_partial_statistics_create_enabled_unavailable_entities(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Register statistics entities on an initial partial statistics refresh."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    payload = {
+        **MOCK_GET_DATA_RESULT_MINIMAL,
+        "hasPowerflow": True,
+        "powerflow": {"sn": "METER-SN-1", "load": 1351},
+        "hasEnergeStatisticsCharts": True,
+        "unavailable_data_sources": {
+            "inverters": {},
+            "homekit": {"statistics"},
+        },
+    }
+
+    with _mock_no_battery_api(payload):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    for unique_id in (
+        "METER-SN-1-import-energy",
+        "METER-SN-1-export-energy",
+        "METER-SN-1-daily-self-use",
+    ):
+        entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, unique_id)
+        assert entity_id is not None
+        entity = ent_reg.async_get(entity_id)
+        assert entity is not None
+        assert entity.disabled_by is None
+        assert hass.states.get(entity_id).state == "unavailable"
 
 
 async def test_failed_refresh_marks_inverter_and_homekit_sensors_unavailable(
