@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 11.13.5-beta.2 - 2026-11-25
+
+## Strengthen partial-poll regression coverage
+
+- Expand coverage for malformed battery slots, denied and rate-limited
+  production/statistics requests, empty historical years, and partially
+  unavailable lifetime totals.
+- Preserve the same entity and statistics behavior from `11.13.5-beta.1`;
+  this beta adds regression assurance after rebasing on the latest `master`.
+
+### Related
+
+- [#319](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/319) -
+  missing battery and daily energy entities.
+- [#320](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/320) -
+  partial-poll recovery.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - coverage review and release
+  preparation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - regression coverage.
+
 ## 11.13.5-beta.1 - 2026-11-25
 
 ## Keep entities stable during partial SEMS+ polls
