@@ -347,6 +347,54 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "_get_web_production", return_value=None)
     @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_skips_empty_history_year(
+        self, mock_now, _mock_production
+    ):
+        """Skip an empty year while retaining complete history totals."""
+        mock_now.return_value = datetime(2026, 9, 25)
+
+        def statistics(_station, dimension, start, _end):
+            if dimension == "day":
+                return {"proPurchaseStats": [1.0]}
+            if start.year == 2021:
+                return {}
+            return {"proGridStats": [2.0]}
+
+        with patch.object(self.api, "_get_web_statistics", side_effect=statistics):
+            _charts, totals, _currency, _last_month = (
+                self.api._get_web_energy_statistics(
+                    "station",
+                    [{"invert_full": {"addTime": "1609459200000"}}],
+                )
+            )
+
+        assert totals == {"sell": 10.0}
+
+    @patch.object(SemsApi, "_get_web_production", return_value=None)
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_marks_rate_limit_unavailable(
+        self, mock_now, _mock_production
+    ):
+        """Mark statistics unavailable when a request is rate limited."""
+        mock_now.return_value = datetime(2026, 9, 25)
+        unavailable_sources: set[str] = set()
+
+        with patch.object(
+            self.api,
+            "_get_web_statistics",
+            side_effect=SemsRateLimitedError(300),
+        ):
+            result = self.api._get_web_energy_statistics(
+                "station",
+                [],
+                unavailable_sources=unavailable_sources,
+            )
+
+        assert result is None
+        assert unavailable_sources == {"counters"}
+
+    @patch.object(SemsApi, "_get_web_production", return_value=None)
+    @patch("custom_components.sems.sems_api.dt_util.now")
     def test_web_energy_statistics_permission_denial_is_not_transient(
         self, mock_now, _mock_production
     ):
@@ -458,6 +506,24 @@ class TestSemsApi:
         assert request["isReport"] is False
         assert request["startTime"] == "2026-01-01 00:00:00"
         assert request["endTime"] == "2026-01-01 23:59:59"
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            SemsPermissionError("production", "denied"),
+            SemsRateLimitedError(300),
+        ],
+    )
+    def test_web_station_production_handles_optional_request_errors(self, error):
+        """Treat denied and rate-limited production data as optional."""
+        with patch.object(self.api, "_make_api_call", side_effect=error):
+            result = self.api._get_web_production(
+                "station",
+                datetime(2026, 1, 1),
+                datetime(2026, 1, 1, 23, 59, 59),
+            )
+
+        assert result is None
 
     @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_success(self, mock_request):

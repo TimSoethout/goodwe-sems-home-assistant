@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -30,6 +30,7 @@ from custom_components.sems.const import (
 )
 from custom_components.sems.sems_api import SemsApi
 from custom_components.sems.sensor import (
+    SemsInverterSensor,
     SemsLegacyPowerflowSensor,
     SemsSensor,
     _data_source_for_value_path,
@@ -205,6 +206,36 @@ def test_sensor_options_include_battery_slot_sensors() -> None:
         "INV1-0-ibattery",
         "INV1-0-bms_temperature",
     } <= {sensor.unique_id for sensor in sensors}
+
+
+@pytest.mark.parametrize(
+    ("battery_index", "unavailable"),
+    [("invalid", False), (1, True)],
+)
+def test_battery_source_unavailable_handles_malformed_paths(
+    battery_index: str | int, unavailable: bool
+) -> None:
+    """Only treat valid missing battery slots as unavailable."""
+    coordinator = Mock(
+        data=SemsData(
+            inverters={
+                "INV1": {
+                    "battery_count": 1,
+                    "more_batterys": [{"sn": "BAT1", "soc": 90}],
+                }
+            }
+        )
+    )
+    sensor = SemsInverterSensor(
+        coordinator,
+        {},
+        "INV1-battery-test",
+        "Battery test",
+        ["INV1", "more_batterys", battery_index, "soc"],
+        int,
+    )
+
+    assert sensor._source_unavailable() is unavailable
 
 
 def test_legacy_powerflow_helpers_handle_invalid_values() -> None:

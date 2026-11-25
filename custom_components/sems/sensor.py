@@ -1002,7 +1002,7 @@ def get_value_from_path(data: dict[str, Any], path: SemsValuePath) -> Any:
     try:
         for key in path:
             value = value[key]
-    except KeyError, TypeError:
+    except IndexError, KeyError, TypeError:
         return None
     return value
 
