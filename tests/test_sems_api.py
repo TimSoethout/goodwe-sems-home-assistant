@@ -2134,7 +2134,8 @@ class TestSemsApi:
     @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_telemetry_phase_currents(self, mock_api_call):
         """Test mapping of per-phase SEMS+ current factors."""
-        # Synthetic factors; confirm these names against a production capture when available.
+        # Factor names and the "ac" group match a production capture of a three-phase
+        # GW5000-DT, see api_examples/telemetry_three_phase.json.
         mock_api_call.return_value = [
             {
                 "code": "ac",

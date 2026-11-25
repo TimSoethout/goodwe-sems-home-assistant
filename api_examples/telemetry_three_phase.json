@@ -1,0 +1,288 @@
+{
+  "code": "00000",
+  "data": [
+    {
+      "alias": "system_parameters",
+      "code": "system",
+      "factors": [
+        {
+          "alias": "serial_number_1",
+          "code": "sn",
+          "data": "<inverter_serial>",
+          "dataType": "STRING",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": false
+        },
+        {
+          "alias": "chamber_temperature",
+          "code": "Temperature",
+          "data": "27.6",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "\u2103"
+        },
+        {
+          "alias": "total_worke_time",
+          "code": "hTotal",
+          "data": "32227",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "H"
+        }
+      ]
+    },
+    {
+      "alias": "ac_parameters",
+      "code": "ac",
+      "factors": [
+        {
+          "alias": "active_power",
+          "code": "pAc",
+          "data": "2.251",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "kW"
+        },
+        {
+          "alias": "reactive_power",
+          "code": "qAc",
+          "data": "-0.001",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "kVar"
+        },
+        {
+          "alias": "power_factor",
+          "code": "gridPF",
+          "data": "0",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "supportCurve": false
+        },
+        {
+          "alias": "power",
+          "code": "PHASE-A:Pac",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "kW"
+        },
+        {
+          "alias": "power",
+          "code": "PHASE-B:Pac",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "kW"
+        },
+        {
+          "alias": "power",
+          "code": "PHASE-C:Pac",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "kW"
+        },
+        {
+          "alias": "volt",
+          "code": "PHASE-A:Vac",
+          "data": "233",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "V"
+        },
+        {
+          "alias": "volt",
+          "code": "PHASE-B:Vac",
+          "data": "236.5",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "V"
+        },
+        {
+          "alias": "volt",
+          "code": "PHASE-C:Vac",
+          "data": "235.4",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "V"
+        },
+        {
+          "alias": "cur",
+          "code": "PHASE-A:Iac",
+          "data": "3.2",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "A"
+        },
+        {
+          "alias": "cur",
+          "code": "PHASE-B:Iac",
+          "data": "3.2",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "A"
+        },
+        {
+          "alias": "cur",
+          "code": "PHASE-C:Iac",
+          "data": "3.2",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "A"
+        },
+        {
+          "alias": "ac_frequency",
+          "code": "Fac",
+          "data": "49.96",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "Hz"
+        },
+        {
+          "alias": "ac_frequency",
+          "code": "PHASE-A:fac",
+          "data": "49.96",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "Hz"
+        },
+        {
+          "alias": "ac_frequency",
+          "code": "PHASE-B:fac",
+          "data": "49.97",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "Hz"
+        },
+        {
+          "alias": "ac_frequency",
+          "code": "PHASE-C:fac",
+          "data": "49.96",
+          "dataType": "NUMERIC",
+          "defaultFlag": true,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "Hz"
+        }
+      ]
+    },
+    {
+      "alias": "pv_parameters",
+      "code": "pv",
+      "factors": [
+        {
+          "alias": "insulation_resistance",
+          "code": "ISOLimit",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "k\u03a9"
+        },
+        {
+          "alias": "leakage_cur",
+          "code": "LeakageCurrent",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "A"
+        },
+        {
+          "alias": "power",
+          "code": "MPPT-1:Ppv",
+          "data": "1.35016",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "kW"
+        },
+        {
+          "alias": "power",
+          "code": "MPPT-2:Ppv",
+          "data": "1.03544",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "kW"
+        },
+        {
+          "alias": "volt",
+          "code": "MPPT-1:Vpv",
+          "data": "241.1",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "V"
+        },
+        {
+          "alias": "volt",
+          "code": "MPPT-2:Vpv",
+          "data": "240.8",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "V"
+        },
+        {
+          "alias": "cur",
+          "code": "MPPT-1:Ipv",
+          "data": "5.6",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "A"
+        },
+        {
+          "alias": "cur",
+          "code": "MPPT-2:Ipv",
+          "data": "4.3",
+          "dataType": "NUMERIC",
+          "defaultFlag": false,
+          "hiddenInMore": false,
+          "supportCurve": true,
+          "unit": "A"
+        }
+      ]
+    }
+  ],
+  "description": "\u6210\u529f",
+  "traceId": "<trace_id>"
+}
