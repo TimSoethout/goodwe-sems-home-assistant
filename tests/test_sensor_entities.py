@@ -1087,6 +1087,141 @@ async def test_failed_smart_meter_telemetry_marks_only_meter_sensors_unavailable
     assert hass.states.get(load_entity_id).state == "1351"
 
 
+async def test_missing_source_objects_mark_existing_sensors_unavailable(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Mark existing entities unavailable after a successful source omission."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    web_data = {
+        "inverter": MOCK_GET_DATA_RESULT_MINIMAL["inverter"],
+        "hasPowerflow": True,
+        "powerflow": {"sn": "METER-SN-1", "load": 1351},
+    }
+    with _mock_no_battery_api(web_data):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data.coordinator
+    inverter_sn = next(iter(coordinator.data.inverters))
+    homekit = coordinator.data.homekit
+    assert homekit is not None
+    ent_reg = er.async_get(hass)
+    power_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{inverter_sn}-power"
+    )
+    load_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "METER-SN-1-load"
+    )
+    assert power_entity_id is not None
+    assert load_entity_id is not None
+
+    coordinator.async_set_updated_data(SemsData(inverters={}, homekit=homekit))
+    await hass.async_block_till_done()
+    assert hass.states.get(power_entity_id).state == "unavailable"
+    assert hass.states.get(load_entity_id).state == "1351"
+
+    coordinator.async_set_updated_data(
+        SemsData(
+            inverters={
+                inverter_sn: MOCK_GET_DATA_RESULT_MINIMAL["inverter"][0]["invert_full"]
+            },
+            homekit=None,
+        )
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(power_entity_id).state == "589"
+    assert hass.states.get(load_entity_id).state == "unavailable"
+
+
+async def test_failed_statistics_mark_existing_chart_sensors_unavailable(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+) -> None:
+    """Keep live flow states while failed chart data makes chart entities unavailable."""
+    del enable_custom_integrations
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Test",
+        data={
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "pass",
+            CONF_STATION_ID: MOCK_POWER_STATION_ID,
+        },
+    )
+    entry.add_to_hass(hass)
+    web_data = {
+        "inverter": MOCK_GET_DATA_RESULT_MINIMAL["inverter"],
+        "hasPowerflow": True,
+        "hasEnergeStatisticsCharts": True,
+        "energeStatisticsCharts": {
+            "buy": 1.2,
+            "consumptionOfLoad": 4.5,
+        },
+        "energeStatisticsTotals": {"buy": 12.3},
+        "powerflow": {"sn": "METER-SN-1", "load": 1351},
+    }
+    with _mock_no_battery_api(web_data):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data.coordinator
+    coordinator.async_set_updated_data(
+        SemsData(
+            inverters=coordinator.data.inverters,
+            homekit={
+                "sn": "METER-SN-1",
+                "load": 1351,
+                GOODWE_SPELLING.hasEnergyStatisticsCharts: True,
+            },
+            unavailable_homekit_sources={"statistics"},
+        )
+    )
+    await hass.async_block_till_done()
+
+    ent_reg = er.async_get(hass)
+    assert (
+        hass.states.get(
+            ent_reg.async_get_entity_id(
+                Platform.SENSOR, DOMAIN, "METER-SN-1-import-energy"
+            )
+        ).state
+        == "unavailable"
+    )
+    assert (
+        hass.states.get(
+            ent_reg.async_get_entity_id(
+                Platform.SENSOR, DOMAIN, "METER-SN-1-import-energy-total"
+            )
+        ).state
+        == "unavailable"
+    )
+    assert (
+        hass.states.get(
+            ent_reg.async_get_entity_id(
+                Platform.SENSOR, DOMAIN, "METER-SN-1-daily-load-consumption"
+            )
+        ).state
+        == "unavailable"
+    )
+    assert (
+        hass.states.get(
+            ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, "METER-SN-1-load")
+        ).state
+        == "1351"
+    )
+
+
 async def test_failed_refresh_marks_inverter_and_homekit_sensors_unavailable(
     hass: HomeAssistant,
     enable_custom_integrations: None,
@@ -1248,8 +1383,12 @@ async def test_web_flow_battery_and_grid_signs_from_captured_samples(
     grid_entity_id = ent_reg.async_get_entity_id(
         Platform.SENSOR, DOMAIN, f"{MOCK_STATION_SERIAL}-grid"
     )
+    load_status_entity_id = ent_reg.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{MOCK_STATION_SERIAL}-load-status"
+    )
     assert battery_entity_id is not None
     assert grid_entity_id is not None
+    assert load_status_entity_id is not None
 
     coordinator = entry.runtime_data.coordinator
     for sample in samples:
@@ -1262,10 +1401,13 @@ async def test_web_flow_battery_and_grid_signs_from_captured_samples(
 
         battery_state = hass.states.get(battery_entity_id)
         grid_state = hass.states.get(grid_entity_id)
+        load_status_state = hass.states.get(load_status_entity_id)
         assert battery_state is not None
         assert grid_state is not None
+        assert load_status_state is not None
         assert float(battery_state.state) == pytest.approx(-float(flow["pBat"]) * 1000)
         assert float(grid_state.state) == pytest.approx(float(flow["pGrid"]) * 1000)
+        assert int(load_status_state.state) == (-1 if float(flow["pGrid"]) > 0 else 1)
         if reported_values := sample.get("reported_local_sensor_values_w"):
             assert round(float(battery_state.state)) == reported_values["battery"]
             assert round(float(grid_state.state)) == reported_values["grid"]

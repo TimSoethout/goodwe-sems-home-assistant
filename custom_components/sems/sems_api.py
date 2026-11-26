@@ -1106,7 +1106,7 @@ class SemsApi:
                 is_web=True,
                 token_type=_WEB_STATION_STATISTICS_ENDPOINT.token_type,
             )
-        except OutOfRetries as err:
+        except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
             _LOGGER.debug("SEMS %s statistics unavailable: %s", dimension, err)
             response = None
         if not isinstance(response, dict):
@@ -1230,8 +1230,25 @@ class SemsApi:
         include_last_month: bool = False,
     ) -> tuple[dict[str, Any], dict[str, float], str | None, float | None] | None:
         """Return chart and lifetime statistics without making them coordinator-critical."""
+        cache_key: str | None = None
+        cached_statistics: (
+            tuple[dict[str, Any], dict[str, float], str | None, float | None] | None
+        ) = None
         try:
             now = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            cache_key = f"energy_statistics:{power_station_id}:{now.date()}:{include_last_month}"
+            cached = self._get_web_cache_entry(cache_key)
+            if cached and isinstance(cached[1], tuple) and len(cached[1]) == 4:
+                charts_cache, totals_cache, currency_cache, last_month_cache = cached[1]
+                if isinstance(charts_cache, dict) and isinstance(totals_cache, dict):
+                    cached_statistics = (
+                        charts_cache,
+                        totals_cache,
+                        currency_cache if isinstance(currency_cache, str) else None,
+                        last_month_cache
+                        if isinstance(last_month_cache, (int, float))
+                        else None,
+                    )
             current_year = now.year
             charts: dict[str, Any] = {}
             totals: dict[str, float] = {}
@@ -1296,6 +1313,15 @@ class SemsApi:
                     future.result() for future in historic_statistics_futures
                 ]
 
+            if (
+                production_data is None
+                and all(data is None for data in statistic_data)
+                and all(data is None for data in historic_statistics_by_year)
+            ):
+                if cached_statistics is None and cache_key is not None:
+                    self._remember_failure(cache_key)
+                return cached_statistics
+
             if production_data and isinstance(production_data.get("currency"), str):
                 currency = production_data.get("currency")
             for (_dimension, start, _), data in zip(
@@ -1346,10 +1372,30 @@ class SemsApi:
             if self_use is not None and production_total:
                 totals["selfUseRate"] = self_use / production_total
 
-            return charts, totals, currency, last_month_pv
-        except (OutOfRetries, SemsRateLimitedError) as err:
+            if cached_statistics is not None:
+                if statistic_data and statistic_data[0] is None:
+                    charts = {**cached_statistics[0], **charts}
+                if any(data is None for data in historic_statistics_by_year):
+                    totals = cached_statistics[1].copy()
+                if currency is None:
+                    currency = cached_statistics[2]
+                if (
+                    include_last_month
+                    and last_month_pv is None
+                    and statistic_data
+                    and statistic_data[-1] is None
+                ):
+                    last_month_pv = cached_statistics[3]
+
+            result = charts, totals, currency, last_month_pv
+            if cache_key is not None:
+                self._set_web_cache_entry(cache_key, (time.monotonic(), result))
+            return result
+        except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
             _LOGGER.debug("SEMS station statistics unavailable: %s", err)
-            return None
+            if cached_statistics is None and cache_key is not None:
+                self._remember_failure(cache_key)
+            return cached_statistics
 
     def _get_web_production(
         self, power_station_id: str, start: datetime, end: datetime
@@ -1391,7 +1437,7 @@ class SemsApi:
                 is_web=True,
                 token_type=_WEB_STATION_PRODUCTION_ENDPOINT.token_type,
             )
-        except OutOfRetries as err:
+        except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
             _LOGGER.debug("SEMS station production unavailable: %s", err)
             response = None
         if not isinstance(response, dict):
@@ -1663,11 +1709,21 @@ class SemsApi:
         if any(storage_cabinets.values()):
             result["info"] = {"is_stored": True}
             result["_energy_storage_cabinets"] = storage_cabinets
-        statistics = self._get_web_energy_statistics(
-            powerStationId,
-            inverters,
-            include_last_month=include_last_month,
-        )
+        try:
+            statistics = self._get_web_energy_statistics(
+                powerStationId,
+                inverters,
+                include_last_month=include_last_month,
+            )
+        except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
+            _LOGGER.debug("SEMS station statistics unavailable: %s", err)
+            statistics = None
+            unavailable_homekit_sources.add("statistics")
+        if statistics is None and self._recently_failed(
+            "energy_statistics:"
+            f"{powerStationId}:{dt_util.now().date()}:{include_last_month}"
+        ):
+            unavailable_homekit_sources.add("statistics")
         charts, totals, currency, last_month_pv = (
             statistics if statistics is not None else ({}, {}, None, None)
         )
