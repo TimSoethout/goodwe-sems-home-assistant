@@ -2,6 +2,67 @@
 
 ## Unreleased
 
+## 11.13.5-beta.3 - 2026-11-26
+
+## Add three-phase SEMS+ grid current sensors
+
+- Map the captured `PHASE-A/B/C:Iac` factors to three-phase grid AC current
+  sensors for devices that report those keys ([#296]).
+
+## Improve partial-poll and shared-account reliability
+
+- Preserve entities and source availability through SEMS+ rate limits and
+  temporary statistics or battery failures ([#304], [#319], [#320]).
+- Paginate station discovery beyond 100 stations and serialize shared-account
+  station refreshes ([#313]).
+- Apply coordinator control and reauthentication lifecycle consistently, close
+  temporary config-flow clients, and distinguish transport failures from
+  credential rejection ([#315]).
+- Harden API, CI, release, and developer tooling; remove unused logging and
+  dead code, fix README references, and improve brand assets ([#316],
+  [#317], [#321], [#322]).
+
+### Compatibility and limitations
+
+- No entity migrations or configuration changes are required.
+- Partial live data remains unavailable until SEMS+ recovers and the affected
+  request succeeds again.
+- SEMS+ control may require remote-control permission.
+- Three-phase Iac sensors only apply to devices that report the captured
+  `PHASE-A/B/C:Iac` factor keys.
+- HACS users must opt into prereleases to install this beta.
+
+### Related
+
+- [#296](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/296) -
+  three-phase SEMS+ grid AC current mapping.
+- [#304](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/304),
+  [#319](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/319),
+  and [#320](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/320)
+  - partial-poll and entity-preservation reports.
+- [#309](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/309),
+  [#311](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/311),
+  [#313](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/313),
+  [#315](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/315),
+  [#316](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/316),
+  [#317](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/317),
+  and [#320](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/320)
+  - audit, partial-poll, lifecycle, tooling, and release-preparation fixes.
+- [#321](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/321)
+  and [#322](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/322)
+  - hassfest-compatible dimensions and source-quality brand assets.
+
+### Contributors
+
+- [@PvdGulik](https://github.com/PvdGulik) - three-phase capture and
+  information.
+- [@donok1](https://github.com/donok1) and
+  [@bogpopa](https://github.com/bogpopa) - partial-poll reporting and testing.
+- [@TimSoethout](https://github.com/TimSoethout) - implementation and release
+  preparation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  release preparation.
+
 ## 11.13.4 - 2026-11-24
 
 ## Recover entities after SEMS+ rate limits
