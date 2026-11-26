@@ -8,6 +8,9 @@ example.json
 .DS_Store
 coverage.xml
 .coverage
+coverage.json
+quality-scale-coverage.json
+quality-scale-strict-typing.json
 
 .mypy_cache
 .ruff_cache
