@@ -1031,22 +1031,44 @@ class SemsApi:
         self, renewToken: bool = False, maxTokenRetries: int = 2
     ) -> list[str]:
         """Get power station ids from the SEMS+ Web API."""
-        result = self._make_api_call(
-            _WEB_STATION_LIST_ENDPOINT.url_part,
-            data=json.dumps({"current": 1, "size": 100}),
-            renewToken=renewToken,
-            maxTokenRetries=maxTokenRetries,
-            operation_name="getPowerStationIds API call",
-            is_web=True,
-            token_type=_WEB_STATION_LIST_ENDPOINT.token_type,
-        )
-        if not isinstance(result, dict):
-            return []
-        return [
-            station["id"]
-            for station in result.get("dataList", [])
-            if isinstance(station, dict) and isinstance(station.get("id"), str)
-        ]
+        station_ids: list[str] = []
+        current = 1
+        stations_returned = 0
+        while True:
+            result = self._make_api_call(
+                _WEB_STATION_LIST_ENDPOINT.url_part,
+                data=json.dumps({"current": current, "size": 100}),
+                renewToken=renewToken,
+                maxTokenRetries=maxTokenRetries,
+                operation_name="getPowerStationIds API call",
+                is_web=True,
+                token_type=_WEB_STATION_LIST_ENDPOINT.token_type,
+            )
+            if not isinstance(result, dict):
+                break
+            stations = result.get("dataList", [])
+            if not isinstance(stations, list):
+                break
+            station_ids.extend(
+                station["id"]
+                for station in stations
+                if isinstance(station, dict) and isinstance(station.get("id"), str)
+            )
+            stations_returned += len(stations)
+            total = result.get("total")
+            page = result.get("current")
+            if (
+                not isinstance(total, int)
+                or isinstance(total, bool)
+                or not isinstance(page, int)
+                or isinstance(page, bool)
+                or page != current
+                or stations_returned >= total
+                or not stations
+            ):
+                break
+            current += 1
+        return station_ids
 
     def getData(
         self,

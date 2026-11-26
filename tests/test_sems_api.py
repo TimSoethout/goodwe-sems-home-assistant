@@ -1620,6 +1620,14 @@ class TestSemsApi:
         )
 
     @patch.object(SemsApi, "_make_api_call")
+    def test_get_power_station_ids_stops_on_malformed_station_list(self, mock_api_call):
+        """Malformed legacy-like responses retain empty station discovery."""
+        mock_api_call.return_value = {"dataList": "not-a-list"}
+
+        assert self.api.getPowerStationIds() == []
+        mock_api_call.assert_called_once()
+
+    @patch.object(SemsApi, "_make_api_call")
     def test_get_web_inverter_devices(self, mock_api_call):
         """Test SEMS+ inverter discovery normalization."""
         mock_api_call.return_value = {
@@ -3061,6 +3069,55 @@ class TestSemsApi:
             is_web=True,
             token_type="web",
         )
+
+    @patch.object(SemsApi, "_make_api_call")
+    def test_get_power_station_ids_paginates_captured_shape(self, mock_api_call):
+        """Collect all station IDs when the first page is full."""
+        captured = json.loads(
+            (API_EXAMPLES_DIR / "station_list.json").read_text(encoding="utf-8")
+        )["data"]
+        station_template = captured["dataList"][0]
+        first_page = {
+            **captured,
+            "dataList": [
+                {**station_template, "id": f"station-{index}"} for index in range(100)
+            ],
+            "current": 1,
+            "size": 100,
+            "total": 101,
+        }
+        second_page = {
+            **captured,
+            "dataList": [{**station_template, "id": "station-100"}],
+            "current": 2,
+            "size": 100,
+            "total": 101,
+        }
+        mock_api_call.side_effect = [first_page, second_page]
+
+        assert self.api.getPowerStationIds() == [
+            f"station-{index}" for index in range(101)
+        ]
+        assert mock_api_call.call_args_list == [
+            call(
+                "/sems-plant/api/portal/stations/page",
+                data='{"current": 1, "size": 100}',
+                renewToken=False,
+                maxTokenRetries=2,
+                operation_name="getPowerStationIds API call",
+                is_web=True,
+                token_type="web",
+            ),
+            call(
+                "/sems-plant/api/portal/stations/page",
+                data='{"current": 2, "size": 100}',
+                renewToken=False,
+                maxTokenRetries=2,
+                operation_name="getPowerStationIds API call",
+                is_web=True,
+                token_type="web",
+            ),
+        ]
 
     @patch.object(SemsApi, "getWebData")
     def test_get_data_uses_web_api(self, mock_web_data):
