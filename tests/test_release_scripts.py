@@ -1,6 +1,7 @@
 """Tests for the offline decisions made by the release scripts."""
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,6 +10,7 @@ from unittest.mock import Mock
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / ".github" / "scripts"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_script(name: str):
@@ -27,6 +29,43 @@ PUBLISH = load_script("publish_stable_release")
 @pytest.fixture
 def enable_custom_integrations():
     yield
+
+
+def test_strict_typing_report_checks_installed_imports(
+    tmp_path: Path,
+) -> None:
+    args_file = tmp_path / "mypy.args"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    mypy = bin_dir / "mypy"
+    mypy.write_text(
+        f"""#!/bin/sh
+printf '%s\\n' "$@" > {args_file}
+""",
+        encoding="utf-8",
+    )
+    mypy.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["VIRTUAL_ENV"] = str(bin_dir.parent)
+    env["GITHUB_STEP_SUMMARY"] = str(tmp_path / "summary.md")
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts" / "report_quality_scale_strict_typing.sh")],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert args_file.read_text(encoding="utf-8").splitlines() == [
+        "custom_components/",
+        "--strict",
+        "--python-version",
+        "3.14",
+    ]
 
 
 def test_release_notes_require_exactly_one_section(

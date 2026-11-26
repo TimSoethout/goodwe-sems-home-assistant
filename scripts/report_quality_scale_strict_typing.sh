@@ -5,8 +5,21 @@ summary_file="${GITHUB_STEP_SUMMARY:-/dev/null}"
 mypy_output=$(mktemp)
 passed=false
 trap 'rm -f "$mypy_output"' EXIT
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 
-if mypy custom_components/ --strict --ignore-missing-imports --python-version 3.14 >"$mypy_output" 2>&1; then
+if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/mypy" ]]; then
+  mypy="${VIRTUAL_ENV}/bin/mypy"
+elif [[ -x "$repo_root/.venv/bin/mypy" ]]; then
+  mypy="$repo_root/.venv/bin/mypy"
+elif command -v mypy >/dev/null 2>&1; then
+  mypy="$(command -v mypy)"
+else
+  printf '%s\n' "mypy was not found; activate the test environment or install mypy." >&2
+  exit 127
+fi
+
+if "$mypy" custom_components/ --strict --python-version 3.14 >"$mypy_output" 2>&1; then
   passed=true
   printf '## Home Assistant quality-scale checks\n\n- **Platinum: strict-typing:** PASS (`mypy --strict`).\n\n' >> "$summary_file"
 else
