@@ -16,7 +16,6 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     UnitOfElectricCurrent,
@@ -28,7 +27,6 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -186,24 +184,8 @@ def get_homekit_sn(homekit_data: dict[str, Any] | None) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def get_has_existing_homekit_entity(
-    homekit_data: dict[str, Any] | None, hass: HomeAssistant, config_entry: ConfigEntry
-) -> bool:
-    """Return whether a HomeKit entity already exists for this config entry."""
-
-    home_kit_sn = get_homekit_sn(homekit_data)
-    if home_kit_sn is not None:
-        ent_reg = er.async_get(hass)
-        entities = er.async_entries_for_config_entry(ent_reg, config_entry.entry_id)
-        for entity in entities:
-            if entity.unique_id == home_kit_sn:
-                return True
-    return False
-
-
 def sensor_options_for_data(
     data: SemsData,
-    has_existing_homekit_entity: bool = False,
     station_id: str | None = None,
 ) -> list[SemsSensorType]:
     """Build a list of sensor definitions for the given coordinator data."""
@@ -942,24 +924,18 @@ async def async_setup_entry(
         config_entry,
         async_add_entities,
         lambda coordinator: [
-            *_build_sensors(hass, config_entry, coordinator),
+            *_build_sensors(coordinator),
             *ev_charger_sensors(coordinator),
         ],
     )
 
 
 def _build_sensors(
-    hass: HomeAssistant,
-    config_entry: SemsConfigEntry,
     coordinator: SemsCoordinator,
 ) -> list[SemsSensor]:
     """Build sensor entities for the coordinator's current data."""
-    has_existing_homekit_entity = get_has_existing_homekit_entity(
-        coordinator.data.homekit, hass, config_entry
-    )
-
     sensor_options: list[SemsSensorType] = sensor_options_for_data(
-        coordinator.data, has_existing_homekit_entity, coordinator.station_id
+        coordinator.data, coordinator.station_id
     )
     sensors: list[SemsSensor] = []
     for sensor_option in sensor_options:

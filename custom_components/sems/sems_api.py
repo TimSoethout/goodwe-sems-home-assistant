@@ -2655,25 +2655,6 @@ class SemsApi:
                 batteries.append(battery)
         return batteries
 
-    def getBatterySystemDevices(
-        self,
-        powerStationId: str,
-        serialNumber: str,
-        renewToken: bool = False,
-        maxTokenRetries: int = 2,
-    ) -> list[dict[str, Any]]:
-        """Discover attached BAT_SYS devices without making them mandatory."""
-        result = self._make_api_call(
-            f"/sems-plant/api/equipments/{serialNumber}/relatedDevices"
-            f"?sn={serialNumber}&deviceType=BAT_SYS&pwId={powerStationId}",
-            method="GET",
-            renewToken=renewToken,
-            maxTokenRetries=maxTokenRetries,
-            operation_name="getBatterySystemDevices API call",
-            is_web=True,
-        )
-        return result if isinstance(result, list) else []
-
     def getBatterySystemTelemetry(
         self,
         powerStationId: str,

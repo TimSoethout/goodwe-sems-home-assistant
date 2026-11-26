@@ -142,8 +142,6 @@ Login to the visitor account once to accept the EULA. Now you should be able to 
 
 ![Detail window](images/sems-details.webp)
 
-![Add as Integration](images/search-integration.webp)
-
 ![Integration configuration flow](images/integration-flow.webp)
 
 ## Debug info
@@ -202,9 +200,8 @@ HACS files are installed automatically, but HACS still requires its one-time
 GitHub device authorization in the Home Assistant UI. Adding the SEMS
 integration and entering GoodWe credentials also remain UI steps.
 
-The Home Assistant Core branch is controlled by
-`.devcontainer/ha-core.ref`. The default is `dev`; change it before creating
-the container if a different branch or tag is required.
+The Home Assistant Core version used for development is read from the
+`homeassistant` value in `hacs.json`.
 
 Set `HA_CORE_DIR` to use a different writable Home Assistant Core checkout
 location.
