@@ -67,12 +67,16 @@ Integration code lives in `custom_components/sems/`; see the
 
 This project uses **Ruff** for linting and formatting, and **mypy** for type checking.
 
-**Run all linting checks (same as CI):**
+**Run the CI lint and type checks:**
 ```bash
 ruff check custom_components/
 ruff format --check custom_components/
 mypy custom_components/ --ignore-missing-imports --python-version 3.14
+mypy custom_components/ --strict --ignore-missing-imports --python-version 3.14
 ```
+
+CI also runs Home Assistant and HACS validation; see the
+[workflow](.github/workflows/tests.yml).
 
 **Fix linting issues automatically:**
 ```bash
@@ -90,11 +94,13 @@ text changes. Add code comments only to explain non-obvious behavior.
 
 ## Testing
 
-Use [tests/README.md](tests/README.md) for full and targeted test commands,
-coverage, and Home Assistant Core instructions. CI requires 80% overall
-coverage; focus tests on changed behavior rather than a per-change percentage.
-Include component tests where useful; follow existing patterns, keep tests
-isolated, use `requests-mock` for HTTP, and never call the live GoodWe API.
+Use [tests/README.md](tests/README.md) for full and targeted test commands and
+Home Assistant Core instructions. CI requires 80% overall coverage, 100% line
+coverage for `config_flow.py`, and over 95% coverage for each integration
+module ([quality-scale gate](scripts/report_quality_scale_coverage.sh)). These
+are aggregate thresholds, not per-change targets. Test changed behavior with
+isolated unit or component tests, use `requests-mock` for HTTP, and never call
+the live GoodWe API.
 
 ## Submitting Changes
 
