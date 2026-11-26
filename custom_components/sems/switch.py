@@ -22,7 +22,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
-from .const import CONF_STATION_ID, DOMAIN, INVERTER_ON_STATUSES
+from .const import (
+    CONF_STATION_ID,
+    DOMAIN,
+    INVERTER_ON_STATUSES,
+    redact_sensitive_text,
+)
 from .device import device_info_for_inverter, is_inverter
 from .ev_charger import async_add_coordinator_entities, ev_charger_switches
 
@@ -54,7 +59,7 @@ class SemsSwitchBase(CoordinatorEntity[SemsCoordinator], SwitchEntity):
         """Execute a blocking API method and refresh coordinator data."""
         if self.coordinator.data is None:
             raise HomeAssistantError(
-                f"Unable to update {self.entity_id}: no coordinator data"
+                f"Unable to update {redact_sensitive_text(self.entity_id or 'unknown')}: no coordinator data"
             )
 
         await self.coordinator.async_control(method, *args)
@@ -96,7 +101,7 @@ class SemsInverterSwitch(SemsSwitchBase):
         data = self.coordinator.data
         if data is None or self.serial_number not in data.inverters:
             raise HomeAssistantError(
-                f"Unable to update {self.entity_id}: inverter is unavailable"
+                f"Unable to update {redact_sensitive_text(self.entity_id or 'unknown')}: inverter is unavailable"
             )
         name = data.inverters[self.serial_number].get("name")
         return name if isinstance(name, str) else self.serial_number

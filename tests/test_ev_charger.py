@@ -540,11 +540,18 @@ def test_web_factors_with_units_skips_invalid_entries():
 
 
 def _coordinator(charger: dict) -> SimpleNamespace:
+    def control(method: Any, *args: Any) -> Any:
+        result = method(*args)
+        if result is False:
+            raise HomeAssistantError("SEMS rejected the control command")
+        return result
+
     return SimpleNamespace(
         data=SimpleNamespace(ev_chargers={CHARGER_SN: charger}),
         last_update_success=True,
         station_id=STATION_ID,
         sems_api=Mock(),
+        async_control=AsyncMock(side_effect=control),
         async_request_refresh=AsyncMock(),
     )
 
@@ -606,7 +613,7 @@ async def test_ev_charger_commands_report_errors(hass: HomeAssistant) -> None:
     switch.hass = hass
     switch.entity_id = "switch.wallbox_start_charging"
 
-    with pytest.raises(HomeAssistantError, match="charger model is unknown"):
+    with pytest.raises(HomeAssistantError, match="model is unknown"):
         await switch.async_turn_on()
 
     coordinator.data.ev_chargers[CHARGER_SN]["mode_info"] = MODE_INFO
@@ -615,6 +622,13 @@ async def test_ev_charger_commands_report_errors(hass: HomeAssistant) -> None:
         await switch.async_turn_on()
     coordinator.sems_api.startEvCharging.assert_called_once_with(
         STATION_ID, CHARGER_SN, "GW11K-HCA-20", 0
+    )
+    coordinator.async_control.assert_awaited_once_with(
+        coordinator.sems_api.startEvCharging,
+        STATION_ID,
+        CHARGER_SN,
+        "GW11K-HCA-20",
+        0,
     )
     coordinator.async_request_refresh.assert_not_called()
 

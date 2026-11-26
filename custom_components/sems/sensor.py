@@ -43,6 +43,8 @@ from .const import (
     HOMEKIT_NO_SERIAL,
     STATUS_LABELS,
     redact_for_log,
+    redact_sensitive_text,
+    redact_value,
 )
 from .device import device_info_for_homekit, device_info_for_inverter
 from .ev_charger import async_add_coordinator_entities, ev_charger_sensors
@@ -562,7 +564,7 @@ def sensor_options_for_data(
             )
         _LOGGER.debug(
             "Sensors for inverter %s: %s",
-            redact_for_log(serial_number),
+            redact_value(serial_number),
             redact_for_log(sensors),
         )
 
@@ -917,8 +919,6 @@ async def async_setup_entry(
     """Add sensors for passed config_entry in HA."""
     coordinator = config_entry.runtime_data.coordinator
 
-    # _LOGGER.debug("Initial coordinator data: %s", coordinator.data)
-
     # Backwards compatibility note: keep IDs stable for existing entity registry entries.
     homekit_sn = get_homekit_sn(coordinator.data.homekit) or HOMEKIT_NO_SERIAL
     _migrate_unique_ids(
@@ -1063,16 +1063,16 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
         ):
             _LOGGER.debug(
                 "Disabling SemsSensor `%s` by default since initial value is None or empty (`%s`)",
-                unique_id,
-                raw_value,
+                redact_sensitive_text(unique_id),
+                redact_for_log(raw_value),
             )
             self._attr_entity_registry_enabled_default = False
 
         _LOGGER.debug(
-            "Created SemsSensor with id `%s`, `%s`, value path `%s`",  # , data `%s`",
-            unique_id,
+            "Created SemsSensor with id `%s`, `%s`, value path `%s`",
+            redact_sensitive_text(unique_id),
             name,
-            value_path,
+            redact_for_log(value_path),
         )
 
     def _get_native_value_from_coordinator(self) -> Any:

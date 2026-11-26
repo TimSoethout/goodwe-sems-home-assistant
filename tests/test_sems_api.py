@@ -13,15 +13,21 @@ import pytest
 import requests
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.sems.const import redact_for_log
+from custom_components.sems.const import (
+    redact_for_log,
+    redact_sensitive_text,
+    redact_value,
+)
 from custom_components.sems.sems_api import (
     NEW_LOGIN_URL,
     OLD_LOGIN_URL,
     OutOfRetries,
     SemsApi,
     SemsAuthExpiredError,
+    SemsConnectionError,
     SemsPermissionError,
     SemsRateLimitedError,
+    _safe_url_for_log,
 )
 
 # Test data constants - anonymized for privacy
@@ -90,6 +96,28 @@ class TestSemsApi:
         assert self.api.test_authentication()
         mock_web_login.assert_called_once_with(self.username, self.password)
         mock_legacy_login.assert_called_once_with(self.username, self.password)
+
+    def test_authentication_distinguishes_exhausted_login_transports(self):
+        """All login endpoints being unavailable is a connection failure."""
+        with (
+            patch.object(
+                self.api,
+                "_get_web_login_token",
+                side_effect=requests.ConnectionError("offline"),
+            ),
+            patch.object(
+                self.api,
+                "_get_new_login_token",
+                side_effect=requests.ConnectionError("offline"),
+            ),
+            patch.object(
+                self.api,
+                "_get_legacy_login_token",
+                side_effect=requests.ConnectionError("offline"),
+            ),
+            pytest.raises(SemsConnectionError),
+        ):
+            self.api.test_authentication()
 
     def test_web_station_statistics_parses_only_finite_values(self):
         """Test station statistics parsing ignores malformed values."""
@@ -412,6 +440,25 @@ class TestSemsApi:
         assert request["startTime"] == "2026-01-01 00:00:00"
         assert request["endTime"] == "2026-01-01 23:59:59"
 
+    def test_web_station_production_failure_does_not_log_error_text(self, caplog):
+        """Keep optional production failure logs free of response details."""
+        with patch.object(
+            self.api,
+            "_make_api_call",
+            side_effect=OutOfRetries(f"station {MOCK_POWER_STATION_ID} unavailable"),
+        ):
+            assert (
+                self.api._get_web_production(
+                    MOCK_POWER_STATION_ID,
+                    datetime(2026, 1, 1),
+                    datetime(2026, 1, 1, 23, 59, 59),
+                )
+                is None
+            )
+
+        assert "station production unavailable (OutOfRetries)" in caplog.text
+        assert MOCK_POWER_STATION_ID not in caplog.text
+
     @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_success(self, mock_request):
         """Test successful HTTP request."""
@@ -514,20 +561,21 @@ class TestSemsApi:
                 operation_name="test operation",
             )
 
-    @pytest.mark.parametrize(
-        ("operation_name", "body_is_logged"),
-        [("login API call", False), ("device telemetry", True)],
-    )
+    @pytest.mark.parametrize("operation_name", ["login API call", "device telemetry"])
     @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_logs_http_errors_safely(
-        self, mock_request, caplog, operation_name, body_is_logged
+        self, mock_request, caplog, operation_name
     ):
-        """Redact login response bodies while retaining ordinary HTTP diagnostics."""
+        """HTTP failures retain endpoint and response body context."""
         response = Mock(
             status_code=401,
-            url="https://api.example.invalid",
-            text="sensitive response body",
+            url=(
+                "https://api.example.invalid/equipments/GW0000SN000TEST1/"
+                "telemetry?stationId=12345678-1234-5678-9abc-123456789abc"
+            ),
+            text='{"message":"permission denied"}',
         )
+        response.json.side_effect = ValueError("not json")
         error = requests.HTTPError("unauthorized")
         error.response = response
         response.raise_for_status.side_effect = error
@@ -540,7 +588,10 @@ class TestSemsApi:
                 operation_name=operation_name,
             )
 
-        assert ("sensitive response body" in caplog.text) is body_is_logged
+        assert "permission denied" in caplog.text
+        assert MOCK_INVERTER_SN not in caplog.text
+        assert MOCK_POWER_STATION_ID not in caplog.text
+        assert "telemetry" in caplog.text
 
     @patch("custom_components.sems.sems_api.requests.Session.request")
     def test_make_http_request_logs_error_without_response(self, mock_request, caplog):
@@ -555,6 +606,7 @@ class TestSemsApi:
                 operation_name="device telemetry",
             )
 
+        assert "HTTPError" not in caplog.text
         assert "connection failed before response" in caplog.text
 
     @patch("custom_components.sems.sems_api.requests.Session.request")
@@ -572,12 +624,20 @@ class TestSemsApi:
                 operation_name="device telemetry",
             )
 
-    def test_response_error_message_has_a_safe_fallback(self):
-        """Use the first non-empty textual API error, or a generic message."""
-        assert SemsApi._response_error_message({"msg": 1, "errorMsg": "denied"}) == (
-            "denied"
+    def test_url_log_context_redacts_identifiers_and_query_values(self):
+        """Keep the endpoint shape while removing private request values."""
+        safe_url = _safe_url_for_log(
+            "https://example.invalid/sems-plant/api/equipments/"
+            f"{MOCK_INVERTER_SN}/telemetry"
+            f"?stationId={MOCK_POWER_STATION_ID}&sn={MOCK_INVERTER_SN}"
         )
-        assert SemsApi._response_error_message({}) == "Unknown error"
+
+        assert safe_url.endswith(
+            "/equipments/<redacted>/telemetry?stationId=<redacted>&sn=<redacted>"
+        )
+        assert MOCK_INVERTER_SN not in safe_url
+        assert MOCK_POWER_STATION_ID not in safe_url
+        assert _safe_url_for_log("https://[invalid") == "<invalid-url>"
 
     def test_start_cooldown_reuses_an_active_deadline(self):
         """Concurrent failures do not extend an existing cooldown."""
@@ -933,24 +993,40 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "_get_web_login_token", return_value=None)
     def test_test_authentication_failure(self, mock_web_login):
-        """Test failed authentication test."""
+        """Fallback exhaustion without a rejection is a connection failure."""
         with patch.object(self.api, "getLoginToken") as mock_login:
             mock_login.return_value = None
 
-            result = self.api.test_authentication()
+            with pytest.raises(SemsConnectionError):
+                self.api.test_authentication()
 
-            assert result is False
             mock_web_login.assert_called_once()
 
     @patch.object(SemsApi, "_get_web_login_token", return_value=None)
+    def test_test_authentication_rejected_credentials(self, mock_web_login):
+        """An explicit login rejection is reported as invalid credentials."""
+
+        def reject_login(*_args):
+            return self.api._extract_login_token(
+                {"code": "100005", "data": None},
+                "web",
+                "test login",
+            )
+
+        with patch.object(self.api, "getLoginToken", side_effect=reject_login):
+            assert self.api.test_authentication() is False
+
+        mock_web_login.assert_called_once()
+
+    @patch.object(SemsApi, "_get_web_login_token", return_value=None)
     def test_test_authentication_exception(self, mock_web_login):
-        """Test authentication test with exception."""
+        """Invalid login responses are connection failures."""
         with patch.object(self.api, "getLoginToken") as mock_login:
             mock_login.side_effect = TypeError("Test error")
 
-            result = self.api.test_authentication()
+            with pytest.raises(SemsConnectionError):
+                self.api.test_authentication()
 
-            assert result is False
             mock_web_login.assert_called_once()
 
     def test_successful_login_real_structure(self, requests_mock):
@@ -1075,77 +1151,40 @@ class TestSemsApi:
         assert result["token"] == "new-token-abc123"
         assert result["api"] == "https://eu-gateway.semsportal.com/web/sems"
 
-    def test_redact_for_log_redacts_known_patterns_and_keys(self):
-        """Test that shared redaction keeps labels visible, redacts string values, preserves numeric values."""
+    def test_redact_value_redacts_scalar_identifiers(self):
+        """Test scalar redaction keeps enough identity while hiding serial details."""
+        assert redact_value("") == "<redacted>"
+        assert redact_value("ab") == "<a*>"
+        assert redact_value("test@example.com") == "<***@example.com>"
+        assert redact_value("12345678-1234-5678-9abc-123456789abc") == "<1234...9abc>"
+        assert redact_value("GW0000SN000TEST1") == "<GW0...ST1>"
+
+    def test_redact_for_log_redacts_nested_sensitive_values(self):
+        """Test nested response redaction protects credentials and identifiers."""
         value = {
-            "sn": "GW0000SN000TEST1",
-            "powerstation_id": "12345678-1234-5678-9abc-123456789abc",
-            "exact_serial": "GW0000SN000TEST1",
-            "inverters": {
-                "GW0000SN000TEST1": {
-                    "owner_email": "test@example.com",
-                    "relation_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-                    "capacity": 3.0,
-                }
+            "token": {"access": "secret-token"},
+            "password": ["first", "second"],
+            "data": {
+                "sn": "GW0000SN000TEST1",
+                "message": "Device GW0000SN000TEST1 connected",
+                "pac": 1234,
             },
-            "message": "Device connected",
         }
 
         redacted = redact_for_log(value)
 
-        assert redacted["sn"] == "<GW0...ST1>"
-        assert redacted["powerstation_id"] == "<1234...9abc>"
-        assert redacted["exact_serial"] == "<GW0...ST1>"
-        assert "<GW0...ST1>" in redacted["inverters"]
-        assert (
-            redacted["inverters"][next(iter(redacted["inverters"]))]["owner_email"]
-            == "<***@example.com>"
+        assert isinstance(redacted["token"], dict)
+        assert redacted["token"]["access"] != "secret-token"
+        assert all(
+            item != original
+            for item, original in zip(redacted["password"], ["first", "second"])
         )
-        assert (
-            redacted["inverters"][next(iter(redacted["inverters"]))]["relation_id"]
-            == "<aaaa...eeee>"
+        assert redacted["data"]["sn"] == "<GW0...ST1>"
+        assert "GW0000SN000TEST1" not in redacted["data"]["message"]
+        assert redacted["data"]["pac"] == 1234
+        assert redact_sensitive_text("sensor.GW0000SN000TEST1-load") == (
+            "sensor.<GW0...ST1>-load"
         )
-        assert (
-            redacted["inverters"][next(iter(redacted["inverters"]))]["capacity"] == 3.0
-        )  # Numeric values preserved
-        assert redacted["message"] == "Device connected"
-        assert redacted["inverters"]
-
-    def test_redact_for_log_redacts_dataclass_objects(self):
-        """Test that shared redaction handles dataclass objects."""
-        from dataclasses import dataclass
-
-        @dataclass
-        class SampleEntity:
-            """Sample entity with sensitive data."""
-
-            name: str
-            serial_number: str
-            numeric_value: int
-            nested_data: dict
-
-        obj = SampleEntity(
-            name="Test Entity",
-            serial_number="GW0000SN000TEST1",
-            numeric_value=42,
-            nested_data={
-                "sn": "GW0000SN000TEST1",
-                "value_path": ["GW0000SN000TEST1", "pac"],
-                "owner_email": "user@example.com",
-                "capacity": 3.0,
-            },
-        )
-
-        redacted = redact_for_log(obj)
-
-        assert isinstance(redacted, dict)
-        assert redacted["name"] == "Test Entity"
-        assert redacted["serial_number"] == "<GW0...ST1>"
-        assert redacted["numeric_value"] == 42  # Numeric values preserved
-        assert redacted["nested_data"]["sn"] == "<GW0...ST1>"
-        assert redacted["nested_data"]["value_path"][0] == "<GW0...ST1>"
-        assert redacted["nested_data"]["owner_email"] == "<***@example.com>"
-        assert redacted["nested_data"]["capacity"] == 3.0  # Numeric values preserved
 
     def test_failed_login_invalid_credentials(self, requests_mock):
         """Test failed login with invalid credentials."""
@@ -1188,10 +1227,11 @@ class TestSemsApi:
             )
 
         assert result is None
-        assert "code: 100004, message: parameter error." in caplog.text
+        assert "code: 100004" in caplog.text
+        assert "parameter error." in caplog.text
 
     def test_response_summary_logs_nested_api(self, requests_mock, caplog):
-        """Test login response summaries include the nested gateway API."""
+        """Test login response summaries include the server-provided gateway URL."""
         requests_mock.post(
             "https://example.test/api",
             json={
@@ -1208,7 +1248,36 @@ class TestSemsApi:
                 operation_name="SEMS+ login API call",
             )
 
-        assert "api=https://eu-gateway.semsportal.com/web/sems" in caplog.text
+        assert "https://eu-gateway.semsportal.com/web/sems" in caplog.text
+        assert "response summary" in caplog.text
+
+    def test_make_http_request_logs_full_response_with_sensitive_fields_redacted(
+        self, requests_mock, caplog
+    ):
+        """Debug logs retain the response shape and redact credentials and identifiers."""
+        requests_mock.post(
+            "https://example.test/api",
+            json={
+                "code": "00000",
+                "data": {
+                    "sn": "GW0000SN000TEST1",
+                    "token": "secret-token",
+                    "pac": 1234,
+                },
+            },
+        )
+
+        with caplog.at_level(logging.DEBUG):
+            result = self.api._make_http_request(
+                "https://example.test/api",
+                {},
+                operation_name="device telemetry",
+            )
+
+        assert result["data"]["sn"] == "GW0000SN000TEST1"
+        assert "'pac': 1234" in caplog.text
+        assert "GW0000SN000TEST1" not in caplog.text
+        assert "secret-token" not in caplog.text
 
     def test_permission_error_is_not_retried(self):
         """Test permission failures propagate without fetching another token."""
@@ -1276,7 +1345,8 @@ class TestSemsApi:
                 operation_name="getWebInverterTelecounting API call",
             )
 
-        assert "code C0602: account login abnormal" in caplog.text
+        assert "code C0602" in caplog.text
+        assert "account login abnormal" in caplog.text
         assert not any(record.levelno >= logging.WARNING for record in caplog.records)
 
     def test_login_network_error(self, requests_mock):
@@ -3317,6 +3387,25 @@ class TestSemsApi:
         ):
             assert not self.api._make_control_api_call({"command": "start"})
 
+    def test_make_control_api_call_redacts_http_error_without_retry(self, caplog):
+        """Keep terminal control failures useful with serial redaction."""
+        error = requests.HTTPError(f"serial {MOCK_INVERTER_SN} rejected")
+        error.response = Mock(status_code=200)
+        with (
+            patch.object(
+                self.api,
+                "_get_authenticated_request_context",
+                return_value=("https://api.example.invalid", {}, 0),
+            ),
+            patch.object(self.api, "_make_http_request", side_effect=error),
+        ):
+            assert not self.api._make_control_api_call({"command": "start"})
+
+        assert "Unable to execute Control API call:" in caplog.text
+        assert "serial" in caplog.text
+        assert "rejected" in caplog.text
+        assert MOCK_INVERTER_SN not in caplog.text
+
     @patch.object(SemsApi, "_make_control_api_call")
     def test_change_status(self, mock_control_call):
         """Test change_status method."""
@@ -3333,7 +3422,7 @@ class TestSemsApi:
             expected_data,
             renewToken=False,
             maxTokenRetries=2,
-            operation_name="power control command for inverter inverter123",
+            operation_name="legacy inverter power control API call",
         )
 
     @pytest.mark.parametrize(
@@ -3726,17 +3815,26 @@ class TestSemsApi:
         self.api.change_status(MOCK_INVERTER_SN, 1)
 
     @patch.object(SemsApi, "_make_control_api_call")
-    def test_change_status_failure(self, mock_control_call):
+    def test_change_status_failure(self, mock_control_call, caplog):
         """Test change_status method with failure."""
         mock_control_call.return_value = False
+        serial = "private-inverter-123"
+        station = "private-station-456"
+        device = "private-device-name"
 
         with pytest.raises(
             HomeAssistantError,
             match="Verify that the GoodWe account has remote-control permission",
-        ):
-            self.api.change_status("inverter123", 1)
+        ) as err:
+            self.api.change_status(serial, 1, station, device)
 
         mock_control_call.assert_called_once()
+        assert serial not in str(err.value)
+        assert station not in str(err.value)
+        assert device not in str(err.value)
+        assert serial not in caplog.text
+        assert station not in caplog.text
+        assert device not in caplog.text
 
     @pytest.mark.parametrize(
         ("method_name", "value", "address", "function_id", "control_log"),
@@ -3976,7 +4074,7 @@ class TestSemsApi:
         assert "battery_count" not in inverter
 
     @patch.object(SemsApi, "getBatterySystemTelemetry")
-    def test_web_batteries_skip_denied_battery_telemetry(self, mock_telemetry):
+    def test_web_batteries_skip_denied_battery_telemetry(self, mock_telemetry, caplog):
         """A denied BAT_SYS telemetry request only drops that battery."""
         mock_telemetry.side_effect = [
             SemsPermissionError("BAT_SYS telemetry", "denied"),
@@ -3990,6 +4088,8 @@ class TestSemsApi:
         assert self.api._get_web_batteries("station", cabinets) == [
             {"sn": "BAT_B", "soc": 99.0, "pbattery": 1250.0}
         ]
+        assert "BAT_A" not in caplog.text
+        assert redact_value("BAT_A") in caplog.text
 
 
 class TestOutOfRetries:

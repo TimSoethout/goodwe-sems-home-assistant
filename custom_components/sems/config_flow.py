@@ -21,6 +21,7 @@ from .const import (
     MIN_SCAN_INTERVAL,
     account_key,
     redact_for_log,
+    redact_value,
     scan_interval_seconds,
 )
 from .sems_api import SemsApi, SemsRateLimitedError
@@ -68,13 +69,17 @@ async def validate_credentials(hass: HomeAssistant, data: dict[str, Any]) -> Sem
     """Validate credentials and return an authenticated API client."""
     _LOGGER.debug(
         "SEMS - Validating credentials for user: %s",
-        redact_for_log(data.get(CONF_USERNAME, "")),
+        redact_value(data.get(CONF_USERNAME, "")),
     )
     api = SemsApi(hass, data[CONF_USERNAME], data[CONF_PASSWORD])
-    authenticated = await hass.async_add_executor_job(api.test_authentication)
-    if not authenticated:
-        raise InvalidAuth
-    return api
+    try:
+        authenticated = await hass.async_add_executor_job(api.test_authentication)
+        if not authenticated:
+            raise InvalidAuth
+        return api
+    except BaseException:
+        await hass.async_add_executor_job(api.close)
+        raise
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -94,13 +99,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         placeholders: dict[str, str] = {}
+        api: SemsApi | None = None
 
         try:
             api = await validate_credentials(self.hass, user_input)
 
             _LOGGER.debug("SEMS - Credentials valid, fetching station IDs")
             raw_ids = await self.hass.async_add_executor_job(api.getPowerStationIds)
-            _LOGGER.debug("SEMS - Found power station IDs: %s", redact_for_log(raw_ids))
+            _LOGGER.debug(
+                "SEMS - Found power station IDs: %s",
+                redact_for_log(raw_ids),
+            )
 
             station_ids = _normalize_station_ids(raw_ids)
 
@@ -129,7 +138,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 _LOGGER.debug(
                     "SEMS - Creating entry for station %s",
-                    redact_for_log(station_id),
+                    redact_value(station_id),
                 )
                 return self.async_create_entry(
                     title=f"Inverter {station_id}",
@@ -147,9 +156,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             raise
         except HomeAssistantError:
             errors["base"] = "cannot_connect"
-        except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception")
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.error("Unexpected config-flow exception (%s)", type(err).__name__)
             errors["base"] = "unknown"
+        finally:
+            if api is not None:
+                await self.hass.async_add_executor_job(api.close)
 
         return self.async_show_form(
             step_id="user",
@@ -175,8 +187,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             password = user_input[CONF_PASSWORD]
+            api: SemsApi | None = None
             try:
-                await validate_credentials(
+                api = await validate_credentials(
                     self.hass, {CONF_USERNAME: username, CONF_PASSWORD: password}
                 )
             except InvalidAuth:
@@ -186,8 +199,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 placeholders["retry_after"] = str(err.retry_after)
             except HomeAssistantError:
                 errors["base"] = "cannot_connect"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+            except Exception as err:  # pylint: disable=broad-except
+                _LOGGER.error(
+                    "Unexpected reauthentication exception (%s)", type(err).__name__
+                )
                 errors["base"] = "unknown"
             else:
                 # All stations of the account share one client, so update them
@@ -202,6 +217,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_update_reload_and_abort(
                     reauth_entry, data_updates={CONF_PASSWORD: password}
                 )
+            finally:
+                if api is not None:
+                    await self.hass.async_add_executor_job(api.close)
 
         return self.async_show_form(
             step_id="reauth_confirm",
@@ -227,7 +245,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
         _LOGGER.debug(
             "SEMS - Auto-adding station %s from multi-station discovery",
-            redact_for_log(station_id),
+            redact_value(station_id),
         )
         return self.async_create_entry(
             title=f"Inverter {station_id}",
