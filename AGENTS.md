@@ -36,6 +36,7 @@
 - Control commands use an undocumented SEMS endpoint (`SaveRemoteControlInverter`), so keep the request format intact and let `_make_control_api_call()` handle retries.
 
 ## Developer workflows
+- Git/worktree safety: treat worktrees as shared resources; never prune, remove, repair, switch, stash, or clear operation state unless the user explicitly requests it and identifies the repository/worktree.
 - Linting (from README):
   - `ruff check custom_components/`
   - `ruff format --check custom_components/`
