@@ -19,7 +19,7 @@ evidence and fixture-backed regression coverage where practical.
   flows produce distinct values without applying legacy sign handling twice.
 - [ ] Paginate station discovery until the response's `total` number of
   stations has been returned instead of stopping after the first 100.
-- [ ] Redact device serials, station IDs, and untrusted response bodies from
+- [x] Redact device serials, station IDs, and untrusted response bodies from
   every normal, warning, error, and control-failure log path.
 - [ ] Pin and verify the dev-container HACS installer and CI actions instead
   of running moving remote scripts or branch refs.
@@ -28,12 +28,12 @@ evidence and fixture-backed regression coverage where practical.
 
 - [ ] Stagger or centrally queue multi-station polling for shared-account
   clients so all station coordinators do not wait on the same minute.
-- [ ] Route EV-charger control failures through the coordinator control path
+- [x] Route EV-charger control failures through the coordinator control path
   so rejected credentials start reauthentication consistently.
-- [ ] Keep failed login transport separate from rejected credentials in the
+- [x] Keep failed login transport separate from rejected credentials in the
   config flow; an offline SEMS service must not be presented as a bad
   password.
-- [ ] Close temporary API clients after config-flow validation, station
+- [x] Close temporary API clients after config-flow validation, station
   discovery, reauthentication, and error paths.
 - [ ] Run tests for changes to release scripts and their workflows, and add
   focused release-validation tests for upload and publishing decisions.

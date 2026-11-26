@@ -167,9 +167,10 @@ Then share the relevant log lines.
 See https://www.home-assistant.io/integrations/system_log/ and https://my.home-assistant.io/redirect/logs .
 Click `...` > `Show full logs`.
 
-SEMS+ Web response data is included in debug logs in redacted form to help
-diagnose unsupported device types and missing fields. Remove any remaining
-station details or personal information before sharing logs.
+SEMS+ debug logs include full response structures when useful, with credentials,
+tokens, account fields, and sensitive identifiers redacted. They retain
+operation names, endpoint shape, status codes, server messages, device
+identity, and other response fields for diagnostics and feature development.
 
 ## Notes
 

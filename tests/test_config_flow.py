@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import requests
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -16,7 +17,7 @@ from pytest_homeassistant.common import MockConfigEntry
 from custom_components.sems import async_migrate_entry
 from custom_components.sems.config_flow import CannotConnect, _normalize_station_ids
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
-from custom_components.sems.sems_api import NEW_LOGIN_URL, SemsRateLimitedError
+from custom_components.sems.sems_api import NEW_LOGIN_URL, SemsApi, SemsRateLimitedError
 
 MOCK_USERNAME = "test@example.com"
 MOCK_PASSWORD = "test_password"
@@ -107,6 +108,7 @@ async def test_single_station_creates_entry_directly(
             "custom_components.sems.sems_api.SemsApi.getPowerStationIds",
             return_value=MOCK_STATION_ID_1,
         ),
+        patch("custom_components.sems.sems_api.SemsApi.close") as mock_close,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -117,6 +119,7 @@ async def test_single_station_creates_entry_directly(
     assert result["title"] == f"Inverter {MOCK_STATION_ID_1}"
     assert result["data"][CONF_STATION_ID] == MOCK_STATION_ID_1
     assert result["data"][CONF_USERNAME] == MOCK_USERNAME
+    mock_close.assert_called_once()
 
 
 async def test_captured_web_login_and_station_list_create_entry(
@@ -292,9 +295,12 @@ async def test_invalid_auth_shows_error(
 
     result = await _init_flow(hass)
 
-    with patch(
-        "custom_components.sems.sems_api.SemsApi.test_authentication",
-        return_value=False,
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi.test_authentication",
+            return_value=False,
+        ),
+        patch("custom_components.sems.sems_api.SemsApi.close") as mock_close,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -304,6 +310,63 @@ async def test_invalid_auth_shows_error(
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "user"
     assert result["errors"]["base"] == "invalid_auth"
+    mock_close.assert_called_once()
+
+
+@pytest.mark.parametrize("reauth", [False, True], ids=["setup", "reauth"])
+async def test_login_fallback_transport_exhaustion_cannot_connect(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+    reauth: bool,
+) -> None:
+    """Exhausted login transports are outages, not rejected credentials."""
+    del enable_custom_integrations
+    if reauth:
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            unique_id=MOCK_STATION_ID_1,
+            data={
+                CONF_USERNAME: MOCK_USERNAME,
+                CONF_PASSWORD: MOCK_PASSWORD,
+                CONF_STATION_ID: MOCK_STATION_ID_1,
+            },
+        )
+        entry.add_to_hass(hass)
+        result = await entry.start_reauth_flow(hass)
+        submitted = {CONF_PASSWORD: "new_password"}
+    else:
+        result = await _init_flow(hass)
+        submitted = {
+            CONF_USERNAME: MOCK_USERNAME,
+            CONF_PASSWORD: MOCK_PASSWORD,
+        }
+
+    connection_error = requests.ConnectionError("offline")
+    with (
+        patch.object(
+            SemsApi,
+            "_get_web_login_token",
+            side_effect=connection_error,
+        ),
+        patch.object(
+            SemsApi,
+            "_get_new_login_token",
+            side_effect=connection_error,
+        ),
+        patch.object(
+            SemsApi,
+            "_get_legacy_login_token",
+            side_effect=connection_error,
+        ),
+        patch.object(SemsApi, "close") as mock_close,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], submitted
+        )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+    mock_close.assert_called_once()
 
 
 async def test_no_stations_found_shows_error(
@@ -324,6 +387,7 @@ async def test_no_stations_found_shows_error(
             "custom_components.sems.sems_api.SemsApi.getPowerStationIds",
             return_value=None,
         ),
+        patch("custom_components.sems.sems_api.SemsApi.close") as mock_close,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -333,6 +397,7 @@ async def test_no_stations_found_shows_error(
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "user"
     assert result["errors"]["base"] == "no_stations_found"
+    mock_close.assert_called_once()
 
 
 async def test_migrate_entry_sets_unique_id_from_station_id(
@@ -458,9 +523,12 @@ async def test_reauth_handles_connection_and_unexpected_errors(
     entry.add_to_hass(hass)
     result = await entry.start_reauth_flow(hass)
 
-    with patch(
-        "custom_components.sems.sems_api.SemsApi.test_authentication",
-        side_effect=error,
+    with (
+        patch(
+            "custom_components.sems.sems_api.SemsApi.test_authentication",
+            side_effect=error,
+        ),
+        patch("custom_components.sems.sems_api.SemsApi.close") as mock_close,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_PASSWORD: "new_password"}
@@ -468,4 +536,5 @@ async def test_reauth_handles_connection_and_unexpected_errors(
 
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "reauth_confirm"
+    mock_close.assert_called_once()
     assert result["errors"]["base"] == expected_error

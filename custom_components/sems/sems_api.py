@@ -12,14 +12,14 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Literal, NamedTuple, TypeGuard
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 import requests
 from homeassistant import exceptions
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import redact_for_log
+from .const import redact_for_log, redact_sensitive_text, redact_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -87,6 +87,8 @@ _RateLimitCode = "GY0429"
 _AuthExpiredCodes = {"100002", "C0602"}
 # Login rejections that say nothing about the credentials themselves.
 _TransientLoginCodes = {"C0602", _RateLimitCode}
+# Login responses that explicitly reject the supplied account or password.
+_CredentialRejectionCodes = {"1001", "100005"}
 # Consecutive credential rejections before the entry asks for reauthentication.
 _AuthRejectionsBeforeReauth = 3
 _BrowserUserAgent = "Home Assistant GoodWe SEMS API Integration"
@@ -231,6 +233,46 @@ _WEB_CACHE_PRUNE_INTERVAL_SECONDS = 3_600
 _WEB_CACHE_PERSISTENT_PREFIXES = ("counters:",)
 
 
+def _safe_url_for_log(url: str) -> str:
+    """Return request endpoint context without identifiers or query values."""
+    try:
+        parsed = urlsplit(url)
+        hostname = parsed.hostname or ""
+        if hostname == "goodwe.com" or hostname.endswith(".goodwe.com"):
+            host = "goodwe.com"
+        elif hostname == "semsportal.com" or hostname.endswith(".semsportal.com"):
+            host = "semsportal.com"
+        else:
+            host = "<host>"
+    except ValueError:
+        return "<invalid-url>"
+
+    path_parts: list[str] = []
+    previous = ""
+    for part in (item for item in parsed.path.split("/") if item):
+        if (
+            any(character.isdigit() for character in part)
+            or "@" in part
+            or previous in {"control-item-content-list", "equipments"}
+        ):
+            path_parts.append("<redacted>")
+        else:
+            path_parts.append(part)
+        previous = part
+    path = f"/{'/'.join(path_parts)}" if path_parts else ""
+    query = "&".join(
+        f"{key}=<redacted>"
+        for key, _value in parse_qsl(parsed.query, keep_blank_values=True)
+    )
+    return urlunsplit((parsed.scheme, host, path, query, ""))
+
+
+def _safe_response_code_for_log(response_code: Any) -> str:
+    """Return an API status code only when it has a known-safe shape."""
+    value = str(response_code)
+    return value if re.fullmatch(r"(?:[A-Z]{1,3})?\d{3,6}", value) else "<redacted>"
+
+
 class SemsApi:
     """Interface to the SEMS API."""
 
@@ -258,6 +300,7 @@ class SemsApi:
             "web": 0,
         }
         self._last_login_rejection_code: str | None = None
+        self._saw_credential_rejection = False
         self._auth_rejections = 0
         self._session_failure_logged = False
         self._cooldown_lock = threading.Lock()
@@ -281,6 +324,8 @@ class SemsApi:
 
     def test_authentication(self) -> bool:
         """Test if we can authenticate with the host."""
+        self._last_login_rejection_code = None
+        self._saw_credential_rejection = False
         try:
             self._web_token = self._get_web_login_token(self._username, self._password)
         except (
@@ -290,7 +335,9 @@ class SemsApi:
             ValueError,
             requests.RequestException,
         ) as exception:
-            _LOGGER.warning("SEMS+ Web authentication failed: %s", exception)
+            _LOGGER.warning(
+                "SEMS+ Web authentication failed (%s)", type(exception).__name__
+            )
         else:
             if self._web_token is not None:
                 return True
@@ -298,10 +345,18 @@ class SemsApi:
         try:
             self._token = self.getLoginToken(self._username, self._password)
         except (AttributeError, KeyError, TypeError, ValueError) as exception:
-            _LOGGER.exception("SEMS Authentication exception: %s", exception)
+            _LOGGER.error(
+                "SEMS authentication returned an invalid response (%s)",
+                type(exception).__name__,
+            )
+            raise SemsConnectionError(
+                "SEMS authentication response was invalid"
+            ) from exception
+        if self._token is not None:
+            return True
+        if self._saw_credential_rejection:
             return False
-        else:
-            return self._token is not None
+        raise SemsConnectionError("SEMS authentication failed to connect")
 
     def _make_http_request(
         self,
@@ -316,7 +371,9 @@ class SemsApi:
         """Make a generic HTTP request with error handling and optional code validation."""
         self._raise_if_cooling_down(operation_name)
         try:
-            _LOGGER.debug("SEMS - Making %s to %s", operation_name, url)
+            _LOGGER.debug(
+                "SEMS - Making %s to %s", operation_name, _safe_url_for_log(url)
+            )
             with self._request_slots:
                 response = self._session.request(
                     method.upper(),
@@ -333,9 +390,6 @@ class SemsApi:
                     f"{operation_name} returned an unexpected redirect",
                     response=response,
                 )
-
-            _LOGGER.debug("%s Response: %s", operation_name, response)
-            # _LOGGER.debug("%s Response text: %s", operation_name, response.text)
 
             if response.status_code == 429:
                 retry_after = self._start_cooldown(
@@ -355,24 +409,25 @@ class SemsApi:
             json_response: dict[str, Any] = response.json()
             response_code = json_response.get("code")
 
-            if self._is_sensitive_operation(operation_name):
-                _LOGGER.debug(
-                    "SEMS - %s response payload: %s",
-                    operation_name,
-                    redact_for_log(json_response),
-                )
-
             _LOGGER.debug(
-                "SEMS - %s response summary: code=%s msg=%s description=%s api=%s has_data=%s",
+                "%s Response: %s",
                 operation_name,
-                response_code,
-                json_response.get("msg"),
-                json_response.get("description"),
-                json_response.get("api")
-                or (
-                    json_response.get("data", {}).get("api")
-                    if isinstance(json_response.get("data"), dict)
-                    else None
+                redact_for_log(json_response),
+            )
+            _LOGGER.debug(
+                "SEMS - %s response summary: code=%s msg=%s description=%s "
+                "api=%s has_data=%s",
+                operation_name,
+                _safe_response_code_for_log(response_code),
+                redact_for_log(json_response.get("msg")),
+                redact_for_log(json_response.get("description")),
+                redact_for_log(
+                    json_response.get("api")
+                    or (
+                        json_response.get("data", {}).get("api")
+                        if isinstance(json_response.get("data"), dict)
+                        else None
+                    )
                 ),
                 json_response.get("data") not in (None, "", [], {}),
             )
@@ -404,7 +459,7 @@ class SemsApi:
                 _LOGGER.debug(
                     "%s rejected the token with code %s: %s",
                     operation_name,
-                    response_code,
+                    _safe_response_code_for_log(response_code),
                     self._response_error_message(json_response),
                 )
                 raise SemsAuthExpiredError(
@@ -417,7 +472,7 @@ class SemsApi:
                     _LOGGER.warning(
                         "%s failed with code: %s, message: %s",
                         operation_name,
-                        response_code,
+                        _safe_response_code_for_log(response_code),
                         self._response_error_message(json_response),
                     )
                     return None
@@ -426,27 +481,40 @@ class SemsApi:
 
         except requests.HTTPError as exception:
             if (response := exception.response) is not None:
-                if self._is_sensitive_operation(operation_name):
-                    _LOGGER.error(
-                        "Unable to complete %s: status=%s url=%s (response body redacted)",
-                        operation_name,
-                        response.status_code,
-                        response.url,
-                    )
-                else:
-                    _LOGGER.error(
-                        "Unable to complete %s: status=%s url=%s body=%s",
-                        operation_name,
-                        response.status_code,
-                        response.url,
-                        response.text,
-                    )
+                try:
+                    error_body: Any = response.json()
+                except ValueError:
+                    error_body = response.text
+                _LOGGER.error(
+                    "Unable to complete %s: status=%s endpoint=%s body=%s",
+                    operation_name,
+                    response.status_code,
+                    _safe_url_for_log(str(response.url)),
+                    redact_for_log(error_body),
+                )
             else:
-                _LOGGER.error("Unable to complete %s: %s", operation_name, exception)
+                _LOGGER.error(
+                    "Unable to complete %s: %s",
+                    operation_name,
+                    redact_sensitive_text(str(exception)),
+                )
             raise
         except (requests.RequestException, ValueError, KeyError) as exception:
-            _LOGGER.warning("Unable to complete %s: %s", operation_name, exception)
+            _LOGGER.warning(
+                "Unable to complete %s: %s",
+                operation_name,
+                redact_sensitive_text(str(exception)),
+            )
             raise
+
+    @staticmethod
+    def _response_error_message(json_response: dict[str, Any]) -> str:
+        """Return the server's useful text with sensitive patterns protected."""
+        for key in ("msg", "description", "errorMsg", "translationCode"):
+            message = json_response.get(key)
+            if isinstance(message, str) and message:
+                return redact_sensitive_text(message)
+        return "Unknown error"
 
     @staticmethod
     def _parse_retry_after(value: str | None) -> int | None:
@@ -497,15 +565,6 @@ class SemsApi:
     def _is_sensitive_operation(self, operation_name: str) -> bool:
         """Return True if the operation name indicates it handles sensitive credentials."""
         return "login" in operation_name.lower()
-
-    @staticmethod
-    def _response_error_message(json_response: dict[str, Any]) -> str:
-        """Return the most useful non-sensitive message from an API response."""
-        for key in ("msg", "description", "errorMsg", "translationCode"):
-            message = json_response.get(key)
-            if isinstance(message, str) and message:
-                return message
-        return "Unknown error"
 
     def _hash_password_for_new_login(self, password: str) -> str:
         """Return the SEMS+ password encoding."""
@@ -582,12 +641,7 @@ class SemsApi:
         if region is None:
             raise ValueError("SEMS login returned an unsupported API base")
         rewritten_base = f"https://{region}.semsportal.com/api"
-        _LOGGER.debug(
-            "SEMS - Rewriting API base from %s to %s for %s",
-            validated_base,
-            rewritten_base,
-            url_part,
-        )
+        _LOGGER.debug("SEMS - Rewriting a regional PowerStation API route")
         return rewritten_base
 
     def _get_authenticated_request_context(
@@ -615,9 +669,9 @@ class SemsApi:
         _LOGGER.debug(
             "SEMS - %s request context: api_base=%s effective_api_base=%s url_part=%s token=%s",
             operation_name,
-            token.get("api"),
-            api_base,
-            url_part,
+            redact_for_log(token.get("api")),
+            redact_for_log(api_base),
+            redact_for_log(url_part),
             redact_for_log(token),
         )
         return api_url, headers, generation
@@ -675,18 +729,15 @@ class SemsApi:
                 return token, self._token_generation[token_type]
 
             code = self._last_login_rejection_code
-            if code is not None and code not in _TransientLoginCodes:
+            if code in _CredentialRejectionCodes:
                 self._auth_rejections += 1
             if self._auth_rejections >= _AuthRejectionsBeforeReauth:
-                raise SemsAuthError(
-                    f"SEMS rejected the credentials {self._auth_rejections} "
-                    f"times in a row (code {code})"
-                )
+                raise SemsAuthError("SEMS repeatedly rejected the account credentials")
             retry_after = self._start_cooldown()
             _LOGGER.warning(
                 "SEMS %s login failed (code %s); pausing requests for %ss",
                 token_type,
-                code,
+                _safe_response_code_for_log(code),
                 retry_after,
             )
             raise SemsRateLimitedError(
@@ -765,9 +816,8 @@ class SemsApi:
 
         if fallback_api_url is None:
             _LOGGER.error(
-                "SEMS %s login response missing api field: keys=%s",
+                "SEMS %s login response missing its API endpoint",
                 login_mode,
-                list(json_response.keys()),
             )
             return None
 
@@ -777,7 +827,7 @@ class SemsApi:
             return None
 
         _LOGGER.debug(
-            "SEMS %s login response missing api field, using configured fallback",
+            "SEMS %s login response missing its API endpoint; using validated fallback",
             login_mode,
         )
         return validated_fallback
@@ -796,14 +846,18 @@ class SemsApi:
         code = json_response.get("code")
         if code not in _SuccessCodes:
             self._last_login_rejection_code = str(code)
+            self._saw_credential_rejection |= (
+                self._last_login_rejection_code in _CredentialRejectionCodes
+            )
             _LOGGER.debug(
-                "SEMS %s login failed during %s with code %s, msg=%s, description=%s, api=%s, data_type=%s",
+                "SEMS %s login failed during %s with code %s, msg=%s, "
+                "description=%s, api=%s, data_type=%s",
                 login_mode,
                 operation_name,
-                code,
-                json_response.get("msg"),
-                json_response.get("description"),
-                json_response.get("api"),
+                _safe_response_code_for_log(code),
+                redact_for_log(json_response.get("msg")),
+                redact_for_log(json_response.get("description")),
+                redact_for_log(json_response.get("api")),
                 type(json_response.get("data")).__name__,
             )
             return None
@@ -811,10 +865,9 @@ class SemsApi:
         token_data = json_response.get("data")
         if not isinstance(token_data, dict) or not token_data:
             _LOGGER.error(
-                "SEMS %s login response data was missing or invalid: data_type=%s, keys=%s",
+                "SEMS %s login response data was missing or invalid: data_type=%s",
                 login_mode,
                 type(token_data).__name__,
-                list(json_response.keys()),
             )
             return None
 
@@ -914,9 +967,9 @@ class SemsApi:
                 raise
             except (requests.RequestException, ValueError, KeyError) as exception:
                 _LOGGER.warning(
-                    "SEMS %s login failed; trying the next authentication method: %s",
+                    "SEMS %s login transport failed; trying the next authentication method: %s",
                     login_mode,
-                    exception,
+                    redact_sensitive_text(str(exception)),
                 )
                 continue
 
@@ -996,7 +1049,11 @@ class SemsApi:
                 raise
             except (requests.RequestException, ValueError, KeyError) as exception:
                 # _make_http_request already logged the failure.
-                _LOGGER.debug("Unable to complete %s: %s", operation_name, exception)
+                _LOGGER.debug(
+                    "Unable to complete %s (%s)",
+                    operation_name,
+                    type(exception).__name__,
+                )
                 return None
 
             if json_response is None:
@@ -1005,26 +1062,29 @@ class SemsApi:
                 raise OutOfRetries(f"{operation_name} returned an API error")
 
             self._session_failure_logged = False
-            if is_web and not self._is_sensitive_operation(operation_name):
+            if is_web:
                 _LOGGER.debug(
                     "SEMS - %s response data: %s",
                     operation_name,
                     redact_for_log(json_response.get("data")),
                 )
-
             return json_response.get("data", {}) if is_web else json_response["data"]
 
     def _log_session_failure(self, operation_name: str, err: Exception) -> None:
         """Warn once while SEMS keeps rejecting fresh tokens."""
         if self._session_failure_logged:
-            _LOGGER.debug("%s failed after re-authentication: %s", operation_name, err)
+            _LOGGER.debug(
+                "%s failed after re-authentication: %s",
+                operation_name,
+                redact_sensitive_text(str(err)),
+            )
             return
         self._session_failure_logged = True
         _LOGGER.warning(
             "SEMS rejected the session for %s even after re-authentication: %s. "
             "Further failures are logged at debug level until a request succeeds.",
             operation_name,
-            err,
+            redact_sensitive_text(str(err)),
         )
 
     def getPowerStationIds(
@@ -1129,7 +1189,11 @@ class SemsApi:
                 token_type=_WEB_STATION_STATISTICS_ENDPOINT.token_type,
             )
         except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
-            _LOGGER.debug("SEMS %s statistics unavailable: %s", dimension, err)
+            _LOGGER.debug(
+                "SEMS %s statistics unavailable (%s)",
+                dimension,
+                type(err).__name__,
+            )
             response = None
         if not isinstance(response, dict):
             self._remember_failure(cache_key)
@@ -1186,26 +1250,14 @@ class SemsApi:
             if math.isfinite(numeric_value):
                 parsed[summary_key] = [numeric_value]
 
-        response_dates: list[str] = []
-        for item_data in response.get("dataList", []):
-            if not isinstance(item_data, dict):
-                continue
-            for statistic in item_data.get("statisticsList", []):
-                if not isinstance(statistic, dict):
-                    continue
-                date = statistic.get("date")
-                if isinstance(date, str):
-                    response_dates.append(date)
         _LOGGER.debug(
             "SEMS - getWebStationStatistics response: dimension=%s "
-            "requested=%s..%s items=%s points=%s dates=%s..%s",
+            "requested=%s..%s items=%s points=%s",
             dimension,
             start.date(),
             end.date(),
-            sorted(parsed),
+            len(parsed),
             sum(len(values) for values in parsed.values()),
-            min(response_dates) if response_dates else None,
-            max(response_dates) if response_dates else None,
         )
         self._set_web_cache_entry(cache_key, (time.monotonic(), parsed))
         return parsed
@@ -1414,7 +1466,9 @@ class SemsApi:
                 self._set_web_cache_entry(cache_key, (time.monotonic(), result))
             return result
         except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
-            _LOGGER.debug("SEMS station statistics unavailable: %s", err)
+            _LOGGER.debug(
+                "SEMS station statistics unavailable (%s)", type(err).__name__
+            )
             if cached_statistics is None and cache_key is not None:
                 self._remember_failure(cache_key)
             return cached_statistics
@@ -1460,7 +1514,9 @@ class SemsApi:
                 token_type=_WEB_STATION_PRODUCTION_ENDPOINT.token_type,
             )
         except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
-            _LOGGER.debug("SEMS station production unavailable: %s", err)
+            _LOGGER.debug(
+                "SEMS station production unavailable (%s)", type(err).__name__
+            )
             response = None
         if not isinstance(response, dict):
             self._remember_failure(cache_key)
@@ -1513,7 +1569,7 @@ class SemsApi:
         try:
             flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
         except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
-            _LOGGER.debug("SEMS station flow unavailable: %s", err)
+            _LOGGER.debug("SEMS station flow unavailable (%s)", type(err).__name__)
             flow = {}
             flow_unavailable = True
 
@@ -1553,17 +1609,17 @@ class SemsApi:
                     device_data.update(telemetry)
                 except SemsPermissionError as err:
                     _LOGGER.warning(
-                        "SEMS+ denied telemetry access for inverter %s: %s. "
+                        "SEMS+ denied inverter telemetry access for %s (%s). "
                         "Check the GoodWe account or plant permissions.",
-                        serial_number,
-                        err,
+                        redact_value(serial_number),
+                        type(err).__name__,
                     )
                     unavailable_sources.add("telemetry")
                 except (OutOfRetries, SemsRateLimitedError) as err:
                     _LOGGER.debug(
-                        "SEMS+ telemetry unavailable for inverter %s: %s",
-                        serial_number,
-                        err,
+                        "SEMS+ inverter telemetry unavailable for %s (%s)",
+                        redact_value(serial_number),
+                        type(err).__name__,
                     )
                     unavailable_sources.add("telemetry")
                 if "pac" not in device_data and device_data.get("status") in (-1, 0):
@@ -1580,17 +1636,17 @@ class SemsApi:
                     )
                 except SemsPermissionError as err:
                     _LOGGER.warning(
-                        "SEMS+ denied counter access for inverter %s: %s. "
+                        "SEMS+ denied inverter counter access for %s (%s). "
                         "Check the GoodWe account or plant permissions.",
-                        serial_number,
-                        err,
+                        redact_value(serial_number),
+                        type(err).__name__,
                     )
                     unavailable_sources.add("counters")
                 except (OutOfRetries, SemsRateLimitedError) as err:
                     _LOGGER.debug(
-                        "SEMS+ counters unavailable for inverter %s: %s",
-                        serial_number,
-                        err,
+                        "SEMS+ inverter counters unavailable for %s (%s)",
+                        redact_value(serial_number),
+                        type(err).__name__,
                     )
                     unavailable_sources.add("counters")
                 if unavailable_sources:
@@ -1711,9 +1767,9 @@ class SemsApi:
                     SemsRateLimitedError,
                 ) as err:
                     _LOGGER.debug(
-                        "SEMS related storage devices unavailable for %s: %s",
-                        serial_number,
-                        err,
+                        "SEMS related storage devices unavailable for %s (%s)",
+                        redact_value(serial_number),
+                        type(err).__name__,
                     )
                     unavailable_inverter_sources.setdefault(serial_number, set()).add(
                         "cabinets"
@@ -1738,7 +1794,9 @@ class SemsApi:
                 include_last_month=include_last_month,
             )
         except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
-            _LOGGER.debug("SEMS station statistics unavailable: %s", err)
+            _LOGGER.debug(
+                "SEMS station statistics unavailable (%s)", type(err).__name__
+            )
             statistics = None
             unavailable_homekit_sources.add("statistics")
         if statistics is None and self._recently_failed(
@@ -1832,7 +1890,12 @@ class SemsApi:
                         token_type=endpoint.token_type,
                     )
             except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
-                _LOGGER.debug("SEMS EV charger %s unavailable: %s", name, err)
+                _LOGGER.debug(
+                    "SEMS EV charger %s unavailable for %s (%s)",
+                    name,
+                    redact_value(serial_number),
+                    type(err).__name__,
+                )
                 unavailable_sources.add(name)
                 continue
             charger["factors"].update(
@@ -1870,7 +1933,12 @@ class SemsApi:
                     token_type="web",
                 )
             except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
-                _LOGGER.debug("SEMS EV charger %s unavailable: %s", key, err)
+                _LOGGER.debug(
+                    "SEMS EV charger %s unavailable for %s (%s)",
+                    key,
+                    redact_value(serial_number),
+                    type(err).__name__,
+                )
                 unavailable_sources.add(key)
                 continue
             if not isinstance(result, dict):
@@ -1901,7 +1969,11 @@ class SemsApi:
                     token_type="web",
                 )
             except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
-                _LOGGER.debug("SEMS EV charger detail unavailable: %s", err)
+                _LOGGER.debug(
+                    "SEMS EV charger detail unavailable for %s (%s)",
+                    redact_value(serial_number),
+                    type(err).__name__,
+                )
                 unavailable_sources.add("detail")
             else:
                 if isinstance(detail, dict):
@@ -2415,7 +2487,7 @@ class SemsApi:
         if _in_midnight_rollover(now):
             _LOGGER.debug(
                 "Keeping SEMS+ counters for %s during the midnight rollover",
-                serialNumber,
+                redact_value(serialNumber),
             )
             return (
                 {
@@ -2487,31 +2559,24 @@ class SemsApi:
                     drop_count = int(previous_drops.get(key, 0)) + 1
                     if drop_count >= _SMART_METER_DROP_ACCEPT_POLLS:
                         _LOGGER.info(
-                            "Accepting SEMS+ %s counter drop for %s after %s "
-                            "polls: %s after %s",
+                            "Accepting SEMS+ %s counter drop for %s after %s polls",
                             key,
-                            serialNumber,
+                            redact_value(serialNumber),
                             drop_count,
-                            value,
-                            old_value,
                         )
                         continue
                     drops[key] = drop_count
                     _LOGGER.debug(
-                        "Holding SEMS+ %s counter for %s: %s after %s",
+                        "Holding SEMS+ %s counter for %s",
                         key,
-                        serialNumber,
-                        value,
-                        old_value,
+                        redact_value(serialNumber),
                     )
                     counters[key] = old_value
                     continue
                 _LOGGER.warning(
-                    "Ignoring invalid SEMS+ %s counter for %s: %s after %s",
+                    "Ignoring an invalid SEMS+ %s counter for %s",
                     key,
-                    serialNumber,
-                    value,
-                    old_value,
+                    redact_value(serialNumber),
                 )
                 counters[key] = old_value
         if counters:
@@ -2568,9 +2633,9 @@ class SemsApi:
                 )
             except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
                 _LOGGER.debug(
-                    "SEMS BAT_SYS telemetry unavailable for %s: %s",
-                    serial_number,
-                    err,
+                    "SEMS battery telemetry unavailable for %s (%s)",
+                    redact_value(serial_number),
+                    type(err).__name__,
                 )
                 continue
             battery: dict[str, Any] = {"sn": serial_number}
@@ -3037,24 +3102,37 @@ class SemsApi:
         except requests.HTTPError as e:
             if hasattr(e.response, "status_code") and e.response.status_code != 200:
                 _LOGGER.warning(
-                    "%s not successful, retrying with new token, %s retries remaining",
+                    "%s not successful (%s), retrying with new token, %s retries remaining",
                     operation_name,
+                    redact_sensitive_text(str(e)),
                     maxTokenRetries,
                 )
                 return self._make_control_api_call(
                     data, True, maxTokenRetries - 1, operation_name
                 )
-            _LOGGER.error("Unable to execute %s: %s", operation_name, e)
+            _LOGGER.error(
+                "Unable to execute %s: %s",
+                operation_name,
+                redact_sensitive_text(str(e)),
+            )
             return False
         except SemsAuthExpiredError:
             return self._make_control_api_call(
                 data, True, maxTokenRetries - 1, operation_name
             )
         except SemsRateLimitedError as exception:
-            _LOGGER.warning("Unable to execute %s: %s", operation_name, exception)
+            _LOGGER.warning(
+                "Unable to execute %s: %s",
+                operation_name,
+                redact_sensitive_text(str(exception)),
+            )
             return False
         except (requests.RequestException, ValueError, KeyError) as exception:
-            _LOGGER.error("Unable to execute %s: %s", operation_name, exception)
+            _LOGGER.error(
+                "Unable to execute %s: %s",
+                operation_name,
+                redact_sensitive_text(str(exception)),
+            )
             return False
 
     def change_status(
@@ -3181,16 +3259,17 @@ class SemsApi:
             data,
             renewToken=renewToken,
             maxTokenRetries=maxTokenRetries,
-            operation_name=f"power control command for inverter {inverterSn}",
+            operation_name="legacy inverter power control API call",
         )
 
         if not success:
-            action = {"2": "stop", "4": "start"}.get(str(status), str(status))
-            device = device_name or inverterSn
-            station = f" at station {plant_id}" if plant_id else ""
+            action = {"2": "stop", "4": "start"}.get(str(status), "control")
+            device = redact_value(device_name or inverterSn)
+            serial = redact_value(inverterSn)
+            station = f" at station {redact_value(plant_id)}" if plant_id else ""
             message = (
                 f"Unable to {action} inverter {device} "
-                f"(serial {inverterSn}){station}. SEMS+ Web control was rejected "
+                f"(serial {serial}){station}. SEMS+ Web control was rejected "
                 "and the legacy control request also failed. Verify that the "
                 "GoodWe account has remote-control permission and re-register "
                 "the integration with that account."
@@ -3220,9 +3299,15 @@ class SemsAuthError(exceptions.HomeAssistantError):
     """Error to indicate SEMS repeatedly rejected the credentials."""
 
 
+class SemsConnectionError(exceptions.HomeAssistantError):
+    """Error to indicate SEMS login transport failed."""
+
+
 class SemsPermissionError(exceptions.HomeAssistantError):
     """Error to indicate the SEMS API denied access to an operation."""
 
-    def __init__(self, operation_name: str, message: str):
+    def __init__(self, operation_name: str, message: str = "access denied"):
         """Initialize the permission error."""
-        super().__init__(f"{operation_name} was denied: {message}")
+        super().__init__(
+            f"{operation_name} was denied: {redact_sensitive_text(message)}"
+        )

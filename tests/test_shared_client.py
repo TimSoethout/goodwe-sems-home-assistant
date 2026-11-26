@@ -393,6 +393,7 @@ async def test_reauth_updates_all_entries_of_the_account(
     with (
         patch.object(SemsApi, "test_authentication", return_value=True),
         patch("custom_components.sems.async_setup_entry", return_value=True),
+        patch.object(SemsApi, "close") as mock_close,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_PASSWORD: "new_password"}
@@ -404,6 +405,7 @@ async def test_reauth_updates_all_entries_of_the_account(
     assert entry_1.data[CONF_PASSWORD] == "new_password"
     assert entry_2.data[CONF_PASSWORD] == "new_password"
     assert other_account.data[CONF_PASSWORD] == MOCK_PASSWORD
+    mock_close.assert_called_once()
 
 
 async def test_failed_platform_forwarding_releases_client(

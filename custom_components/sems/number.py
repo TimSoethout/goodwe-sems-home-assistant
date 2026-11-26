@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsConfigEntry, SemsCoordinator
-from .const import CONF_STATION_ID
+from .const import CONF_STATION_ID, redact_sensitive_text
 from .device import device_info_for_inverter
 from .ev_charger import async_add_coordinator_entities, ev_charger_numbers
 
@@ -72,7 +72,7 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
     ) -> None:
         if self.coordinator.data is None:
             raise HomeAssistantError(
-                f"Unable to set value for {self.entity_id}: no coordinator data"
+                f"Unable to set value for {redact_sensitive_text(self.entity_id or 'unknown')}: no coordinator data"
             )
 
         await self.coordinator.async_control(

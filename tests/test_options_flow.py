@@ -248,6 +248,18 @@ async def test_control_command_runs_in_executor(hass: HomeAssistant) -> None:
     assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN)
 
 
+async def test_control_command_rejects_false_result(hass: HomeAssistant) -> None:
+    """A command returning False surfaces the same service failure."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(
+        hass, SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD), entry
+    )
+
+    with pytest.raises(HomeAssistantError, match="SEMS rejected"):
+        await coordinator.async_control(MagicMock(return_value=False))
+
+
 async def test_control_command_starts_reauth_on_rejected_credentials(
     hass: HomeAssistant,
 ) -> None:

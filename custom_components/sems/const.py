@@ -119,82 +119,97 @@ def redact_value(value: str) -> str:
     return f"<{value[0]}{'*' * (len(value) - 1)}>"
 
 
+_EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_UUID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+_SERIAL_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"(?=[A-Za-z0-9]{12,20}(?![A-Za-z0-9]))"
+    r"(?=[A-Za-z0-9]*[A-Za-z])"
+    r"(?=[A-Za-z0-9]*[0-9])"
+    r"[A-Za-z0-9]{12,20}"
+    r"(?![A-Za-z0-9])"
+)
 _SENSITIVE_LOG_KEYS = {
     "account",
-    "pwd",
     "password",
+    "pwd",
     "token",
     "uid",
+    "signature",
+    "cookie",
+    "authorization",
     "sn",
+    "serial",
     "serialnum",
+    "serial_number",
+    "station_id",
+    "stationid",
+    "powerstation_id",
+    "pw_id",
     "relationid",
     "relation_id",
-    "pw_id",
-    "powerstation_id",
+    "plant_id",
+    "plantid",
+    "chargesn",
+    "invertersn",
     "owner_email",
     "owner_name",
     "owner_phone",
+    "username",
+    "user",
+    "email",
 }
 
-_EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-_UUID_PATTERN = re.compile(
-    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-)
-_SERIAL_PATTERN = re.compile(r"^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]{12,20}$")
 
-
-def _matches_sensitive_pattern(value: str) -> bool:
-    """Return whether a string looks sensitive by format."""
-    return bool(
-        _EMAIL_PATTERN.fullmatch(value)
-        or _UUID_PATTERN.fullmatch(value)
-        or _SERIAL_PATTERN.fullmatch(value)
+def redact_sensitive_text(value: str) -> str:
+    """Redact sensitive patterns embedded in otherwise useful text."""
+    value = _EMAIL_PATTERN.sub(
+        lambda match: redact_value(match.group(0)),
+        value,
     )
-
-
-def _is_sensitive_label(key: Any) -> bool:
-    """Return whether a dictionary key implies its value is sensitive."""
-    return isinstance(key, str) and key.lower() in _SENSITIVE_LOG_KEYS
+    value = _UUID_PATTERN.sub(
+        lambda match: redact_value(match.group(0)),
+        value,
+    )
+    value = _SERIAL_PATTERN.sub(
+        lambda match: redact_value(match.group(0)),
+        value,
+    )
+    return value
 
 
 def _redact_sensitive_value(value: Any) -> Any:
-    """Redact a value associated with a sensitive key."""
     if isinstance(value, str):
         return redact_value(value)
-
     if isinstance(value, dict):
         return {
             key: _redact_sensitive_value(sub_value) for key, sub_value in value.items()
         }
-
     if isinstance(value, list):
         return [_redact_sensitive_value(item) for item in value]
-
-    # For non-string, non-container types (numbers, booleans, None, etc.), keep as-is
     return value
 
 
 def redact_for_log(value: Any) -> Any:
-    """Return a redacted structure suitable for debug logging."""
+    """Return a useful structure with credentials, identifiers, and personal values protected."""
     if isinstance(value, str):
-        return redact_value(value) if _matches_sensitive_pattern(value) else value
-
+        return redact_sensitive_text(value)
     if isinstance(value, dict):
         sanitized: dict[Any, Any] = {}
         for key, sub_value in value.items():
-            if isinstance(key, str) and _matches_sensitive_pattern(key):
-                sanitized[redact_value(key)] = _redact_sensitive_value(sub_value)
-            elif _is_sensitive_label(key):
-                sanitized[key] = _redact_sensitive_value(sub_value)
+            if isinstance(key, str) and key.lower() in _SENSITIVE_LOG_KEYS:
+                if isinstance(sub_value, str):
+                    sanitized[key] = redact_value(sub_value)
+                else:
+                    sanitized[key] = _redact_sensitive_value(sub_value)
             else:
                 sanitized[key] = redact_for_log(sub_value)
         return sanitized
-
     if isinstance(value, list):
         return [redact_for_log(item) for item in value]
-
-    # Handle dataclass instances by converting to dict and recursing
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return redact_for_log(dataclasses.asdict(value))
-
     return value

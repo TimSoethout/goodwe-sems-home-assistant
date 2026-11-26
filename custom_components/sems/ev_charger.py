@@ -35,7 +35,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
-from .const import DOMAIN
+from .const import DOMAIN, redact_sensitive_text
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -181,16 +181,15 @@ class _EvChargerEntity(CoordinatorEntity[SemsCoordinator]):
         product_model = mode_info.get("productModel")
         if not product_model:
             raise HomeAssistantError(
-                f"Unable to control {self.entity_id}: charger model is unknown"
+                f"Unable to control {redact_sensitive_text(self.entity_id or 'EV charger')}: charger model is unknown"
             )
-        if not await self.hass.async_add_executor_job(
+        await self.coordinator.async_control(
             method,
             self.coordinator.station_id,
             self.serial_number,
             product_model,
             *args,
-        ):
-            raise HomeAssistantError(f"SEMS rejected the command for {self.entity_id}")
+        )
         await self.coordinator.async_request_refresh()
 
 

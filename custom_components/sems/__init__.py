@@ -35,6 +35,8 @@ from .const import (
     homekit_device_id,
     homekit_station_serial,
     redact_for_log,
+    redact_sensitive_text,
+    redact_value,
     scan_interval_seconds,
 )
 from .sems_api import (
@@ -233,8 +235,8 @@ async def _async_update_listener(hass: HomeAssistant, entry: SemsConfigEntry) ->
     )
     if coordinator.update_interval != update_interval:
         _LOGGER.debug(
-            "SEMS - Update interval of %s changed to %s",
-            redact_for_log(coordinator.station_id),
+            "SEMS - Update interval of station %s changed to %s",
+            redact_value(coordinator.station_id),
             update_interval,
         )
         coordinator.update_interval = update_interval
@@ -246,19 +248,23 @@ def _migrate_unique_ids(hass: HomeAssistant, migrations: dict[str, str]) -> None
 
     for old_unique_id, new_unique_id in migrations.items():
         entity_id = ent_reg.async_get_entity_id(Platform.SENSOR, DOMAIN, old_unique_id)
-        _LOGGER.debug("Entity ID: %s", entity_id)
+        _LOGGER.debug(
+            "Entity ID: %s", redact_sensitive_text(entity_id or "<not-found>")
+        )
         if entity_id is None:
             continue
         try:
             ent_reg.async_update_entity(entity_id, new_unique_id=new_unique_id)
         except ValueError:
-            # Unique IDs contain serials and station IDs, so log the entity ID.
             _LOGGER.warning(
                 "Skip unique_id migration of %s because the new ID already exists",
-                entity_id,
+                redact_sensitive_text(entity_id),
             )
         else:
-            _LOGGER.info("Migrated unique_id of %s", entity_id)
+            _LOGGER.info(
+                "Migrated unique_id of %s",
+                redact_sensitive_text(entity_id),
+            )
 
 
 def _async_migrate_station_scoped_homekit(
@@ -398,14 +404,14 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             update_interval=update_interval,
         )
 
-    async def async_control(self, method: Callable[..., Any], *args: Any) -> None:
+    async def async_control(self, method: Callable[..., Any], *args: Any) -> Any:
         """Run a blocking control command of the API client.
 
         When SEMS rejects the credentials, ask for reauthentication right away
         instead of waiting for the next refresh to fail as well.
         """
         try:
-            await self.hass.async_add_executor_job(method, *args)
+            result = await self.hass.async_add_executor_job(method, *args)
         except SemsAuthError as err:
             if self.config_entry is not None:
                 self.config_entry.async_start_reauth(self.hass)
@@ -413,6 +419,9 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 "SEMS rejected the account credentials; reauthenticate the "
                 "integration and try again"
             ) from err
+        if result is False:
+            raise HomeAssistantError("SEMS rejected the control command")
+        return result
 
     def _registered_homekit_sn(self, current_sn: str | None) -> str | None:
         """Return the serial of earlier registered HomeKit sensors, if any.
@@ -515,16 +524,16 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 except SemsPermissionError as err:
                     # Battery controls are optional; keep the station data.
                     _LOGGER.debug(
-                        "Battery functions request denied for %s: %s",
-                        redact_for_log(sn),
-                        err,
+                        "Battery functions request denied for %s (%s)",
+                        redact_value(sn),
+                        type(err).__name__,
                     )
                     continue
                 except SemsRateLimitedError as err:
                     _LOGGER.debug(
-                        "Battery functions request rate limited for %s: %s",
-                        redact_for_log(sn),
-                        err,
+                        "Battery functions request rate limited for %s (%s)",
+                        redact_value(sn),
+                        type(err).__name__,
                     )
                     return self.data.batteries if self.data is not None else None
                 battery_general_functions[sn][bat.get("translateCode")] = functions
@@ -583,9 +592,9 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
                 immediate_charging_result = None
                 _LOGGER.debug(
-                    "Immediate-charging state request failed for %s: %s",
-                    redact_for_log(inverter_sn),
-                    err,
+                    "Immediate-charging state request failed for %s (%s)",
+                    redact_value(inverter_sn),
+                    type(err).__name__,
                 )
             state_data = (
                 immediate_charging_result.get("data")
@@ -597,7 +606,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 # instead of reporting a disabled function.
                 _LOGGER.debug(
                     "No immediate-charging state for %s",
-                    redact_for_log(inverter_sn),
+                    redact_value(inverter_sn),
                 )
                 continue
             immediate_charging[inverter_sn] = {
@@ -672,7 +681,9 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             # SEMS API errors are HomeAssistantError subclasses. Anything else
             # is a bug: let the coordinator log it with a traceback instead of
             # reporting it as a communication error.
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
+            raise UpdateFailed(
+                f"Error communicating with API: {redact_for_log(str(err))}"
+            ) from err
         else:
             _LOGGER.debug("semsApi.getData result: %s", redact_for_log(data_result))
 
@@ -720,15 +731,15 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 if not isinstance(inverter_full, dict):
                     continue
 
-                name = inverter_full.get("name")
                 sn = inverter_full.get("sn")
                 if not isinstance(sn, str):
                     continue
 
+                name = inverter_full.get("name")
                 _LOGGER.debug(
                     "Found inverter attribute %s %s",
                     name,
-                    redact_for_log(sn),
+                    redact_value(sn),
                 )
                 inverters_by_sn[sn] = inverter_full
 
@@ -798,7 +809,6 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                 if powerflow["sn"] is None:
                     powerflow["sn"] = homekit_station_serial(self.station_id)
 
-                # _LOGGER.debug("homeKit sn: %s", result["homKit"]["sn"])
                 # This seems more accurate than the Chart_sum
                 powerflow["all_time_generation"] = kpi.get("total_power")
 
