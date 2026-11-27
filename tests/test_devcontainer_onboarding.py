@@ -49,6 +49,8 @@ def test_home_assistant_lifecycle_is_controlled_by_tasks() -> None:
     assert '"$python" "$repo_root/.devcontainer/onboard-home-assistant.py"' in (
         startup_script
     )
+    assert devcontainer["forwardPorts"] == [8123]
+    assert "8123" in devcontainer["portsAttributes"]
 
 
 def test_devcontainer_uses_home_assistant_marketplace() -> None:
@@ -60,6 +62,15 @@ def test_devcontainer_uses_home_assistant_marketplace() -> None:
     assert "HACS through the built-in Marketplace" in setup_script
     assert "HA-MCP will be installed through the built-in Marketplace" in setup_script
     assert "ha-mcp.git" not in setup_script
+
+
+def test_devcontainer_syncs_go2rtc_binary_with_home_assistant() -> None:
+    setup_script = (REPO_ROOT / ".devcontainer" / "setup.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "RECOMMENDED_VERSION" in setup_script
+    assert "go2rtc/releases/download/v${go2rtc_version}" in setup_script
 
 
 def test_wait_for_home_assistant_accepts_unauthorized_api_response() -> None:

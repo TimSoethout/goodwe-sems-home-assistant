@@ -22,6 +22,29 @@ if [[ -d "$core_dir/.venv" && ! -x "$ha_python" ]]; then
   echo "Preserved incomplete Home Assistant environment at $stale_venv" >&2
 fi
 
+go2rtc_const="$core_dir/homeassistant/components/go2rtc/const.py"
+go2rtc_version="$(
+  sed -n 's/^RECOMMENDED_VERSION = "\([^"]*\)".*/\1/p' "$go2rtc_const" | head -n 1
+)"
+if [[ -z "$go2rtc_version" ]]; then
+  echo "Could not determine the go2rtc version from Home Assistant Core" >&2
+  exit 1
+fi
+case "$(dpkg --print-architecture)" in
+  amd64) go2rtc_arch=amd64 ;;
+  arm64) go2rtc_arch=arm64 ;;
+  *)
+    echo "Unsupported architecture: $(dpkg --print-architecture)" >&2
+    exit 1
+    ;;
+esac
+if ! [[ -x /usr/local/bin/go2rtc ]] ||
+  [[ "$(/usr/local/bin/go2rtc --version 2>&1 || true)" != *"$go2rtc_version"* ]]; then
+  wget -q -O /usr/local/bin/go2rtc \
+    "https://github.com/AlexxIT/go2rtc/releases/download/v${go2rtc_version}/go2rtc_linux_${go2rtc_arch}"
+  chmod 0755 /usr/local/bin/go2rtc
+fi
+
 if [[ ! -x "$ha_python" ]]; then
   (
     cd "$core_dir"
