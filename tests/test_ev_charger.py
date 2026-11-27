@@ -771,7 +771,8 @@ def test_ev_charger_entities_unavailable_when_source_failed():
     assert not EvChargerConfigNumber(coordinator, CHARGER_SN, "buyPwrLimit").available
     assert EvChargerStatusSensor(coordinator, CHARGER_SN).available
 
-    coordinator.data.ev_chargers = {}
+    assert coordinator.data.ev_chargers is not None
+    coordinator.data.ev_chargers.clear()
     assert not EvChargerStatusSensor(coordinator, CHARGER_SN).available
 
 

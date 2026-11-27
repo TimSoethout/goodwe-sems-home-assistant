@@ -32,7 +32,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import SemsConfigEntry, SemsCoordinator, SemsData, _migrate_unique_ids
+from . import SemsConfigEntry, SemsCoordinator, _migrate_unique_ids
 from .const import (
     AC_CURRENT_EMPTY,
     AC_EMPTY,
@@ -47,6 +47,7 @@ from .const import (
 )
 from .device import device_info_for_homekit, device_info_for_inverter
 from .ev_charger import async_add_coordinator_entities, ev_charger_sensors
+from .models import SemsData
 
 _LOGGER = logging.getLogger(__name__)
 

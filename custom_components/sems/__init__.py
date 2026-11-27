@@ -39,6 +39,7 @@ from .const import (
     redact_value,
     scan_interval_seconds,
 )
+from .models import SemsData
 from .sems_api import (
     OutOfRetries,
     SemsApi,
@@ -179,20 +180,6 @@ def _normalize_energy_statistics_charts(
                 normalized[key],
             )
     return normalized
-
-
-@dataclass(slots=True)
-class SemsData:
-    """Runtime SEMS data returned by the coordinator."""
-
-    inverters: dict[str, dict[str, Any]]
-    batteries: dict[str, dict[str, dict[str, Any]]] | None = None
-    immediate_charging: dict[str, dict[str, Any]] | None = None
-    homekit: dict[str, Any] | None = None
-    currency: str | None = None
-    ev_chargers: dict[str, dict[str, Any]] | None = None
-    unavailable_inverter_sources: dict[str, set[str]] = field(default_factory=dict)
-    unavailable_homekit_sources: set[str] = field(default_factory=set)
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
