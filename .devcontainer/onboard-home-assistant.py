@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import secrets
@@ -110,10 +111,8 @@ def print_dev_credentials(core_dir: Path) -> None:
         print("No developer credentials were saved by this setup.")
         return
 
-    credentials = load_or_create_credentials(core_dir)
     print(f"Home Assistant URL: {BASE_URL}")
-    print(f"Username: {credentials['username']}")
-    print(f"Password: {credentials['password']}")
+    print(f"Developer credentials: {path}")
 
 
 def exchange_auth_code(auth_code: str) -> str:
@@ -160,6 +159,153 @@ def login(credentials: dict[str, str]) -> str:
     return exchange_auth_code(result["result"])
 
 
+async def async_prepare_ha_mcp(session_token: str) -> str:
+    """Mint an admin token and install HA-MCP through the Marketplace."""
+    import aiohttp
+
+    ws_url = (
+        f"{BASE_URL.replace('http://', 'ws://', 1).replace('https://', 'wss://', 1)}"
+        "/api/websocket"
+    )
+
+    async def receive_result(
+        websocket: aiohttp.ClientWebSocketResponse, message_id: int
+    ) -> dict[str, Any]:
+        while True:
+            message = await asyncio.wait_for(websocket.receive_json(), REQUEST_TIMEOUT)
+            if message.get("id") == message_id:
+                return message
+
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect(ws_url, timeout=REQUEST_TIMEOUT) as websocket:
+            message = await asyncio.wait_for(websocket.receive_json(), REQUEST_TIMEOUT)
+            if message.get("type") != "auth_required":
+                raise RuntimeError(
+                    "Home Assistant did not start websocket authentication"
+                )
+
+            await websocket.send_json({"type": "auth", "access_token": session_token})
+            message = await asyncio.wait_for(websocket.receive_json(), REQUEST_TIMEOUT)
+            if message.get("type") != "auth_ok":
+                raise RuntimeError("Home Assistant websocket authentication failed")
+
+            await websocket.send_json({"id": 1, "type": "marketplace/warning/accept"})
+            warning = await receive_result(websocket, 1)
+            if not warning.get("success"):
+                raise RuntimeError("Could not accept the Marketplace warning")
+
+            await websocket.send_json(
+                {
+                    "id": 2,
+                    "type": "auth/long_lived_access_token",
+                    "client_name": "HA-MCP Devcontainer",
+                    "lifespan": 3650,
+                }
+            )
+            token_result = await receive_result(websocket, 2)
+            admin_token = token_result.get("result")
+            if not token_result.get("success") or not isinstance(admin_token, str):
+                raise RuntimeError("Could not create the HA-MCP access token")
+
+            await websocket.send_json(
+                {
+                    "id": 3,
+                    "type": "marketplace/repositories/list",
+                    "categories": ["integration"],
+                }
+            )
+            listed = await receive_result(websocket, 3)
+            if not listed.get("success") or not isinstance(listed.get("result"), list):
+                raise RuntimeError("Could not list the Marketplace repositories")
+
+            for repository in listed["result"]:
+                if (
+                    isinstance(repository, dict)
+                    and repository.get("full_name") == "homeassistant-ai/ha-mcp"
+                ):
+                    if not repository.get("installed"):
+                        await websocket.send_json(
+                            {
+                                "id": 4,
+                                "type": "marketplace/repository/install",
+                                "repository": repository["id"],
+                            }
+                        )
+                        installed = await receive_result(websocket, 4)
+                        if not installed.get("success"):
+                            raise RuntimeError("Could not install HA-MCP")
+                    return admin_token
+
+    raise RuntimeError("HA-MCP was not found in the Marketplace catalog")
+
+
+def prepare_ha_mcp(session_token: str) -> str:
+    """Run HA-MCP Marketplace and token preparation."""
+    return asyncio.run(async_prepare_ha_mcp(session_token))
+
+
+def ha_mcp_server_entry_exists(session_token: str) -> bool:
+    """Return whether an HA-MCP server config entry is configured."""
+    entries = request_json(
+        "/api/config/config_entries/entry?domain=ha_mcp_tools",
+        token=session_token,
+    )
+    if isinstance(entries, list):
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("unique_id") == "ha_mcp_tools-server" or (
+                entry.get("domain") == "ha_mcp_tools"
+                and entry.get("title") == "HA-MCP Server"
+            ):
+                return True
+    return False
+
+
+def configure_ha_mcp(session_token: str, admin_token: str) -> None:
+    """Create the HA-MCP server config entry if it is not already configured."""
+    if ha_mcp_server_entry_exists(session_token):
+        print("HA-MCP server integration is already configured")
+        return
+
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            flow = request_json(
+                "/api/config/config_entries/flow",
+                {"handler": "ha_mcp_tools"},
+                token=session_token,
+            )
+            break
+        except HTTPError as error:
+            if error.code != 404 or time.monotonic() >= deadline:
+                raise
+            time.sleep(2)
+    if not isinstance(flow, dict) or not isinstance(flow.get("flow_id"), str):
+        raise RuntimeError("HA-MCP config flow did not start")
+
+    flow_id = flow["flow_id"]
+    menu = request_json(
+        f"/api/config/config_entries/flow/{flow_id}",
+        {"next_step_id": "server"},
+        token=session_token,
+    )
+    if not isinstance(menu, dict):
+        raise RuntimeError("HA-MCP server setup step did not open")
+
+    result = request_json(
+        f"/api/config/config_entries/flow/{flow_id}",
+        {
+            "admin_token": admin_token,
+            "remote_access": "disabled",
+        },
+        token=session_token,
+    )
+    if not isinstance(result, dict) or result.get("type") != "create_entry":
+        raise RuntimeError("HA-MCP server config entry was not created")
+    print("HA-MCP server integration configured")
+
+
 def main() -> None:
     """Create a dev owner and complete the remaining onboarding steps."""
     core_dir = Path(sys.argv[1]).resolve()
@@ -169,6 +315,13 @@ def main() -> None:
     if steps is None or all(steps.values()):
         print("Home Assistant onboarding is already complete")
         print_dev_credentials(core_dir)
+        credentials = load_or_create_credentials(core_dir)
+        session_token = login(credentials)
+        if not ha_mcp_server_entry_exists(session_token):
+            admin_token = prepare_ha_mcp(session_token)
+            configure_ha_mcp(session_token, admin_token)
+        else:
+            configure_ha_mcp(session_token, "")
         return
 
     if steps.get("user", False):
@@ -211,6 +364,11 @@ def main() -> None:
 
     print("Home Assistant onboarding complete")
     print_dev_credentials(core_dir)
+    if not ha_mcp_server_entry_exists(token):
+        admin_token = prepare_ha_mcp(token)
+        configure_ha_mcp(token, admin_token)
+    else:
+        configure_ha_mcp(token, "")
 
 
 if __name__ == "__main__":

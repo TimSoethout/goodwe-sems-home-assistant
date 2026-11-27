@@ -62,3 +62,4 @@ ln -sfn "$repo_root/custom_components/sems" \
 # Home Assistant 2026.11+ provides HACS through the built-in Marketplace.
 
 echo "SEMS is linked into $config_dir/custom_components/sems"
+echo "HA-MCP will be installed through the built-in Marketplace"
