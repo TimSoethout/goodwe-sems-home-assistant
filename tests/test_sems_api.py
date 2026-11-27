@@ -1,5 +1,6 @@
 """Tests for the SEMS API module."""
 
+import asyncio
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -9,6 +10,7 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import Mock, call, patch
 
+import aiohttp
 import pytest
 import requests
 from homeassistant.exceptions import HomeAssistantError
@@ -294,6 +296,108 @@ class TestSemsApi:
         assert self.api._username == self.username
         assert self.api._password == self.password
         assert self.api._token is None
+
+    def test_async_transport_falls_back_when_injected_session_is_unavailable(self):
+        """Test the compatibility constructor rejects no usable HA loop safely."""
+        api = SemsApi(
+            Mock(),
+            "test_user",
+            "test_password",
+            use_async_transport=True,
+        )
+        assert api._aiohttp_transport is None
+        assert api._aiohttp_loop is None
+
+    def test_async_transport_bridge_unavailable_and_timeout(self):
+        """Test the sync bridge maps unavailable and timed-out async sessions."""
+        with pytest.raises(requests.ConnectionError, match="unavailable"):
+            self.api._execute_async_http_request(
+                "POST",
+                "https://example.com/api",
+                {},
+                None,
+                None,
+            )
+
+        self.api._aiohttp_loop = Mock(spec=asyncio.AbstractEventLoop)
+        self.api._aiohttp_transport = Mock()
+        future = Mock()
+        future.result.side_effect = TimeoutError
+        with (
+            patch(
+                "custom_components.sems.sems_api.asyncio.run_coroutine_threadsafe",
+                return_value=future,
+            ),
+            pytest.raises(requests.Timeout, match="timed out"),
+        ):
+            self.api._execute_async_http_request(
+                "POST",
+                "https://example.com/api",
+                {},
+                None,
+                None,
+            )
+
+    def test_async_transport_bridge_maps_client_and_runtime_errors(self):
+        """Test aiohttp and loop failures become requests exceptions."""
+        self.api._aiohttp_loop = Mock(spec=asyncio.AbstractEventLoop)
+        self.api._aiohttp_transport = Mock()
+
+        future = Mock()
+        future.result.side_effect = aiohttp.ClientError("offline")
+        with (
+            patch(
+                "custom_components.sems.sems_api.asyncio.run_coroutine_threadsafe",
+                return_value=future,
+            ),
+            pytest.raises(requests.ConnectionError, match="offline"),
+        ):
+            self.api._execute_async_http_request(
+                "POST",
+                "https://example.com/api",
+                {},
+                None,
+                None,
+            )
+
+        future.result.side_effect = RuntimeError("loop closed")
+        with (
+            patch(
+                "custom_components.sems.sems_api.asyncio.run_coroutine_threadsafe",
+                return_value=future,
+            ),
+            pytest.raises(requests.ConnectionError, match="loop closed"),
+        ):
+            self.api._execute_async_http_request(
+                "POST",
+                "https://example.com/api",
+                {},
+                None,
+                None,
+            )
+
+    def test_make_http_request_uses_async_transport_adapter(self):
+        """Test the compatibility HTTP method consumes the aiohttp adapter."""
+        adapter = AioHttpResponseAdapter(
+            status_code=200,
+            headers={},
+            url="https://example.com/api",
+            text='{"code": 0, "data": {"ok": true}}',
+            payload={"code": 0, "data": {"ok": True}},
+        )
+        self.api._aiohttp_loop = Mock(spec=asyncio.AbstractEventLoop)
+        self.api._aiohttp_transport = Mock()
+        with patch.object(
+            self.api,
+            "_execute_async_http_request",
+            return_value=adapter,
+        ):
+            result = self.api._make_http_request(
+                "https://example.com/api",
+                {},
+                validate_code=True,
+            )
+        assert result == {"code": 0, "data": {"ok": True}}
 
     def test_stage_helpers_track_optional_source_failures(self):
         """Parsed device helpers retain source availability for partial polls."""
