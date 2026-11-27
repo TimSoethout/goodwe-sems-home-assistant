@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -200,13 +201,19 @@ def test_battery_source_unavailable_handles_malformed_paths(
             }
         )
     )
+    description = next(
+        sensor
+        for sensor in sensor_options_for_data(coordinator.data)
+        if sensor.unique_id == "INV1-0-soc"
+    )
     sensor = SemsInverterSensor(
         coordinator,
-        {},
-        "INV1-battery-test",
-        "Battery test",
-        ["INV1", "more_batterys", battery_index, "soc"],
-        int,
+        replace(
+            description,
+            key="INV1-battery-test",
+            unique_id="INV1-battery-test",
+            value_path=["INV1", "more_batterys", battery_index, "soc"],
+        ),
     )
 
     assert sensor._source_unavailable() is unavailable
@@ -413,13 +420,18 @@ async def test_sensor_state_from_coordinator(
     )
     base_sensor = SemsSensor(
         coordinator,
-        power_sensor_definition.device_info,
-        "base-sensor-test",
-        None,
-        ["missing"],
-        power_sensor_definition.data_type_converter,
+        replace(
+            power_sensor_definition,
+            key="base-sensor-test",
+            unique_id="base-sensor-test",
+            value_path=["missing"],
+            name="Test Sensor",
+            translation_key="test_sensor",
+        ),
     )
     assert base_sensor.native_value is None
+    assert base_sensor._attr_name == "Test Sensor"
+    assert base_sensor._attr_translation_key == "test_sensor"
     with patch.object(base_sensor, "_get_data_dict", return_value=None):
         assert base_sensor._get_native_value_from_coordinator() is None
 
