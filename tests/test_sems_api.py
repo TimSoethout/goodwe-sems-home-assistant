@@ -2702,6 +2702,29 @@ class TestSemsApi:
 
     @patch("custom_components.sems.sems_api.dt_util.now")
     @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_malformed_rollover_state_is_recovered(
+        self, mock_api_call, mock_now
+    ):
+        """Malformed rollover metadata is ignored instead of blocking reset."""
+        poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
+        poll(datetime(2026, 11, 22, 23, 50), 7.88, 3.0)
+
+        cache_key = "counters:station:METER1:SMART_METER"
+        cached = self.api._get_web_cache_entry(cache_key)
+        assert cached is not None
+        assert isinstance(cached[1], dict)
+        self.api._set_web_cache_entry(
+            cache_key,
+            (0, {**cached[1], "_rollover_pending": []}),
+        )
+
+        assert (
+            poll(datetime(2026, 11, 23, 0, 21), 0.08, 0.01)["proPurchaseStatsToday"]
+            == 7.88
+        )
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
     def test_smart_meter_missing_today_group_does_not_advance_period(
         self, mock_api_call, mock_now
     ):
