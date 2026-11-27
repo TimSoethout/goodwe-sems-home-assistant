@@ -2686,7 +2686,7 @@ class SemsApi:
                 and previous_periods.get(key)
                 == (now.date() - timedelta(days=1)).isoformat()
                 and isinstance(old_value, (int, float))
-                and old_value > 0
+                and old_value >= 1.0
             )
             if rollover_started:
                 pending_rollovers[key] = period
@@ -2694,19 +2694,16 @@ class SemsApi:
             if (
                 rollover_pending
                 and isinstance(old_value, (int, float))
-                and old_value > 0
-                and value >= old_value
+                and old_value >= 1.0
+                and value >= old_value * 0.95
             ):
-                # The first reading after the hold window can still be
-                # yesterday's high counter. Keep the prior value and wait for
-                # consecutive low readings before accepting the reset.
                 pending_rollovers[key] = period
                 counters[key] = old_value
                 counter_periods.pop(key, None)
                 continue
             same_period = (
                 key not in counter_periods
-                or (previous_periods.get(key) == counter_periods.get(key))
+                or previous_periods.get(key) == counter_periods.get(key)
                 or rollover_pending
             )
             if (

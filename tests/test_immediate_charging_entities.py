@@ -384,6 +384,40 @@ async def test_failed_state_read_marks_entities_unavailable(
     assert hass.states.get(control_ids[1]).state == "75.0"
 
 
+@pytest.mark.parametrize(
+    ("status", "expected_command"),
+    [(0, 1), (3, 1), (1, 4)],
+)
+async def test_inverter_switch_turn_on_depends_on_status(
+    hass: HomeAssistant,
+    status: int,
+    expected_command: int,
+) -> None:
+    """Waiting inverters restart; normal inverters start up."""
+    entry = await _setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    inverter_switch = next(
+        entity
+        for platform in async_get_platforms(hass, DOMAIN)
+        for entity in platform.entities.values()
+        if entity.unique_id == f"{INVERTER_SERIAL}-switch"
+    )
+    inverter_data = dict(coordinator.data.inverters[INVERTER_SERIAL])
+    inverter_data["status"] = status
+    coordinator.data = replace(
+        coordinator.data,
+        inverters={**coordinator.data.inverters, INVERTER_SERIAL: inverter_data},
+    )
+
+    with (
+        patch.object(coordinator, "async_control", new_callable=AsyncMock) as control,
+        patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock),
+    ):
+        await inverter_switch.async_turn_on()
+
+    assert control.await_args.args[2] == expected_command
+
+
 async def test_entities_require_supported_functions(hass: HomeAssistant) -> None:
     """Do not add controls when the API does not advertise their functions."""
     await _setup_entry(hass, functions={})

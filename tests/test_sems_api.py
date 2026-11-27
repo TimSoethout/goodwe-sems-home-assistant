@@ -2961,10 +2961,19 @@ class TestSemsApi:
         poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
         poll(datetime(2026, 11, 21, 23, 50), 7.88, 3.0)
 
-        # A low first post-window reading starts reset confirmation.
+        # On time: a low first reading starts confirmation; accept after three
+        # consecutive low readings.
         assert (
             poll(datetime(2026, 11, 22, 0, 21), 0.08, 0)["proPurchaseStatsToday"]
             == 7.88
+        )
+        assert (
+            poll(datetime(2026, 11, 22, 0, 22), 0.09, 0)["proPurchaseStatsToday"]
+            == 7.88
+        )
+        assert (
+            poll(datetime(2026, 11, 22, 0, 23), 0.10, 0)["proPurchaseStatsToday"]
+            == 0.10
         )
         assert (
             poll(datetime(2026, 11, 22, 0, 22), 0.09, 0.01)["proPurchaseStatsToday"]
@@ -3043,6 +3052,46 @@ class TestSemsApi:
 
     @patch("custom_components.sems.sems_api.dt_util.now")
     @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_small_yesterday_counter_does_not_stall_rollover(
+        self, mock_api_call, mock_now
+    ):
+        """A tiny previous-day counter must not trigger stale-high rollover hold."""
+        poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
+        poll(datetime(2026, 11, 21, 23, 50), 0.01, 0.01)
+
+        assert (
+            poll(datetime(2026, 11, 22, 0, 21), 0.02, 0.02)["proPurchaseStatsToday"]
+            == 0.02
+        )
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_stale_high_is_confirmed_before_reset(
+        self, mock_api_call, mock_now
+    ):
+        """A stale post-window high is held until low readings confirm reset."""
+        poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
+        poll(datetime(2026, 11, 22, 23, 50), 7.88, 3.0)
+
+        assert (
+            poll(datetime(2026, 11, 23, 0, 21), 9.5, 3.5)["proPurchaseStatsToday"]
+            == 7.88
+        )
+        assert (
+            poll(datetime(2026, 11, 23, 0, 22), 0.05, 0.01)["proPurchaseStatsToday"]
+            == 7.88
+        )
+        assert (
+            poll(datetime(2026, 11, 23, 0, 23), 0.06, 0.02)["proPurchaseStatsToday"]
+            == 7.88
+        )
+        assert (
+            poll(datetime(2026, 11, 23, 0, 24), 0.07, 0.03)["proPurchaseStatsToday"]
+            == 0.07
+        )
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
     def test_smart_meter_missing_today_group_does_not_advance_period(
         self, mock_api_call, mock_now
     ):
@@ -3081,8 +3130,8 @@ class TestSemsApi:
         mock_now.return_value = datetime(2026, 11, 23, 0, 20)
         assert poll(datetime(2026, 11, 23, 0, 20)) == {"proPurchaseStatsTotal": 800.0}
 
-        # A low first value starts reset confirmation, even when the daily
-        # group was missing during the rollover hold.
+        # A later daily value starts reset confirmation, even after a missing
+        # daily group during the rollover hold.
         fail_today = False
         values["today"] = 0.05
         assert poll(datetime(2026, 11, 23, 0, 21))["proPurchaseStatsToday"] == 7.88
@@ -3846,6 +3895,7 @@ class TestSemsApi:
     @pytest.mark.parametrize(
         ("status", "action", "address", "function_id"),
         [
+            (1, "restart", "40332", "1991318013514100737"),
             (4, "start_up", "40330", "1991318013509906434"),
             (2, "shutdown", "40331", "1991318013509906435"),
             (1, "restart", "40332", "1991318013514100737"),
