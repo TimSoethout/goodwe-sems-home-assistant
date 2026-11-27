@@ -330,6 +330,35 @@ class TestSemsApi:
             for call_args in mock_statistics.call_args_list
         )
 
+    @patch.object(SemsApi, "_get_web_production", return_value={"currency": "EUR"})
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    def test_web_energy_statistics_withholds_partial_historic_totals(
+        self, mock_now, mock_production
+    ):
+        """A failed historic year must not publish partial lifetime totals."""
+        mock_now.return_value = datetime(2026, 9, 25)
+
+        def statistics(
+            _power_station_id: str,
+            dimension: str,
+            _start: datetime,
+            _end: datetime,
+        ) -> dict[str, list[float]] | None:
+            if dimension == "year" and _start.year == 2025:
+                return None
+            if dimension == "year":
+                return {"proSystemTotalStats": [1.0]}
+            return None
+
+        with patch.object(SemsApi, "_get_web_statistics", side_effect=statistics):
+            result = self.api._get_web_energy_statistics(
+                "station", [{"invert_full": {"addTime": "1545351495000"}}]
+            )
+
+        assert result is not None
+        _charts, totals, _currency, _last_month = result
+        assert totals == {}
+
     @patch.object(
         SemsApi,
         "_get_web_statistics",
@@ -1177,7 +1206,9 @@ class TestSemsApi:
         assert redacted["token"]["access"] != "secret-token"
         assert all(
             item != original
-            for item, original in zip(redacted["password"], ["first", "second"])
+            for item, original in zip(
+                redacted["password"], ["first", "second"], strict=True
+            )
         )
         assert redacted["data"]["sn"] == "<GW0...ST1>"
         assert "GW0000SN000TEST1" not in redacted["data"]["message"]
@@ -4057,7 +4088,7 @@ class TestSemsApi:
 
     @patch.object(SemsApi, "getBatterySystemTelemetry")
     def test_web_batteries_skip_denied_battery_telemetry(self, mock_telemetry, caplog):
-        """A denied BAT_SYS telemetry request only drops that battery."""
+        """A denied BAT_SYS telemetry request preserves that battery position."""
         mock_telemetry.side_effect = [
             SemsPermissionError("BAT_SYS telemetry", "denied"),
             {"soc": 99.0, "power": 1.25},
@@ -4068,7 +4099,8 @@ class TestSemsApi:
         ]
 
         assert self.api._get_web_batteries("station", cabinets) == [
-            {"sn": "BAT_B", "soc": 99.0, "pbattery": 1250.0}
+            {"sn": "BAT_A"},
+            {"sn": "BAT_B", "soc": 99.0, "pbattery": 1250.0},
         ]
         assert "BAT_A" not in caplog.text
         assert redact_value("BAT_A") in caplog.text

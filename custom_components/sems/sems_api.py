@@ -1429,15 +1429,19 @@ class SemsApi:
                 elif start == previous_month_start:
                     last_month_pv = sum(data.get("proSystemTotalStats", []))
 
-            for historic_statistics in historic_statistics_by_year:
-                if not historic_statistics:
-                    continue
-                for item, values in historic_statistics.items():
-                    mapped_target = _WEB_STATISTICS_KEY_MAP.get(item)
-                    if mapped_target is not None:
-                        totals[mapped_target] = totals.get(mapped_target, 0) + sum(
-                            values
-                        )
+            if all(
+                historic_statistics is not None
+                for historic_statistics in historic_statistics_by_year
+            ):
+                for historic_statistics in historic_statistics_by_year:
+                    for item, values in historic_statistics.items():
+                        mapped_target = _WEB_STATISTICS_KEY_MAP.get(item)
+                        if mapped_target is not None:
+                            totals[mapped_target] = totals.get(mapped_target, 0) + sum(
+                                values
+                            )
+            else:
+                totals = {}
             self_use = totals.get("selfUseOfPv")
             consumption = totals.get("consumptionOfLoad")
             production_total = totals.get("sum")
@@ -2637,6 +2641,7 @@ class SemsApi:
                     redact_value(serial_number),
                     type(err).__name__,
                 )
+                batteries.append({"sn": serial_number})
                 continue
             battery: dict[str, Any] = {"sn": serial_number}
             for source, target in (
