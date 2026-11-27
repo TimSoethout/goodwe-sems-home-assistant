@@ -419,9 +419,13 @@ async def test_sensor_state_from_coordinator(
             key="base-sensor-test",
             unique_id="base-sensor-test",
             value_path=["missing"],
+            name="Test Sensor",
+            translation_key="test_sensor",
         ),
     )
     assert base_sensor.native_value is None
+    assert base_sensor._attr_name == "Test Sensor"
+    assert base_sensor._attr_translation_key == "test_sensor"
     with patch.object(base_sensor, "_get_data_dict", return_value=None):
         assert base_sensor._get_native_value_from_coordinator() is None
 
