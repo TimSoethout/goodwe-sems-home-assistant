@@ -201,13 +201,19 @@ def test_battery_source_unavailable_handles_malformed_paths(
             }
         )
     )
+    description = next(
+        sensor
+        for sensor in sensor_options_for_data(coordinator.data)
+        if sensor.unique_id == "INV1-0-soc"
+    )
     sensor = SemsInverterSensor(
         coordinator,
-        {},
-        "INV1-battery-test",
-        "Battery test",
-        ["INV1", "more_batterys", battery_index, "soc"],
-        int,
+        replace(
+            description,
+            key="INV1-battery-test",
+            unique_id="INV1-battery-test",
+            value_path=["INV1", "more_batterys", battery_index, "soc"],
+        ),
     )
 
     assert sensor._source_unavailable() is unavailable
