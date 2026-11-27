@@ -15,6 +15,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.sems import SemsData
 from custom_components.sems.const import (
+    parse_float,
     redact_for_log,
     redact_sensitive_text,
     redact_value,
@@ -37,6 +38,23 @@ MOCK_INVERTER_SN = "GW0000SN000TEST1"
 MOCK_POWER_STATION_ID = "12345678-1234-5678-9abc-123456789abc"
 SUCCESS_MESSAGE = "操作成功"
 API_EXAMPLES_DIR = Path(__file__).parent.parent / "api_examples"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (12, 12.0),
+        ("12.5", 12.5),
+        (None, None),
+        ("", None),
+        ("NaN", None),
+        ("inf", None),
+        ({}, None),
+    ],
+)
+def test_parse_float(value: object, expected: float | None) -> None:
+    """API numeric conversion rejects invalid and non-finite values."""
+    assert parse_float(value) == expected
 
 
 class TestSemsApi:

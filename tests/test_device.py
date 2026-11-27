@@ -10,8 +10,8 @@ def test_device_info_sw_version_is_string_for_numeric_firmware() -> None:
         {"name": "Test Inverter", "model_type": "GW3000-NS", "firmwareversion": 1717.0},
     )
 
-    assert device_info["sw_version"] == "1717.0"
-    assert isinstance(device_info["sw_version"], str)
+    assert device_info.sw_version == "1717.0"
+    assert isinstance(device_info.sw_version, str)
 
 
 def test_device_info_sw_version_defaults_to_unknown_for_missing_firmware() -> None:
@@ -21,7 +21,7 @@ def test_device_info_sw_version_defaults_to_unknown_for_missing_firmware() -> No
         {"name": "Test Inverter", "model_type": "GW3000-NS"},
     )
 
-    assert device_info["sw_version"] == "unknown"
+    assert device_info.sw_version == "unknown"
 
 
 def test_device_info_links_to_sems_plus() -> None:
@@ -31,8 +31,8 @@ def test_device_info_links_to_sems_plus() -> None:
         {"name": "Test Inverter", "powerstation_id": "station"},
     )
 
-    assert device_info["configuration_url"] == "https://semsplus.goodwe.com/"
-    assert device_info["name"] == "Inverter Test Inverter"
+    assert device_info.configuration_url == "https://semsplus.goodwe.com/"
+    assert device_info.name == "Inverter Test Inverter"
 
 
 def test_device_info_names_dongle_after_type_and_serial() -> None:
@@ -42,8 +42,8 @@ def test_device_info_names_dongle_after_type_and_serial() -> None:
         {"name": "Dongle 1", "deviceType": "DONGLE", "model_type": "Dongle 1"},
     )
 
-    assert device_info["name"] == "Dongle 1 (EST2)"
-    assert device_info["model"] == "Dongle"
+    assert device_info.name == "Dongle 1 (EST2)"
+    assert device_info.model == "Dongle"
 
 
 def test_device_info_prefixes_renamed_dongle() -> None:
@@ -53,7 +53,7 @@ def test_device_info_prefixes_renamed_dongle() -> None:
         {"name": "Garage", "deviceType": "DONGLE"},
     )
 
-    assert device_info["name"] == "Dongle Garage (EST2)"
+    assert device_info.name == "Dongle Garage (EST2)"
 
 
 def test_device_info_names_battery_rack() -> None:
@@ -63,8 +63,8 @@ def test_device_info_names_battery_rack() -> None:
         {"name": "GW0000SN000TEST3", "deviceType": "BATTERY_RACK"},
     )
 
-    assert device_info["name"] == "Battery Rack GW0000SN000TEST3"
-    assert device_info["model"] == "Battery Rack"
+    assert device_info.name == "Battery Rack GW0000SN000TEST3"
+    assert device_info.model == "Battery Rack"
 
 
 def test_is_inverter() -> None:

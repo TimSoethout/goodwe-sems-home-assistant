@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from typing import Any, Literal, NamedTuple, TypeGuard
+from typing import Any, Literal, NamedTuple, TypeGuard, TypeVar
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 import requests
@@ -19,9 +19,10 @@ from homeassistant import exceptions
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import redact_for_log, redact_sensitive_text, redact_value
+from .const import parse_float, redact_for_log, redact_sensitive_text, redact_value
 
 _LOGGER = logging.getLogger(__name__)
+_CachedT = TypeVar("_CachedT")
 
 OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
 NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
@@ -1222,11 +1223,7 @@ class SemsApi:
                 value = statistic.get("val")
                 if not isinstance(value, (int, float, str)):
                     continue
-                try:
-                    numeric_value = float(value)
-                except TypeError, ValueError:
-                    continue
-                if math.isfinite(numeric_value):
+                if (numeric_value := parse_float(value)) is not None:
                     values.append(numeric_value)
             if values:
                 parsed[item] = values
@@ -1242,21 +1239,14 @@ class SemsApi:
             value = response.get(summary_key)
             if not isinstance(value, (int, float, str)):
                 continue
-            try:
-                numeric_value = float(value)
-            except TypeError, ValueError:
-                continue
-            if math.isfinite(numeric_value) and item not in parsed:
+            numeric_value = parse_float(value)
+            if numeric_value is not None and item not in parsed:
                 parsed[item] = [numeric_value]
         for summary_key in _WEB_STATISTICS_RATE_MAP:
             value = response.get(summary_key)
             if not isinstance(value, (int, float, str)):
                 continue
-            try:
-                numeric_value = float(value)
-            except TypeError, ValueError:
-                continue
-            if math.isfinite(numeric_value):
+            if (numeric_value := parse_float(value)) is not None:
                 parsed[summary_key] = [numeric_value]
 
         _LOGGER.debug(
@@ -1305,6 +1295,33 @@ class SemsApi:
     def _remember_failure(self, cache_key: str, reason: str | None = None) -> None:
         """Delay the next attempt of a failed optional request."""
         self._set_web_cache_entry(f"failed:{cache_key}", (time.monotonic(), reason))
+
+    def _cached_fetch(
+        self,
+        cache_key: str,
+        ttl: float,
+        fetch: Callable[[], _CachedT | None],
+        *,
+        is_valid: Callable[[_CachedT], bool] | None = None,
+    ) -> _CachedT | None:
+        """Return a fresh cached value or one bounded optional fetch."""
+        cached = self._get_web_cache_entry(cache_key)
+        if cached and time.monotonic() - cached[0] < ttl and cached[1] is not None:
+            if is_valid is None or is_valid(cached[1]):
+                return cached[1]
+        if self._recently_failed(cache_key):
+            return cached[1] if cached else None
+
+        try:
+            value = fetch()
+        except OutOfRetries, SemsPermissionError, SemsRateLimitedError:
+            self._remember_failure(cache_key)
+            return cached[1] if cached else None
+        if value is None or (is_valid is not None and not is_valid(value)):
+            self._remember_failure(cache_key)
+            return cached[1] if cached else None
+        self._set_web_cache_entry(cache_key, (time.monotonic(), value))
+        return value
 
     def _get_web_energy_statistics(
         self,
@@ -1498,51 +1515,45 @@ class SemsApi:
     ) -> dict[str, Any] | None:
         """Get optional flat station production totals and currency."""
         cache_key = f"production:{power_station_id}:{start.date()}:{end.date()}"
-        cached = self._get_web_cache_entry(cache_key)
-        cached_data = cached[1] if cached and isinstance(cached[1], dict) else None
-        if (
-            cached is not None
-            and cached_data is not None
-            and time.monotonic() - cached[0] < _WEB_STATISTICS_REFRESH_SECONDS
-        ):
-            return cached_data
-        if self._recently_failed(cache_key):
-            return cached_data
 
-        try:
-            response = self._make_api_call(
-                _WEB_STATION_PRODUCTION_ENDPOINT.url_part,
-                data=json.dumps(
-                    {
-                        "stationId": power_station_id,
-                        "items": [
-                            "proConsumStats",
-                            "proGridStats",
-                            "proPurchaseStats",
-                            "profitGridStats",
-                            "profitProStats",
-                            "proSystemTotalStats",
-                        ],
-                        "dimension": "day",
-                        "isReport": False,
-                        "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
-                        "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
-                    }
-                ),
-                operation_name="getWebStationProduction API call",
-                is_web=True,
-                token_type=_WEB_STATION_PRODUCTION_ENDPOINT.token_type,
-            )
-        except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
-            _LOGGER.debug(
-                "SEMS station production unavailable (%s)", type(err).__name__
-            )
-            response = None
-        if not isinstance(response, dict):
-            self._remember_failure(cache_key)
-            return cached[1] if cached else None
-        self._set_web_cache_entry(cache_key, (time.monotonic(), response))
-        return response
+        def fetch() -> dict[str, Any] | None:
+            try:
+                response = self._make_api_call(
+                    _WEB_STATION_PRODUCTION_ENDPOINT.url_part,
+                    data=json.dumps(
+                        {
+                            "stationId": power_station_id,
+                            "items": [
+                                "proConsumStats",
+                                "proGridStats",
+                                "proPurchaseStats",
+                                "profitGridStats",
+                                "profitProStats",
+                                "proSystemTotalStats",
+                            ],
+                            "dimension": "day",
+                            "isReport": False,
+                            "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+                            "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+                        }
+                    ),
+                    operation_name="getWebStationProduction API call",
+                    is_web=True,
+                    token_type=_WEB_STATION_PRODUCTION_ENDPOINT.token_type,
+                )
+            except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
+                _LOGGER.debug(
+                    "SEMS station production unavailable (%s)", type(err).__name__
+                )
+                raise
+            return response if isinstance(response, dict) else None
+
+        return self._cached_fetch(
+            cache_key,
+            _WEB_STATISTICS_REFRESH_SECONDS,
+            fetch,
+            is_valid=lambda value: isinstance(value, dict),
+        )
 
     def getWebData(
         self,
@@ -1724,11 +1735,11 @@ class SemsApi:
         if len(ev_chargers) == 1 and flow.get("pEvChar") is not None:
             # Station flow reports the (total) EV charging power in kW; it can
             # only be attributed to a charger when the station has one.
-            try:
+            if (ev_charger_power := parse_float(flow.get("pEvChar"))) is not None:
                 next(iter(ev_chargers.values()))["charging_power"] = (
-                    abs(float(flow["pEvChar"])) * 1000
+                    abs(ev_charger_power) * 1000
                 )
-            except TypeError, ValueError:
+            else:
                 _LOGGER.debug("SEMS station flow has an invalid pEvChar value")
         if flow:
             if (
@@ -1736,10 +1747,10 @@ class SemsApi:
                 and len(real_inverters) == 1
                 and (grid_power := flow.get("pGrid")) is not None
             ):
-                try:
+                if (grid_power_float := parse_float(grid_power)) is not None:
                     for inverter in real_inverters:
-                        inverter["invert_full"]["pmeter"] = float(grid_power) * 1000
-                except TypeError, ValueError:
+                        inverter["invert_full"]["pmeter"] = grid_power_float * 1000
+                else:
                     _LOGGER.debug("SEMS station flow has an invalid pGrid value")
             if len(real_inverters) == 1:
                 inverter_full = real_inverters[0]["invert_full"]
@@ -1747,9 +1758,9 @@ class SemsApi:
                     "pac" not in inverter_full
                     and (solar_power := flow.get("pAc")) is not None
                 ):
-                    try:
-                        inverter_full["pac"] = float(solar_power) * 1000
-                    except TypeError, ValueError:
+                    if (solar_power_float := parse_float(solar_power)) is not None:
+                        inverter_full["pac"] = solar_power_float * 1000
+                    else:
                         _LOGGER.debug("SEMS station flow has an invalid pAc value")
             result.update(
                 {
@@ -2016,9 +2027,8 @@ class SemsApi:
                 if not isinstance(factor, dict):
                     continue
                 code = factor.get("code")
-                try:
-                    value = float(factor["data"])
-                except KeyError, TypeError, ValueError:
+                value = parse_float(factor.get("data"))
+                if value is None:
                     continue
                 if not isinstance(code, str):
                     continue
@@ -2212,13 +2222,7 @@ class SemsApi:
     @staticmethod
     def _numeric_web_factor(factors: dict[str, Any], code: str) -> float | None:
         """Return a numeric SEMS+ factor, if present and valid."""
-        value = factors.get(code)
-        if value is None:
-            return None
-        try:
-            return float(value)
-        except TypeError, ValueError:
-            return None
+        return parse_float(factors.get(code))
 
     def getWebInverterDevices(
         self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
@@ -2954,13 +2958,14 @@ class SemsApi:
         renewToken: bool = False,
         maxTokenRetries: int = 2,
     ) -> None:
-        self.setDeviceFunctionParameters(
+        self._set_immediate_charging_value(
             plant_id,
             serial_number,
             device_name,
-            {function_address: 0},
+            function_address,
+            function_id,
+            0,
             {"stop_charging": "remote_Switch_off"},
-            {function_address: function_id},
             renewToken,
             maxTokenRetries,
         )
@@ -2975,12 +2980,36 @@ class SemsApi:
         renewToken: bool = False,
         maxTokenRetries: int = 2,
     ) -> None:
+        self._set_immediate_charging_value(
+            plant_id,
+            serial_number,
+            device_name,
+            function_address,
+            function_id,
+            1,
+            {"immediate_charge": "on"},
+            renewToken,
+            maxTokenRetries,
+        )
+
+    def _set_immediate_charging_value(
+        self,
+        plant_id: str,
+        serial_number: str,
+        device_name: str,
+        function_address: str,
+        function_id: str,
+        value: int,
+        control_log: dict[str, str],
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+    ) -> None:
         self.setDeviceFunctionParameters(
             plant_id,
             serial_number,
             device_name,
-            {function_address: 1},
-            {"immediate_charge": "on"},
+            {function_address: value},
+            control_log,
             {function_address: function_id},
             renewToken,
             maxTokenRetries,
