@@ -1630,6 +1630,8 @@ class SemsApi:
         unavailable_sources: set[str] = set()
         if inventory_unavailable and device_type in _WEB_INVERTER_ENTITY_TYPES:
             unavailable_sources.add("device_status")
+        if device_type == "EV_CHARGER":
+            return device_data, device_type, unavailable_sources
         if device_type == "DONGLE":
             return device_data, device_type, unavailable_sources
 
