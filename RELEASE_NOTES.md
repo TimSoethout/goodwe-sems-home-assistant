@@ -2,6 +2,188 @@
 
 ## Unreleased
 
+## 11.13.5-beta.5 - 2026-11-27
+
+## Ship partial-poll entity recovery from master
+
+- Publish the rebased #320 fix from current `master`, preserving discovered
+  battery slots and energy-statistics entities across partial SEMS+ failures.
+- Keep lifetime totals from publishing when a required historical year is
+  unavailable, and retain the newer shared-account, redaction, and cache
+  behavior introduced after beta.2.
+
+### Compatibility and limitations
+
+- No configuration changes or entity migrations are required.
+- This beta supersedes beta.4 for installations testing the #319 entity-recovery
+  fix; it is based on the current `master` history.
+- A live six-battery installation remains unverified.
+
+### Related
+
+- [#319](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/319) -
+  missing battery and daily energy entities.
+- [#320](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/320) -
+  partial-poll recovery.
+
+### Contributors
+
+- [@bogpopa](https://github.com/bogpopa) - issue report and testing
+  information.
+- [@TimSoethout](https://github.com/TimSoethout) - implementation, rebase, and
+  release preparation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression coverage.
+
+## 11.13.5-beta.4 - 2026-11-27
+
+## Restart inverters from Standby
+
+- Use the discovered SEMS+ Restart action when the inverter reports Waiting and
+  the control switch is turned on; otherwise retain the existing Start up
+  behavior.
+- Fall back to Start up only when discovery has no usable Restart action, not
+  when a discovered Restart request fails.
+
+### Compatibility and limitations
+
+- No configuration changes or entity migrations are required.
+- Restart requires SEMS+ remote-control permission. If no usable Restart action
+  is available, Start up may not bring an inverter out of Standby.
+- Tested on a GW5000-DT; other inverter families are unverified.
+
+### Related
+
+- [#265](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/265) -
+  Restart command for inverters in Standby.
+- [#273](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/273) -
+  restart from Standby using discovered control actions.
+
+### Contributors
+
+- [@PvdGulik](https://github.com/PvdGulik) - issue report, implementation, and
+  hardware validation.
+- [@TimSoethout](https://github.com/TimSoethout) - review and regression fix.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression tests.
+
+## 11.13.5-beta.3 - 2026-11-26
+
+## Add three-phase SEMS+ grid current sensors
+
+- Map captured `PHASE-A/B/C:Iac` factors to three-phase grid AC current sensors
+  for devices that report those keys.
+
+## Improve partial-poll and shared-account reliability
+
+- Preserve entities and source availability through SEMS+ rate limits and
+  temporary statistics or battery failures.
+- Paginate station discovery beyond 100 stations and serialize shared-account
+  station refreshes.
+- Apply coordinator control and reauthentication lifecycle consistently, close
+  temporary config-flow clients, and distinguish transport failures from
+  credential rejection.
+- Harden API, CI, release, and developer tooling; remove unused logging and dead
+  code, fix README references, and improve brand assets.
+
+### Compatibility and limitations
+
+- No entity migrations or configuration changes are required.
+- Partial live data remains unavailable until SEMS+ recovers and the affected
+  request succeeds again.
+- SEMS+ control may require remote-control permission.
+- Three-phase current sensors only apply to devices that report the captured
+  `PHASE-A/B/C:Iac` factor keys.
+
+### Related
+
+- [#296](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/296) -
+  three-phase SEMS+ grid AC current mapping.
+- [#304](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/304),
+  [#319](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/319),
+  and [#320](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/320)
+  - partial-poll and entity-preservation reports.
+- [#309](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/309),
+  [#311](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/311),
+  [#313](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/313),
+  [#315](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/315),
+  [#316](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/316),
+  [#317](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/317),
+  and [#320](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/320)
+  - reliability, lifecycle, tooling, and release-preparation fixes.
+- [#321](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/321)
+  and [#322](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/322)
+  - brand asset fixes.
+
+### Contributors
+
+- [@PvdGulik](https://github.com/PvdGulik) - three-phase capture and
+  information.
+- [@donok1](https://github.com/donok1) and
+  [@bogpopa](https://github.com/bogpopa) - partial-poll reporting and testing.
+- [@TimSoethout](https://github.com/TimSoethout) - implementation and release
+  preparation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  release preparation.
+
+## 11.13.5-beta.2 - 2026-11-25
+
+## Expand partial-poll regression coverage
+
+- Add coverage for malformed battery slots, denied or rate-limited data
+  requests, empty historical years, and partially unavailable lifetime totals.
+- No runtime behavior changes from beta.1.
+
+### Related
+
+- [#319](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/319) -
+  missing battery and daily energy entities.
+- [#320](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/320) -
+  partial-poll recovery.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - coverage review and release
+  preparation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - regression coverage.
+
+## 11.13.5-beta.1 - 2026-11-25
+
+## Keep entities stable during partial SEMS+ polls
+
+- Preserve every discovered battery slot when one battery's telemetry is
+  temporarily empty, denied, or rate-limited, so batteries do not disappear or
+  move to another entity's index.
+- Keep daily and lifetime energy entities registered during transient
+  statistics failures, while withholding lifetime totals until every required
+  historical year is available.
+- Cache permission-denied statistics responses separately from temporary
+  failures, avoiding repeated requests without creating permanent recovery
+  entities for unsupported endpoints.
+
+### Compatibility and limitations
+
+- No configuration changes or entity migrations are required; existing battery
+  index IDs and Energy dashboard history are preserved.
+- A battery whose current telemetry is unavailable reports `unavailable` until
+  SEMS+ returns supported data again.
+- A live six-battery installation was not available during development, so the
+  reporter's exact SEMS rate-limit boundary remains unverified.
+
+### Related
+
+- [#319](https://github.com/TimSoethout/goodwe-sems-home-assistant/issues/319) -
+  missing battery and daily energy entities.
+
+### Contributors
+
+- [@bogpopa](https://github.com/bogpopa) - issue report and battery-system
+  details.
+- [@TimSoethout](https://github.com/TimSoethout) - diagnosis and release
+  preparation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation and
+  regression tests.
+
 ## 11.13.4 - 2026-11-24
 
 ## Recover entities after SEMS+ rate limits
