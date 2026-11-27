@@ -1434,6 +1434,8 @@ class SemsApi:
                 for historic_statistics in historic_statistics_by_year
             ):
                 for historic_statistics in historic_statistics_by_year:
+                    if historic_statistics is None:
+                        continue
                     for item, values in historic_statistics.items():
                         mapped_target = _WEB_STATISTICS_KEY_MAP.get(item)
                         if mapped_target is not None:
