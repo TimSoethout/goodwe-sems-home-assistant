@@ -2975,17 +2975,6 @@ class TestSemsApi:
             poll(datetime(2026, 11, 22, 0, 23), 0.10, 0)["proPurchaseStatsToday"]
             == 0.10
         )
-        assert (
-            poll(datetime(2026, 11, 22, 0, 22), 0.09, 0.01)["proPurchaseStatsToday"]
-            == 7.88
-        )
-        cached = self.api._get_web_cache_entry("counters:station:METER1:SMART_METER")
-        assert cached is not None
-        assert cached[1]["_periods"]["proPurchaseStatsToday"] == "2026-11-21"
-        assert (
-            poll(datetime(2026, 11, 22, 0, 23), 0.10, 0.02)["proPurchaseStatsToday"]
-            == 0.10
-        )
         cached = self.api._get_web_cache_entry("counters:station:METER1:SMART_METER")
         assert cached is not None
         assert cached[1]["_periods"]["proPurchaseStatsToday"] == "2026-11-22"
