@@ -14,6 +14,10 @@ import requests
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.sems import SemsData
+from custom_components.sems.api.async_transport import (
+    AioHttpResponseAdapter,
+    AsyncSemsTransport,
+)
 from custom_components.sems.api.controls import (
     find_control_function,
     parse_control_attributes,
@@ -45,6 +49,52 @@ SUCCESS_MESSAGE = "操作成功"
 API_EXAMPLES_DIR = Path(__file__).parent.parent / "api_examples"
 
 
+class FakeAsyncResponse:
+    """Small aiohttp response stand-in for transport unit tests."""
+
+    def __init__(self) -> None:
+        self.status = 200
+        self.headers = {"Content-Type": "application/json"}
+        self.url = "https://example.com/api"
+        self.payload = {"code": 0, "data": {"ok": True}}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def text(self) -> str:
+        return '{"code": 0, "data": {"ok": true}}'
+
+    async def json(self, content_type=None):
+        return self.payload
+
+
+class FakeInvalidJsonResponse(FakeAsyncResponse):
+    """aiohttp response stand-in whose JSON decoding fails."""
+
+    async def text(self) -> str:
+        return "not-json"
+
+    async def json(self, content_type=None):
+        raise json.JSONDecodeError("invalid", "not-json", 0)
+
+
+class FakeAsyncSession:
+    """Small aiohttp session stand-in."""
+
+    def request(self, *args, **kwargs):
+        return FakeAsyncResponse()
+
+
+class FakeInvalidJsonSession:
+    """aiohttp session stand-in for invalid JSON."""
+
+    def request(self, *args, **kwargs):
+        return FakeInvalidJsonResponse()
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -60,6 +110,77 @@ API_EXAMPLES_DIR = Path(__file__).parent.parent / "api_examples"
 def test_parse_float(value: object, expected: float | None) -> None:
     """API numeric conversion rejects invalid and non-finite values."""
     assert parse_float(value) == expected
+
+
+def test_aiohttp_response_adapter() -> None:
+    """aiohttp response compatibility preserves status and JSON handling."""
+    response = AioHttpResponseAdapter(
+        status_code=200,
+        headers={"Content-Type": "application/json"},
+        url="https://example.com/api",
+        text='{"code": 0}',
+        payload={"code": 0},
+    )
+    response.raise_for_status()
+    assert response.json() == {"code": 0}
+
+    error = AioHttpResponseAdapter(
+        status_code=429,
+        headers={"Retry-After": "60"},
+        url="https://example.com/api",
+        text="rate limited",
+        payload=None,
+    )
+    with pytest.raises(requests.HTTPError) as err:
+        error.raise_for_status()
+    assert "429" in str(err.value)
+
+    empty = AioHttpResponseAdapter(
+        status_code=200,
+        headers={},
+        url="https://example.com/api",
+        text="",
+        payload=None,
+    )
+    with pytest.raises(ValueError, match="Empty response body"):
+        empty.json()
+
+    invalid = AioHttpResponseAdapter(
+        status_code=200,
+        headers={},
+        url="https://example.com/api",
+        text="not-json",
+        payload=None,
+    )
+    with pytest.raises(json.JSONDecodeError):
+        invalid.json()
+
+
+@pytest.mark.asyncio
+async def test_async_sems_transport_request() -> None:
+    """Async SEMS transport returns the compatibility response shape."""
+    transport = AsyncSemsTransport(FakeAsyncSession())  # type: ignore[arg-type]
+    response = await transport.request(
+        "POST",
+        "https://example.com/api",
+        {"Authorization": "test"},
+        '{"test": true}',
+        None,
+    )
+    assert response.status_code == 200
+    assert response.json()["data"] == {"ok": True}
+
+    invalid_transport = AsyncSemsTransport(
+        FakeInvalidJsonSession()  # type: ignore[arg-type]
+    )
+    invalid_response = await invalid_transport.request(
+        "POST",
+        "https://example.com/api",
+        {},
+        None,
+        None,
+    )
+    assert invalid_response.text == "not-json"
 
 
 def test_control_metadata_resolution() -> None:
