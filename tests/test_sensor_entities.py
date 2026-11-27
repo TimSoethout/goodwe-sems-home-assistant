@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -413,11 +414,12 @@ async def test_sensor_state_from_coordinator(
     )
     base_sensor = SemsSensor(
         coordinator,
-        power_sensor_definition.device_info,
-        "base-sensor-test",
-        None,
-        ["missing"],
-        power_sensor_definition.data_type_converter,
+        replace(
+            power_sensor_definition,
+            key="base-sensor-test",
+            unique_id="base-sensor-test",
+            value_path=["missing"],
+        ),
     )
     assert base_sensor.native_value is None
     with patch.object(base_sensor, "_get_data_dict", return_value=None):

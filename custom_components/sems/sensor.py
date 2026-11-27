@@ -14,6 +14,7 @@ from typing import Any
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.const import (
@@ -97,7 +98,7 @@ _FIELDS_WITHOUT_SEMS_PLUS_SOURCE = {
 }
 
 
-def _has_no_data_source(data: SemsData, sensor: SemsSensorType) -> bool:
+def _has_no_data_source(data: SemsData, sensor: SemsSensorDescription) -> bool:
     """Return whether a sensor reads a field the payload can never supply."""
     path = sensor.value_path
     return (
@@ -144,37 +145,117 @@ def _percentage_handler(value: Any, _data: dict[str, Any]) -> Any:
         return value
 
 
-@dataclass(slots=True)
-class SemsSensorType:
-    """SEMS sensor definition."""
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SemsSensorDescription(SensorEntityDescription):
+    """Typed SEMS sensor entity definition."""
 
     device_info: DeviceInfo
     unique_id: str
     value_path: SemsValuePath
-    name: str | None = None  # Name is None when it is determined by device class / UOM.
-    device_class: SensorDeviceClass | None = None
-    native_unit_of_measurement: str | None = None
-    state_class: SensorStateClass | None = None
     empty_value: Any = None
     data_type_converter: Callable[[Any], Any] = Decimal
     custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None
-    entity_registry_enabled_default: bool = True
     disable_when_empty: bool = True
+    entity_cls: type[Any] | None = None
 
 
-@dataclass(slots=True)
-class SemsHomekitSensorType(SemsSensorType):
-    """SEMS HomeKit/powerflow sensor definition."""
+def SemsInverterSensorType(
+    device_info: DeviceInfo,
+    unique_id: str,
+    value_path: SemsValuePath,
+    name: str | None = None,
+    device_class: SensorDeviceClass | None = None,
+    native_unit_of_measurement: str | None = None,
+    state_class: SensorStateClass | None = None,
+    empty_value: Any = None,
+    data_type_converter: Callable[[Any], Any] = Decimal,
+    custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None,
+    entity_registry_enabled_default: bool = True,
+    disable_when_empty: bool = True,
+) -> SemsSensorDescription:
+    """Build an inverter sensor description."""
+    return SemsSensorDescription(
+        key=unique_id,
+        name=name,
+        device_class=device_class,
+        native_unit_of_measurement=native_unit_of_measurement,
+        state_class=state_class,
+        entity_registry_enabled_default=entity_registry_enabled_default,
+        device_info=device_info,
+        unique_id=unique_id,
+        value_path=value_path,
+        empty_value=empty_value,
+        data_type_converter=data_type_converter,
+        custom_value_handler=custom_value_handler,
+        disable_when_empty=disable_when_empty,
+        entity_cls=SemsInverterSensor,
+    )
 
 
-@dataclass(slots=True)
-class SemsLegacyPowerflowSensorType(SemsHomekitSensorType):
-    """SEMS legacy HomeKit/powerflow sensor definition."""
+def SemsHomekitSensorType(
+    device_info: DeviceInfo,
+    unique_id: str,
+    value_path: SemsValuePath,
+    name: str | None = None,
+    device_class: SensorDeviceClass | None = None,
+    native_unit_of_measurement: str | None = None,
+    state_class: SensorStateClass | None = None,
+    empty_value: Any = None,
+    data_type_converter: Callable[[Any], Any] = Decimal,
+    custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None,
+    entity_registry_enabled_default: bool = True,
+    disable_when_empty: bool = True,
+) -> SemsSensorDescription:
+    """Build a SEMS+ or legacy HomeKit sensor description."""
+    return SemsSensorDescription(
+        key=unique_id,
+        name=name,
+        device_class=device_class,
+        native_unit_of_measurement=native_unit_of_measurement,
+        state_class=state_class,
+        entity_registry_enabled_default=entity_registry_enabled_default,
+        device_info=device_info,
+        unique_id=unique_id,
+        value_path=value_path,
+        empty_value=empty_value,
+        data_type_converter=data_type_converter,
+        custom_value_handler=custom_value_handler,
+        disable_when_empty=disable_when_empty,
+        entity_cls=SemsHomekitSensor,
+    )
 
 
-@dataclass(slots=True)
-class SemsInverterSensorType(SemsSensorType):
-    """SEMS inverter sensor definition."""
+def SemsLegacyPowerflowSensorType(
+    device_info: DeviceInfo,
+    unique_id: str,
+    value_path: SemsValuePath,
+    name: str | None = None,
+    device_class: SensorDeviceClass | None = None,
+    native_unit_of_measurement: str | None = None,
+    state_class: SensorStateClass | None = None,
+    empty_value: Any = None,
+    data_type_converter: Callable[[Any], Any] = Decimal,
+    custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None,
+    entity_registry_enabled_default: bool = True,
+    disable_when_empty: bool = True,
+) -> SemsSensorDescription:
+    """Build a legacy HomeKit/powerflow sensor description."""
+    return SemsSensorDescription(
+        key=unique_id,
+        name=name,
+        device_class=device_class,
+        native_unit_of_measurement=native_unit_of_measurement,
+        state_class=state_class,
+        entity_registry_enabled_default=entity_registry_enabled_default,
+        device_info=device_info,
+        unique_id=unique_id,
+        value_path=value_path,
+        empty_value=empty_value,
+        data_type_converter=data_type_converter,
+        custom_value_handler=custom_value_handler,
+        disable_when_empty=disable_when_empty,
+        entity_cls=SemsLegacyPowerflowSensor,
+    )
 
 
 def get_homekit_sn(homekit_data: dict[str, Any] | None) -> str | None:
@@ -189,10 +270,10 @@ def get_homekit_sn(homekit_data: dict[str, Any] | None) -> str | None:
 def sensor_options_for_data(
     data: SemsData,
     station_id: str | None = None,
-) -> list[SemsSensorType]:
+) -> list[SemsSensorDescription]:
     """Build a list of sensor definitions for the given coordinator data."""
 
-    sensors: list[SemsSensorType] = []
+    sensors: list[SemsSensorDescription] = []
     currency = data.currency
     _LOGGER.debug("Detected currency: %s", currency)
 
@@ -940,36 +1021,13 @@ def _build_sensors(
     coordinator: SemsCoordinator,
 ) -> list[SemsSensor]:
     """Build sensor entities for the coordinator's current data."""
-    sensor_options: list[SemsSensorType] = sensor_options_for_data(
+    sensor_options: list[SemsSensorDescription] = sensor_options_for_data(
         coordinator.data, coordinator.station_id
     )
     sensors: list[SemsSensor] = []
     for sensor_option in sensor_options:
-        sensor_class: type[SemsSensor]
-        if isinstance(sensor_option, SemsLegacyPowerflowSensorType):
-            sensor_class = SemsLegacyPowerflowSensor
-        elif isinstance(sensor_option, SemsHomekitSensorType):
-            sensor_class = SemsHomekitSensor
-        else:
-            sensor_class = SemsInverterSensor
-
-        sensors.append(
-            sensor_class(
-                coordinator,
-                sensor_option.device_info,
-                sensor_option.unique_id,
-                sensor_option.name,
-                sensor_option.value_path,
-                sensor_option.data_type_converter,
-                sensor_option.device_class,
-                sensor_option.native_unit_of_measurement,
-                sensor_option.state_class,
-                sensor_option.empty_value,
-                sensor_option.custom_value_handler,
-                sensor_option.entity_registry_enabled_default,
-                sensor_option.disable_when_empty,
-            )
-        )
+        sensor_class = sensor_option.entity_cls or SemsSensor
+        sensors.append(sensor_class(coordinator, sensor_option))
     return sensors
 
 
@@ -995,40 +1053,34 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
     def __init__(
         self,
         coordinator: SemsCoordinator,
-        device_info: DeviceInfo,
-        unique_id: str,
-        name: str | None,
-        value_path: SemsValuePath,
-        data_type_converter: Callable[[Any], Any],
-        device_class: SensorDeviceClass | None = None,
-        native_unit_of_measurement: str | None = None,
-        state_class: SensorStateClass | None = None,
-        empty_value: Any = None,
-        custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None,
-        entity_registry_enabled_default: bool = True,
-        disable_when_empty: bool = True,
+        description: SemsSensorDescription,
     ) -> None:
         """Initialize a SEMS sensor."""
 
         super().__init__(coordinator)
-        self._value_path = value_path
-        self._data_source = _data_source_for_value_path(value_path)
-        self._data_type_converter = data_type_converter
-        self._empty_value = empty_value
+        self.entity_description = description
+        self._value_path = description.value_path
+        self._data_source = _data_source_for_value_path(description.value_path)
+        self._data_type_converter = description.data_type_converter
+        self._empty_value = description.empty_value
 
-        self._attr_unique_id = unique_id
-        self._attr_device_info = device_info
-        self._attr_device_class = device_class
-        self._attr_native_unit_of_measurement = native_unit_of_measurement
-        self._attr_state_class = state_class
+        self._attr_unique_id = description.unique_id
+        self._attr_device_info = description.device_info
+        self._attr_device_class = description.device_class
+        self._attr_native_unit_of_measurement = description.native_unit_of_measurement
+        self._attr_state_class = description.state_class
+        if isinstance(description.translation_key, str):
+            self._attr_translation_key = description.translation_key
 
         # When `name` is None, Home Assistant determines the name from
         # device class / unit (using has_entity_name).
-        if name is not None:
-            self._attr_name = name
+        if isinstance(description.name, str):
+            self._attr_name = description.name
 
-        self._custom_value_handler = custom_value_handler
-        self._attr_entity_registry_enabled_default = entity_registry_enabled_default
+        self._custom_value_handler = description.custom_value_handler
+        self._attr_entity_registry_enabled_default = (
+            description.entity_registry_enabled_default
+        )
 
         raw_value = self._get_native_value_from_coordinator()
 
@@ -1040,21 +1092,21 @@ class SemsSensor(CoordinatorEntity[SemsCoordinator], SensorEntity):
                 raw_value is None
                 or (self._empty_value is not None and raw_value == self._empty_value)
             )
-            and disable_when_empty
+            and description.disable_when_empty
             and not self._source_unavailable()
         ):
             _LOGGER.debug(
                 "Disabling SemsSensor `%s` by default since initial value is None or empty (`%s`)",
-                redact_sensitive_text(unique_id),
+                redact_sensitive_text(description.unique_id),
                 redact_for_log(raw_value),
             )
             self._attr_entity_registry_enabled_default = False
 
         _LOGGER.debug(
             "Created SemsSensor with id `%s`, `%s`, value path `%s`",
-            redact_sensitive_text(unique_id),
-            name,
-            redact_for_log(value_path),
+            redact_sensitive_text(description.unique_id),
+            description.name,
+            redact_for_log(description.value_path),
         )
 
     def _get_native_value_from_coordinator(self) -> Any:
