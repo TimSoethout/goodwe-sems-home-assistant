@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 import requests
@@ -15,7 +15,11 @@ from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.sems import async_migrate_entry
-from custom_components.sems.config_flow import CannotConnect, _normalize_station_ids
+from custom_components.sems.config_flow import (
+    CannotConnect,
+    _normalize_station_ids,
+    validate_credentials,
+)
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN
 from custom_components.sems.sems_api import NEW_LOGIN_URL, SemsApi, SemsRateLimitedError
 
@@ -23,6 +27,31 @@ MOCK_USERNAME = "test@example.com"
 MOCK_PASSWORD = "test_password"
 MOCK_STATION_ID_1 = "12345678-1234-5678-9abc-123456789abc"
 MOCK_STATION_ID_2 = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+
+async def test_validate_credentials_enables_async_transport(
+    hass: HomeAssistant,
+) -> None:
+    """Credential validation uses the injected aiohttp compatibility transport."""
+    api = Mock()
+    api.test_authentication.return_value = True
+
+    with patch(
+        "custom_components.sems.config_flow.SemsApi",
+        return_value=api,
+    ) as sems_api:
+        result = await validate_credentials(
+            hass,
+            {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
+        )
+
+    assert result is api
+    sems_api.assert_called_once_with(
+        hass,
+        MOCK_USERNAME,
+        MOCK_PASSWORD,
+        use_async_transport=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -147,10 +176,14 @@ async def test_captured_web_login_and_station_list_create_entry(
     requests_mock.post(station_url, json=station_capture)
 
     result = await _init_flow(hass)
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
-    )
+    with patch(
+        "custom_components.sems.sems_api.async_get_clientsession",
+        side_effect=RuntimeError("aiohttp unavailable in requests-mock test"),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD},
+        )
 
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["title"] == f"Inverter {station_id}"

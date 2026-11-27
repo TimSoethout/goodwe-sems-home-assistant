@@ -136,6 +136,11 @@ def test_aiohttp_response_adapter() -> None:
     with pytest.raises(requests.HTTPError) as err:
         error.raise_for_status()
     assert "429" in str(err.value)
+    assert err.value.response is not None
+    assert err.value.response.status_code == 429
+    assert err.value.response.url == "https://example.com/api"
+    assert err.value.response.headers["Retry-After"] == "60"
+    assert err.value.response.text == "rate limited"
 
     empty = AioHttpResponseAdapter(
         status_code=200,
@@ -367,6 +372,23 @@ class TestSemsApi:
                 return_value=future,
             ),
             pytest.raises(requests.ConnectionError, match="loop closed"),
+        ):
+            self.api._execute_async_http_request(
+                "POST",
+                "https://example.com/api",
+                {},
+                None,
+                None,
+            )
+
+        with (
+            patch(
+                "custom_components.sems.sems_api.asyncio.run_coroutine_threadsafe",
+                side_effect=RuntimeError("loop closed while scheduling"),
+            ),
+            pytest.raises(
+                requests.ConnectionError, match="loop closed while scheduling"
+            ),
         ):
             self.api._execute_async_http_request(
                 "POST",
