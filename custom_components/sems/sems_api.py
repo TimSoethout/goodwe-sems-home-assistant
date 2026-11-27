@@ -11,18 +11,29 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from typing import Any, Literal, NamedTuple, TypeGuard, TypeVar, cast
-from urllib.parse import parse_qsl, urlsplit, urlunsplit
+from typing import Any, NamedTuple, TypeVar, cast
+from urllib.parse import urlsplit
 
 import requests
 from homeassistant import exceptions
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from .api.auth import LoginHandler, TokenType
+from .api.controls import find_control_function, parse_control_attributes
+from .api.transport import (
+    is_web_statistics,
+    safe_response_code_for_log,
+    safe_url_for_log,
+)
+from .api.web_adapter import normalize_battery_rack
 from .const import parse_float, redact_for_log, redact_sensitive_text, redact_value
 
 _LOGGER = logging.getLogger(__name__)
 _CachedT = TypeVar("_CachedT")
+_safe_url_for_log = safe_url_for_log
+_safe_response_code_for_log = safe_response_code_for_log
+_is_web_statistics = is_web_statistics
 
 OLD_LOGIN_URL = "https://www.semsportal.com/api/v3/Common/CrossLogin"
 NEW_LOGIN_URL = "https://semsplus.goodwe.com/web/sems/sems-user/api/v1/auth/cross-login"
@@ -57,16 +68,6 @@ _WEB_STATISTICS_RATE_MAP = {
     "contributionRate": "contributingRate",
     "proSelfConsumRate": "selfUseRate",
 }
-
-
-def _is_web_statistics(value: object) -> TypeGuard[dict[str, list[float]]]:
-    """Return whether a cached value contains normalized SEMS statistics."""
-    return isinstance(value, dict) and all(
-        isinstance(key, str)
-        and isinstance(values, list)
-        and all(isinstance(statistic, float) for statistic in values)
-        for key, values in value.items()
-    )
 
 
 # SEMS+ Web data requests use GET with stationId/pwId query parameters and the
@@ -126,9 +127,6 @@ _SemsGatewayHostPattern = re.compile(
 _SemsLegacyHostPattern = re.compile(
     r"(?P<region>[a-z0-9]+(?:-[a-z0-9]+)*)\.semsportal\.com"
 )
-
-type TokenType = Literal["legacy", "new", "web"]
-type LoginHandler = Callable[[str, str], dict[str, Any] | None]
 
 
 class ApiEndpoint(NamedTuple):
@@ -235,46 +233,6 @@ _WEB_CACHE_PRUNE_INTERVAL_SECONDS = 3_600
 # Counter caches hold the last valid counter values for the plausibility
 # checks; they are not date-keyed and must survive pruning.
 _WEB_CACHE_PERSISTENT_PREFIXES = ("counters:",)
-
-
-def _safe_url_for_log(url: str) -> str:
-    """Return request endpoint context without identifiers or query values."""
-    try:
-        parsed = urlsplit(url)
-        hostname = parsed.hostname or ""
-        if hostname == "goodwe.com" or hostname.endswith(".goodwe.com"):
-            host = "goodwe.com"
-        elif hostname == "semsportal.com" or hostname.endswith(".semsportal.com"):
-            host = "semsportal.com"
-        else:
-            host = "<host>"
-    except ValueError:
-        return "<invalid-url>"
-
-    path_parts: list[str] = []
-    previous = ""
-    for part in (item for item in parsed.path.split("/") if item):
-        if (
-            any(character.isdigit() for character in part)
-            or "@" in part
-            or previous in {"control-item-content-list", "equipments"}
-        ):
-            path_parts.append("<redacted>")
-        else:
-            path_parts.append(part)
-        previous = part
-    path = f"/{'/'.join(path_parts)}" if path_parts else ""
-    query = "&".join(
-        f"{key}=<redacted>"
-        for key, _value in parse_qsl(parsed.query, keep_blank_values=True)
-    )
-    return urlunsplit((parsed.scheme, host, path, query, ""))
-
-
-def _safe_response_code_for_log(response_code: Any) -> str:
-    """Return an API status code only when it has a known-safe shape."""
-    value = str(response_code)
-    return value if re.fullmatch(r"(?:[A-Z]{1,3})?\d{3,6}", value) else "<redacted>"
 
 
 class SemsApi:
@@ -1690,23 +1648,7 @@ class SemsApi:
             unavailable_sources.add("counters")
 
         if device_type == "BATTERY_RACK":
-            battery_data = {
-                key: device_data.pop(key)
-                for key in (
-                    "pbattery",
-                    "vbattery",
-                    "ibattery",
-                    "soc",
-                    "soh",
-                    "bms_temperature",
-                    "bms_charge_i_max",
-                    "bms_discharge_i_max",
-                )
-                if key in device_data
-            }
-            if battery_data:
-                device_data["battery_count"] = 1
-                device_data["more_batterys"] = [battery_data]
+            device_data = normalize_battery_rack(device_data)
         device_data.setdefault("powerstation_id", power_station_id)
         if "model_type" not in device_data and device_type in (
             "INVERTER",
@@ -3367,28 +3309,7 @@ class SemsApi:
         function_name: str,
     ) -> dict[str, Any] | None:
         """Find a dedicated function or its shared status-setting fallback."""
-        functions = function_menus.get("functions")
-        if not isinstance(functions, list):
-            return None
-        dedicated = next(
-            (
-                item
-                for item in functions
-                if isinstance(item, dict) and item.get("translateKey") == function_name
-            ),
-            None,
-        )
-        if dedicated is not None:
-            return dedicated
-        return next(
-            (
-                item
-                for item in functions
-                if isinstance(item, dict)
-                and item.get("translateKey") == "status_setting"
-            ),
-            None,
-        )
+        return find_control_function(function_menus, function_name)
 
     @staticmethod
     def _parse_control_attributes(
@@ -3396,49 +3317,7 @@ class SemsApi:
         function_name: str,
     ) -> tuple[str, str, int, str, str] | None:
         """Parse one discovered write command into address/value metadata."""
-        address = function.get("address")
-        function_id = function.get("id")
-        control_attrs = function.get("controlAttr")
-        if isinstance(control_attrs, str):
-            try:
-                control_attrs = json.loads(control_attrs)
-            except json.JSONDecodeError:
-                control_attrs = []
-        if not isinstance(control_attrs, list):
-            return None
-        control_action = (
-            "stop"
-            if function.get("translateKey") == "status_setting"
-            and function_name == "shutdown"
-            else function_name
-        )
-        control_attr = next(
-            (
-                item
-                for item in control_attrs
-                if isinstance(item, dict) and item.get("transKey") == control_action
-            ),
-            None,
-        )
-        log_name = function.get("translateKey")
-        log_action = (
-            control_attr.get("transKey") if isinstance(control_attr, dict) else None
-        )
-        try:
-            if (
-                address is None
-                or function_id is None
-                or not str(address)
-                or not str(function_id)
-                or control_attr is None
-                or not isinstance(log_name, str)
-                or not isinstance(log_action, str)
-            ):
-                return None
-            value = int(control_attr["value"])
-        except KeyError, TypeError, ValueError:
-            return None
-        return str(address), str(function_id), value, log_name, log_action
+        return parse_control_attributes(function, function_name)
 
     def _try_web_change_status(
         self,
