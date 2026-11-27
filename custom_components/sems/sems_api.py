@@ -3447,8 +3447,8 @@ class SemsApi:
         function_name: str,
         renew_token: bool,
         max_token_retries: int,
-    ) -> bool:
-        """Try one discovered SEMS+ Web inverter status command."""
+    ) -> tuple[bool, bool]:
+        """Try one discovered command and report whether valid metadata existed."""
         try:
             function_menus = self.getInverterControlFunctions(
                 inverter_sn,
@@ -3464,10 +3464,10 @@ class SemsApi:
             function_menus = {}
         function = self._find_control_function(function_menus, function_name)
         if function is None:
-            return False
+            return False, False
         parsed = self._parse_control_attributes(function, function_name)
         if parsed is None:
-            return False
+            return False, False
         address, function_id, value, log_name, log_action = parsed
         _LOGGER.debug(
             "SEMS+ Web inverter command for %s: %s -> %s (address %s, value %s)",
@@ -3478,7 +3478,7 @@ class SemsApi:
             value,
         )
         try:
-            return self.setDeviceFunctionParameters(
+            succeeded = self.setDeviceFunctionParameters(
                 plant_id,
                 inverter_sn,
                 device_name,
@@ -3490,7 +3490,8 @@ class SemsApi:
                 virtual_sn=inverter_sn,
             )
         except OutOfRetries:
-            return False
+            succeeded = False
+        return succeeded, True
 
     def change_status(
         self,
@@ -3511,27 +3512,29 @@ class SemsApi:
         if plant_id is not None and device_name is not None:
             function_name = web_function_names.get(web_status)
             if function_name is not None:
-                if self._try_web_change_status(
+                web_succeeded, restart_action_discovered = self._try_web_change_status(
                     inverterSn,
                     plant_id,
                     device_name,
                     function_name,
                     renewToken,
                     maxTokenRetries,
-                ):
+                )
+                if web_succeeded:
                     return
-                if web_status == "1":
+                if web_status == "1" and not restart_action_discovered:
                     _LOGGER.warning(
                         "SEMS+ Web restart command unavailable; trying Start up"
                     )
-                    if self._try_web_change_status(
+                    start_succeeded, _ = self._try_web_change_status(
                         inverterSn,
                         plant_id,
                         device_name,
                         "start_up",
                         renewToken,
                         maxTokenRetries,
-                    ):
+                    )
+                    if start_succeeded:
                         return
                 _LOGGER.warning(
                     "SEMS+ Web inverter status command failed; trying legacy API"
