@@ -100,6 +100,34 @@ def test_request_json_sends_bearer_token() -> None:
     assert request.get_header("Authorization") == "Bearer secret"
 
 
+def test_print_ha_mcp_hook_url(tmp_path: Path, capsys) -> None:
+    storage = tmp_path / "config" / ".storage"
+    storage.mkdir(parents=True)
+    (storage / "core.config_entries").write_text(
+        json.dumps(
+            {
+                "data": {
+                    "entries": [
+                        {
+                            "domain": "ha_mcp_tools",
+                            "data": {"secret_path": "/private_test-hook"},
+                            "options": {"server_port": 9584},
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    ONBOARDING.print_ha_mcp_hook_url(tmp_path)
+
+    assert (
+        capsys.readouterr().out.strip()
+        == "HA-MCP hook URL: http://127.0.0.1:9584/private_test-hook"
+    )
+
+
 def test_prepare_ha_mcp_accepts_warning_and_installs_repository() -> None:
     received = [
         {"type": "auth_required"},

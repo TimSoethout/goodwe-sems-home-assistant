@@ -128,6 +128,30 @@ def print_dev_credentials(core_dir: Path) -> None:
     print(f"Developer credentials: {path}")
 
 
+def print_ha_mcp_hook_url(core_dir: Path) -> None:
+    """Show the HA-MCP direct hook URL from its persisted config entry."""
+    path = core_dir / "config" / ".storage" / "core.config_entries"
+    if not path.exists():
+        return
+
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError, OSError:
+        return
+
+    for entry in entries.get("data", {}).get("entries", []):
+        if not isinstance(entry, dict) or entry.get("domain") != "ha_mcp_tools":
+            continue
+        secret_path = entry.get("data", {}).get("secret_path")
+        if not isinstance(secret_path, str) or not secret_path:
+            continue
+        if not secret_path.startswith("/"):
+            secret_path = f"/{secret_path}"
+        port = entry.get("options", {}).get("server_port", 9584)
+        print(f"HA-MCP hook URL: http://127.0.0.1:{port}{secret_path}")
+        return
+
+
 def exchange_auth_code(auth_code: str) -> str:
     """Exchange an onboarding authorization code for an access token."""
     response = request_json(
@@ -375,6 +399,7 @@ def main() -> None:
             configure_ha_mcp(session_token, admin_token)
         else:
             configure_ha_mcp(session_token, "")
+        print_ha_mcp_hook_url(core_dir)
         return
 
     if steps.get("user", False):
@@ -422,6 +447,7 @@ def main() -> None:
         configure_ha_mcp(token, admin_token)
     else:
         configure_ha_mcp(token, "")
+    print_ha_mcp_hook_url(core_dir)
 
 
 if __name__ == "__main__":
