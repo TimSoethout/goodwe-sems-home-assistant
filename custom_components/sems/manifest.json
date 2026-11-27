@@ -1,6 +1,10 @@
 {
   "domain": "sems",
   "name": "GoodWe SEMS API",
+  "categories": [
+    "energy.solar_batteries",
+    "energy.meters_monitoring"
+  ],
   "codeowners": [
     "@TimSoethout"
   ],
