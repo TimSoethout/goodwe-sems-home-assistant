@@ -28,6 +28,8 @@ Related issue: #
 - [ ] CI checks pass
 - [ ] Tests cover changed behavior where appropriate; manual testing is described below
 - [ ] User-facing documentation and breaking changes are noted when applicable
+- [ ] API or entity changes use sanitized captured evidence and fixture-backed tests, when applicable
+- [ ] Logs, examples, and diagnostics contain no credentials or identifying data
 
 ## Testing
 
