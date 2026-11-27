@@ -4020,11 +4020,12 @@ class TestSemsApi:
         station = "private-station-456"
         device = "private-device-name"
 
-        with pytest.raises(
-            HomeAssistantError,
-            match="Verify that the GoodWe account has remote-control permission",
-        ) as err:
-            self.api.change_status(serial, 3, station, device)
+        with patch.object(self.api, "getInverterControlFunctions", return_value={}):
+            with pytest.raises(
+                HomeAssistantError,
+                match="Verify that the GoodWe account has remote-control permission",
+            ) as err:
+                self.api.change_status(serial, 1, station, device)
 
         mock_control_call.assert_called_once()
         assert serial not in str(err.value)
