@@ -3,6 +3,7 @@
 .vscode
 !.vscode/
 !.vscode/tasks.json
+.vscode/mcp.json
 example.json
 
 .DS_Store

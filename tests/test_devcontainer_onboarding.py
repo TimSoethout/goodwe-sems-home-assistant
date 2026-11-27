@@ -101,7 +101,9 @@ def test_request_json_sends_bearer_token() -> None:
 
 
 def test_print_ha_mcp_hook_url(tmp_path: Path, capsys) -> None:
-    storage = tmp_path / "config" / ".storage"
+    core_dir = tmp_path / "core"
+    repo_root = tmp_path / "repo"
+    storage = core_dir / "config" / ".storage"
     storage.mkdir(parents=True)
     (storage / "core.config_entries").write_text(
         json.dumps(
@@ -120,12 +122,18 @@ def test_print_ha_mcp_hook_url(tmp_path: Path, capsys) -> None:
         encoding="utf-8",
     )
 
-    ONBOARDING.print_ha_mcp_hook_url(tmp_path)
+    ONBOARDING.print_ha_mcp_hook_url(core_dir, repo_root)
 
-    assert (
-        capsys.readouterr().out.strip()
-        == "HA-MCP hook URL: http://127.0.0.1:9584/private_test-hook"
-    )
+    output = capsys.readouterr().out.strip()
+    assert output == "HA-MCP hook URL: http://127.0.0.1:9584/private_test-hook"
+
+    mcp_path = repo_root / ".vscode" / "mcp.json"
+    mcp_config = json.loads(mcp_path.read_text(encoding="utf-8"))
+    assert mcp_config["servers"]["home-assistant"] == {
+        "type": "http",
+        "url": "http://127.0.0.1:9584/private_test-hook",
+    }
+    assert stat.S_IMODE(mcp_path.stat().st_mode) == 0o600
 
 
 def test_prepare_ha_mcp_accepts_warning_and_installs_repository() -> None:

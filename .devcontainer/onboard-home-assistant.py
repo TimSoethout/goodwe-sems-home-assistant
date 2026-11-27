@@ -128,8 +128,8 @@ def print_dev_credentials(core_dir: Path) -> None:
     print(f"Developer credentials: {path}")
 
 
-def print_ha_mcp_hook_url(core_dir: Path) -> None:
-    """Show the HA-MCP direct hook URL from its persisted config entry."""
+def print_ha_mcp_hook_url(core_dir: Path, repo_root: Path | None = None) -> None:
+    """Show and configure the HA-MCP direct hook URL for VS Code Copilot."""
     path = core_dir / "config" / ".storage" / "core.config_entries"
     if not path.exists():
         return
@@ -148,7 +148,28 @@ def print_ha_mcp_hook_url(core_dir: Path) -> None:
         if not secret_path.startswith("/"):
             secret_path = f"/{secret_path}"
         port = entry.get("options", {}).get("server_port", 9584)
-        print(f"HA-MCP hook URL: http://127.0.0.1:{port}{secret_path}")
+        hook_url = f"http://127.0.0.1:{port}{secret_path}"
+        print(f"HA-MCP hook URL: {hook_url}")
+
+        workspace_root = repo_root or Path(__file__).resolve().parents[1]
+        mcp_path = workspace_root / ".vscode" / "mcp.json"
+        mcp_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            mcp_config = json.loads(mcp_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError, OSError:
+            mcp_config = {}
+        if not isinstance(mcp_config, dict):
+            mcp_config = {}
+        servers = mcp_config.setdefault("servers", {})
+        if not isinstance(servers, dict):
+            servers = {}
+            mcp_config["servers"] = servers
+        servers["home-assistant"] = {"type": "http", "url": hook_url}
+        mcp_path.write_text(
+            json.dumps(mcp_config, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        mcp_path.chmod(0o600)
         return
 
 
