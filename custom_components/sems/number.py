@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsConfigEntry, SemsCoordinator
-from .const import CONF_STATION_ID, redact_sensitive_text
+from .const import CONF_STATION_ID, parse_float, redact_sensitive_text
 from .device import device_info_for_inverter
 from .ev_charger import async_add_coordinator_entities, ev_charger_numbers
 
@@ -62,7 +62,7 @@ class SemsBatteryNumber(CoordinatorEntity[SemsCoordinator], NumberEntity):
         state = (self.coordinator.data.immediate_charging or {}).get(self.serial_number)
         if state is None:
             return None
-        return float(state.get(self.value_key, 0.0))
+        return parse_float(state.get(self.value_key))
 
     async def async_set_native_value(self, value: float) -> None:
         await self._async_set_value(self.method, value)

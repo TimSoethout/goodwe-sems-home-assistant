@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -41,6 +42,15 @@ def scan_interval_seconds(data: Mapping[str, Any], options: Mapping[str, Any]) -
 def account_key(username: str) -> str:
     """Return the key that identifies a SEMS account."""
     return username.strip().casefold()
+
+
+def parse_float(value: Any) -> float | None:
+    """Return a finite float for an API value, or None for invalid input."""
+    try:
+        parsed = float(value)
+    except TypeError, ValueError, OverflowError:
+        return None
+    return parsed if math.isfinite(parsed) else None
 
 
 # Serial that releases up to 11.12.0-beta.6 used for every station without a
