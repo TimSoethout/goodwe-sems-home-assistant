@@ -90,9 +90,7 @@ Domain documentation uses the single-context layout. See `docs/agents/domain.md`
 
 ## Done means
 
-- `ruff check custom_components/ && ruff format --check custom_components/ && mypy custom_components/ --ignore-missing-imports --python-version 3.14` passes.
-- `node --test scripts/publish_quality_scale_report.test.js && pytest tests/ --cov=custom_components.sems --cov-report=xml --cov-report=term-missing --cov-report=json:coverage.json --cov-fail-under=80 --junitxml=./junit.xml` passes.
-- `bash scripts/report_quality_scale_coverage.sh && bash scripts/report_quality_scale_strict_typing.sh` passes.
+- All full CI checks listed under [Developer workflows](#developer-workflows) pass.
 - Every behavior change has a regression test that fails against the old behavior.
 
 ## Never merges without a human
