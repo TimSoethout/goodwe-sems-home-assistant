@@ -182,6 +182,9 @@ _SMART_METER_COUNTER_KEYS = tuple(
     for period in ("Today", "Week", "Month", "Year", "Total")
     for prefix in _SMART_METER_COUNTER_PREFIXES
 )
+_SMART_METER_DAILY_COUNTER_KEYS = tuple(
+    f"{prefix}Today" for prefix in _SMART_METER_COUNTER_PREFIXES
+)
 _LIFETIME_COUNTER_KEYS = (
     "etotal",
     "echarge_total",
@@ -2541,6 +2544,15 @@ class SemsApi:
         previous_drops = previous.get("_drops", {})
         if not isinstance(previous_drops, dict):
             previous_drops = {}
+        previous_rollovers = previous.get("_rollover_pending", {})
+        if not isinstance(previous_rollovers, dict):
+            previous_rollovers = {}
+        current_period = now.date().isoformat()
+        pending_rollovers = {
+            key: period
+            for key, period in previous_rollovers.items()
+            if period == current_period
+        }
         drops: dict[str, int] = {}
         for key in (
             "eday",
@@ -2563,8 +2575,40 @@ class SemsApi:
                 # Without a cached value (after a restart) publish nothing.
                 del counters[key]
                 continue
-            same_period = key not in counter_periods or (
-                previous_periods.get(key) == counter_periods.get(key)
+            period = counter_periods.get(key)
+            rollover_pending = (
+                period is not None and pending_rollovers.get(key) == period
+            )
+            rollover_started = (
+                not rollover_pending
+                and device_type == "SMART_METER"
+                and key in _SMART_METER_DAILY_COUNTER_KEYS
+                and period is not None
+                and previous_periods.get(key)
+                == (now.date() - timedelta(days=1)).isoformat()
+                and isinstance(old_value, (int, float))
+                and old_value > 0
+            )
+            if rollover_started:
+                pending_rollovers[key] = period
+                rollover_pending = True
+            if (
+                rollover_pending
+                and isinstance(old_value, (int, float))
+                and old_value > 0
+                and value >= old_value
+            ):
+                # The first reading after the hold window can still be
+                # yesterday's high counter. Keep the prior value and wait for
+                # consecutive low readings before accepting the reset.
+                pending_rollovers[key] = period
+                counters[key] = old_value
+                counter_periods.pop(key, None)
+                continue
+            same_period = (
+                key not in counter_periods
+                or (previous_periods.get(key) == counter_periods.get(key))
+                or rollover_pending
             )
             if (
                 same_period
@@ -2576,7 +2620,9 @@ class SemsApi:
                     # SEMS+ sometimes returns 0 for a single poll (#295). Hold
                     # the previous value, but accept a drop that persists, so
                     # a late or genuine reset is not held for the whole period.
-                    drop_count = int(previous_drops.get(key, 0)) + 1
+                    drop_count = (
+                        1 if rollover_started else int(previous_drops.get(key, 0)) + 1
+                    )
                     if drop_count >= _SMART_METER_DROP_ACCEPT_POLLS:
                         _LOGGER.info(
                             "Accepting SEMS+ %s counter drop for %s after %s polls",
@@ -2584,6 +2630,7 @@ class SemsApi:
                             redact_value(serialNumber),
                             drop_count,
                         )
+                        pending_rollovers.pop(key, None)
                         continue
                     drops[key] = drop_count
                     _LOGGER.debug(
@@ -2592,6 +2639,8 @@ class SemsApi:
                         redact_value(serialNumber),
                     )
                     counters[key] = old_value
+                    if rollover_pending:
+                        counter_periods.pop(key, None)
                     continue
                 _LOGGER.warning(
                     "Ignoring an invalid SEMS+ %s counter for %s",
@@ -2609,6 +2658,7 @@ class SemsApi:
                         **counters,
                         "_periods": {**previous_periods, **counter_periods},
                         "_drops": drops,
+                        "_rollover_pending": pending_rollovers,
                     },
                 ),
             )

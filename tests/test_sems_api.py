@@ -2643,11 +2643,25 @@ class TestSemsApi:
         poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
         poll(datetime(2026, 11, 21, 23, 50), 7.88, 3.0)
 
-        # On time: the new day's small value is accepted immediately.
+        # A low first post-window reading starts reset confirmation.
         assert (
             poll(datetime(2026, 11, 22, 0, 21), 0.08, 0)["proPurchaseStatsToday"]
-            == 0.08
+            == 7.88
         )
+        assert (
+            poll(datetime(2026, 11, 22, 0, 22), 0.09, 0.01)["proPurchaseStatsToday"]
+            == 7.88
+        )
+        cached = self.api._get_web_cache_entry("counters:station:METER1:SMART_METER")
+        assert cached is not None
+        assert cached[1]["_periods"]["proPurchaseStatsToday"] == "2026-11-21"
+        assert (
+            poll(datetime(2026, 11, 22, 0, 23), 0.10, 0.02)["proPurchaseStatsToday"]
+            == 0.10
+        )
+        cached = self.api._get_web_cache_entry("counters:station:METER1:SMART_METER")
+        assert cached is not None
+        assert cached[1]["_periods"]["proPurchaseStatsToday"] == "2026-11-22"
 
         # Late: SEMS still reports yesterday's total after the hold window,
         # then resets. The reset is accepted after a few polls.
@@ -2657,6 +2671,56 @@ class TestSemsApi:
         assert (
             poll(datetime(2026, 11, 23, 0, 24), 0.07, 0)["proPurchaseStatsToday"]
             == 0.07
+        )
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_counters_hold_stale_midnight_value_until_confirmed(
+        self, mock_api_call, mock_now
+    ):
+        """A stale post-window value stays held until the reset is confirmed."""
+        poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
+        poll(datetime(2026, 11, 22, 23, 50), 7.88, 3.0)
+
+        # SEMS can still return yesterday's high daily totals after the
+        # existing midnight hold window.
+        counters = poll(datetime(2026, 11, 23, 0, 21), 9.5, 3.5)
+        assert counters["proPurchaseStatsToday"] == 7.88
+        assert counters["proGridStatsToday"] == 3.0
+
+        counters = poll(datetime(2026, 11, 23, 0, 22), 0.05, 0.01)
+        assert counters["proPurchaseStatsToday"] == 7.88
+        assert counters["proGridStatsToday"] == 3.0
+
+        counters = poll(datetime(2026, 11, 23, 0, 23), 0.06, 0.02)
+        assert counters["proPurchaseStatsToday"] == 7.88
+        assert counters["proGridStatsToday"] == 3.0
+
+        counters = poll(datetime(2026, 11, 23, 0, 24), 0.07, 0.03)
+        assert counters["proPurchaseStatsToday"] == 0.07
+        assert counters["proGridStatsToday"] == 0.03
+
+    @patch("custom_components.sems.sems_api.dt_util.now")
+    @patch.object(SemsApi, "_make_api_call")
+    def test_smart_meter_malformed_rollover_state_is_recovered(
+        self, mock_api_call, mock_now
+    ):
+        """Malformed rollover metadata is ignored instead of blocking reset."""
+        poll = partial(self._poll_smart_meter, mock_api_call, mock_now)
+        poll(datetime(2026, 11, 22, 23, 50), 7.88, 3.0)
+
+        cache_key = "counters:station:METER1:SMART_METER"
+        cached = self.api._get_web_cache_entry(cache_key)
+        assert cached is not None
+        assert isinstance(cached[1], dict)
+        self.api._set_web_cache_entry(
+            cache_key,
+            (0, {**cached[1], "_rollover_pending": []}),
+        )
+
+        assert (
+            poll(datetime(2026, 11, 23, 0, 21), 0.08, 0.01)["proPurchaseStatsToday"]
+            == 7.88
         )
 
     @patch("custom_components.sems.sems_api.dt_util.now")
@@ -2699,10 +2763,15 @@ class TestSemsApi:
         mock_now.return_value = datetime(2026, 11, 23, 0, 20)
         assert poll(datetime(2026, 11, 23, 0, 20)) == {"proPurchaseStatsTotal": 800.0}
 
-        # The next daily value belongs to a new period and must not be held.
+        # A low first value starts reset confirmation, even when the daily
+        # group was missing during the rollover hold.
         fail_today = False
         values["today"] = 0.05
-        assert poll(datetime(2026, 11, 23, 0, 21))["proPurchaseStatsToday"] == 0.05
+        assert poll(datetime(2026, 11, 23, 0, 21))["proPurchaseStatsToday"] == 7.88
+        values["today"] = 0.06
+        assert poll(datetime(2026, 11, 23, 0, 22))["proPurchaseStatsToday"] == 7.88
+        values["today"] = 0.07
+        assert poll(datetime(2026, 11, 23, 0, 23))["proPurchaseStatsToday"] == 0.07
 
     @patch("custom_components.sems.sems_api.dt_util.now")
     @patch.object(SemsApi, "_make_api_call")
