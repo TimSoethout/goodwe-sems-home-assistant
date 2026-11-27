@@ -71,7 +71,12 @@ async def validate_credentials(hass: HomeAssistant, data: dict[str, Any]) -> Sem
         "SEMS - Validating credentials for user: %s",
         redact_value(data.get(CONF_USERNAME, "")),
     )
-    api = SemsApi(hass, data[CONF_USERNAME], data[CONF_PASSWORD])
+    api = SemsApi(
+        hass,
+        data[CONF_USERNAME],
+        data[CONF_PASSWORD],
+        use_async_transport=True,
+    )
     try:
         authenticated = await hass.async_add_executor_job(api.test_authentication)
         if not authenticated:
@@ -86,6 +91,38 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for sems."""
 
     VERSION = 2
+
+    async def _async_create_station_entry(
+        self,
+        user_input: dict[str, Any],
+        station_ids: list[str],
+    ) -> config_entries.ConfigFlowResult:
+        """Create the primary station entry and schedule additional stations."""
+        flow_data = dict(user_input)
+        if account_entries := _account_entries(self.hass, user_input[CONF_USERNAME]):
+            flow_data[CONF_SCAN_INTERVAL] = scan_interval_seconds(
+                account_entries[0].data, account_entries[0].options
+            )
+        for station_id in station_ids[1:]:
+            self.hass.async_create_task(
+                self.hass.config_entries.flow.async_init(
+                    DOMAIN,
+                    context={"source": config_entries.SOURCE_IMPORT},
+                    data={**flow_data, CONF_STATION_ID: station_id},
+                )
+            )
+
+        station_id = station_ids[0]
+        await self.async_set_unique_id(station_id)
+        self._abort_if_unique_id_configured()
+        _LOGGER.debug(
+            "SEMS - Creating entry for station %s",
+            redact_value(station_id),
+        )
+        return self.async_create_entry(
+            title=f"Inverter {station_id}",
+            data={**flow_data, CONF_STATION_ID: station_id},
+        )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -116,34 +153,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not station_ids:
                 errors["base"] = "no_stations_found"
             else:
-                flow_data = dict(user_input)
-                if account_entries := _account_entries(
-                    self.hass, user_input[CONF_USERNAME]
-                ):
-                    flow_data[CONF_SCAN_INTERVAL] = scan_interval_seconds(
-                        account_entries[0].data, account_entries[0].options
-                    )
-                # Schedule flows for any additional stations so all are auto-added.
-                # Users can disable individual entities or devices via the HA UI after setup.
-                for station_id in station_ids[1:]:
-                    self.hass.async_create_task(
-                        self.hass.config_entries.flow.async_init(
-                            DOMAIN,
-                            context={"source": config_entries.SOURCE_IMPORT},
-                            data={**flow_data, CONF_STATION_ID: station_id},
-                        )
-                    )
-                station_id = station_ids[0]
-                await self.async_set_unique_id(station_id)
-                self._abort_if_unique_id_configured()
-                _LOGGER.debug(
-                    "SEMS - Creating entry for station %s",
-                    redact_value(station_id),
-                )
-                return self.async_create_entry(
-                    title=f"Inverter {station_id}",
-                    data={**flow_data, CONF_STATION_ID: station_id},
-                )
+                return await self._async_create_station_entry(user_input, station_ids)
 
         except CannotConnect:
             errors["base"] = "cannot_connect"

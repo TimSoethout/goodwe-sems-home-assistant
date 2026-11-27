@@ -38,9 +38,14 @@ class AioHttpResponseAdapter:
     def raise_for_status(self) -> None:
         """Raise an HTTPError for unsuccessful response statuses."""
         if self.status_code >= 400:
+            response = requests.Response()
+            response.status_code = self.status_code
+            response.headers.update(dict(self.headers))
+            response.url = self.url
+            response._content = self.text.encode()
             raise requests.HTTPError(
                 f"HTTP {self.status_code}",
-                response=None,
+                response=response,
             )
 
 

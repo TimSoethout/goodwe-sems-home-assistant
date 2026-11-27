@@ -160,7 +160,7 @@ class SemsSensorDescription(SensorEntityDescription):
     entity_cls: type[Any] | None = None
 
 
-def SemsInverterSensorType(
+def sems_sensor_description(
     device_info: DeviceInfo,
     unique_id: str,
     value_path: SemsValuePath,
@@ -173,89 +173,79 @@ def SemsInverterSensorType(
     custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None,
     entity_registry_enabled_default: bool = True,
     disable_when_empty: bool = True,
+    *,
+    entity_cls: type[Any],
+) -> SemsSensorDescription:
+    """Build a typed SEMS sensor description."""
+    return SemsSensorDescription(
+        key=unique_id,
+        name=name,
+        device_class=device_class,
+        native_unit_of_measurement=native_unit_of_measurement,
+        state_class=state_class,
+        entity_registry_enabled_default=entity_registry_enabled_default,
+        device_info=device_info,
+        unique_id=unique_id,
+        value_path=value_path,
+        empty_value=empty_value,
+        data_type_converter=data_type_converter,
+        custom_value_handler=custom_value_handler,
+        disable_when_empty=disable_when_empty,
+        entity_cls=entity_cls,
+    )
+
+
+def sems_inverter_sensor_description(
+    device_info: DeviceInfo,
+    unique_id: str,
+    value_path: SemsValuePath,
+    *args: Any,
+    **kwargs: Any,
 ) -> SemsSensorDescription:
     """Build an inverter sensor description."""
-    return SemsSensorDescription(
-        key=unique_id,
-        name=name,
-        device_class=device_class,
-        native_unit_of_measurement=native_unit_of_measurement,
-        state_class=state_class,
-        entity_registry_enabled_default=entity_registry_enabled_default,
-        device_info=device_info,
-        unique_id=unique_id,
-        value_path=value_path,
-        empty_value=empty_value,
-        data_type_converter=data_type_converter,
-        custom_value_handler=custom_value_handler,
-        disable_when_empty=disable_when_empty,
+    return sems_sensor_description(
+        device_info,
+        unique_id,
+        value_path,
+        *args,
         entity_cls=SemsInverterSensor,
+        **kwargs,
     )
 
 
-def SemsHomekitSensorType(
+def sems_homekit_sensor_description(
     device_info: DeviceInfo,
     unique_id: str,
     value_path: SemsValuePath,
-    name: str | None = None,
-    device_class: SensorDeviceClass | None = None,
-    native_unit_of_measurement: str | None = None,
-    state_class: SensorStateClass | None = None,
-    empty_value: Any = None,
-    data_type_converter: Callable[[Any], Any] = Decimal,
-    custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None,
-    entity_registry_enabled_default: bool = True,
-    disable_when_empty: bool = True,
+    *args: Any,
+    **kwargs: Any,
 ) -> SemsSensorDescription:
     """Build a SEMS+ or legacy HomeKit sensor description."""
-    return SemsSensorDescription(
-        key=unique_id,
-        name=name,
-        device_class=device_class,
-        native_unit_of_measurement=native_unit_of_measurement,
-        state_class=state_class,
-        entity_registry_enabled_default=entity_registry_enabled_default,
-        device_info=device_info,
-        unique_id=unique_id,
-        value_path=value_path,
-        empty_value=empty_value,
-        data_type_converter=data_type_converter,
-        custom_value_handler=custom_value_handler,
-        disable_when_empty=disable_when_empty,
+    return sems_sensor_description(
+        device_info,
+        unique_id,
+        value_path,
+        *args,
         entity_cls=SemsHomekitSensor,
+        **kwargs,
     )
 
 
-def SemsLegacyPowerflowSensorType(
+def sems_legacy_powerflow_sensor_description(
     device_info: DeviceInfo,
     unique_id: str,
     value_path: SemsValuePath,
-    name: str | None = None,
-    device_class: SensorDeviceClass | None = None,
-    native_unit_of_measurement: str | None = None,
-    state_class: SensorStateClass | None = None,
-    empty_value: Any = None,
-    data_type_converter: Callable[[Any], Any] = Decimal,
-    custom_value_handler: Callable[[Any, dict[str, Any]], Any] | None = None,
-    entity_registry_enabled_default: bool = True,
-    disable_when_empty: bool = True,
+    *args: Any,
+    **kwargs: Any,
 ) -> SemsSensorDescription:
     """Build a legacy HomeKit/powerflow sensor description."""
-    return SemsSensorDescription(
-        key=unique_id,
-        name=name,
-        device_class=device_class,
-        native_unit_of_measurement=native_unit_of_measurement,
-        state_class=state_class,
-        entity_registry_enabled_default=entity_registry_enabled_default,
-        device_info=device_info,
-        unique_id=unique_id,
-        value_path=value_path,
-        empty_value=empty_value,
-        data_type_converter=data_type_converter,
-        custom_value_handler=custom_value_handler,
-        disable_when_empty=disable_when_empty,
+    return sems_sensor_description(
+        device_info,
+        unique_id,
+        value_path,
+        *args,
         entity_cls=SemsLegacyPowerflowSensor,
+        **kwargs,
     )
 
 
@@ -268,7 +258,7 @@ def get_homekit_sn(homekit_data: dict[str, Any] | None) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def sensor_options_for_data(
+def sensor_options_for_data(  # noqa: C901
     data: SemsData,
     station_id: str | None = None,
 ) -> list[SemsSensorDescription]:
@@ -283,14 +273,14 @@ def sensor_options_for_data(
 
         device_info = device_info_for_inverter(serial_number, inverter_data)
         sensors += [
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-status",
                 [*path_to_inverter, "status"],
                 "Status",
                 data_type_converter=convert_status_to_label,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-capacity",
                 [*path_to_inverter, "capacity"],
@@ -299,7 +289,7 @@ def sensor_options_for_data(
                 UnitOfPower.KILO_WATT,
                 SensorStateClass.MEASUREMENT,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-power",
                 # "Power",
@@ -308,7 +298,7 @@ def sensor_options_for_data(
                 native_unit_of_measurement=UnitOfPower.WATT,
                 state_class=SensorStateClass.MEASUREMENT,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-energy",
                 [*path_to_inverter, "etotal"],
@@ -317,7 +307,7 @@ def sensor_options_for_data(
                 state_class=SensorStateClass.TOTAL_INCREASING,
                 disable_when_empty=False,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-hour-total",
                 [*path_to_inverter, "hour_total"],
@@ -325,7 +315,7 @@ def sensor_options_for_data(
                 native_unit_of_measurement=UnitOfTime.HOURS,
                 state_class=SensorStateClass.TOTAL_INCREASING,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-temperature",
                 [*path_to_inverter, GOODWE_SPELLING.temperature],
@@ -334,7 +324,7 @@ def sensor_options_for_data(
                 state_class=SensorStateClass.MEASUREMENT,
                 empty_value=0,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-eday",
                 [*path_to_inverter, "eday"],
@@ -343,7 +333,7 @@ def sensor_options_for_data(
                 UnitOfEnergy.KILO_WATT_HOUR,
                 SensorStateClass.TOTAL_INCREASING,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-{GOODWE_SPELLING.thisMonthTotalE}",
                 [*path_to_inverter, GOODWE_SPELLING.thisMonthTotalE],
@@ -352,7 +342,7 @@ def sensor_options_for_data(
                 UnitOfEnergy.KILO_WATT_HOUR,
                 SensorStateClass.TOTAL_INCREASING,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-eweek",
                 [*path_to_inverter, "eweek"],
@@ -361,7 +351,7 @@ def sensor_options_for_data(
                 UnitOfEnergy.KILO_WATT_HOUR,
                 SensorStateClass.TOTAL_INCREASING,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-eyear",
                 [*path_to_inverter, "eyear"],
@@ -370,7 +360,7 @@ def sensor_options_for_data(
                 UnitOfEnergy.KILO_WATT_HOUR,
                 SensorStateClass.TOTAL_INCREASING,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-{GOODWE_SPELLING.lastMonthTotalE}",
                 [*path_to_inverter, GOODWE_SPELLING.lastMonthTotalE],
@@ -380,7 +370,7 @@ def sensor_options_for_data(
                 SensorStateClass.TOTAL_INCREASING,
                 entity_registry_enabled_default=False,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-iday",
                 [*path_to_inverter, "iday"],
@@ -389,7 +379,7 @@ def sensor_options_for_data(
                 currency,
                 SensorStateClass.TOTAL,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-itotal",
                 [*path_to_inverter, "itotal"],
@@ -401,7 +391,7 @@ def sensor_options_for_data(
         ]
         # Multiple strings
         sensors += [
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-vpv{idx}",
                 [*path_to_inverter, f"vpv{idx}"],
@@ -414,7 +404,7 @@ def sensor_options_for_data(
             for idx in range(1, 5)
         ]
         sensors += [
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-ipv{idx}",
                 [*path_to_inverter, f"ipv{idx}"],
@@ -427,7 +417,7 @@ def sensor_options_for_data(
             for idx in range(1, 5)
         ]
         sensors += [
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-ppv{idx}",
                 [*path_to_inverter, f"ppv{idx}"],
@@ -440,7 +430,7 @@ def sensor_options_for_data(
             for idx in range(1, 5)
         ]
         sensors += [
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-vac{idx}",
                 [*path_to_inverter, f"vac{idx}"],
@@ -453,7 +443,7 @@ def sensor_options_for_data(
             for idx in range(1, 4)
         ]
         sensors += [
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-iac{idx}",
                 [*path_to_inverter, f"iac{idx}"],
@@ -466,7 +456,7 @@ def sensor_options_for_data(
             for idx in range(1, 4)
         ]
         sensors += [
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-fac{idx}",
                 [*path_to_inverter, f"fac{idx}"],
@@ -479,7 +469,7 @@ def sensor_options_for_data(
             for idx in range(1, 4)
         ]
         sensors += [
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-vbattery1",
                 [*path_to_inverter, "vbattery1"],
@@ -488,7 +478,7 @@ def sensor_options_for_data(
                 UnitOfElectricPotential.VOLT,
                 SensorStateClass.MEASUREMENT,
             ),
-            SemsInverterSensorType(
+            sems_inverter_sensor_description(
                 device_info,
                 f"{serial_number}-ibattery1",
                 [*path_to_inverter, "ibattery1"],
@@ -509,7 +499,7 @@ def sensor_options_for_data(
                     idx,
                 ]
                 sensors += [
-                    SemsInverterSensorType(
+                    sems_inverter_sensor_description(
                         device_info,
                         f"{serial_number}-{idx}-pbattery",
                         [*path_to_battery, "pbattery"],
@@ -518,7 +508,7 @@ def sensor_options_for_data(
                         UnitOfPower.WATT,
                         SensorStateClass.MEASUREMENT,
                     ),
-                    SemsInverterSensorType(
+                    sems_inverter_sensor_description(
                         device_info,
                         f"{serial_number}-{idx}-vbattery",
                         [*path_to_battery, "vbattery"],
@@ -527,7 +517,7 @@ def sensor_options_for_data(
                         UnitOfElectricPotential.VOLT,
                         SensorStateClass.MEASUREMENT,
                     ),
-                    SemsInverterSensorType(
+                    sems_inverter_sensor_description(
                         device_info,
                         f"{serial_number}-{idx}-ibattery",
                         [*path_to_battery, "ibattery"],
@@ -536,7 +526,7 @@ def sensor_options_for_data(
                         UnitOfElectricCurrent.AMPERE,
                         SensorStateClass.MEASUREMENT,
                     ),
-                    SemsInverterSensorType(
+                    sems_inverter_sensor_description(
                         device_info,
                         f"{serial_number}-{idx}-soc",
                         [*path_to_battery, "soc"],
@@ -545,7 +535,7 @@ def sensor_options_for_data(
                         PERCENTAGE,
                         SensorStateClass.MEASUREMENT,
                     ),
-                    SemsInverterSensorType(
+                    sems_inverter_sensor_description(
                         device_info,
                         f"{serial_number}-{idx}-soh",
                         [*path_to_battery, "soh"],
@@ -554,7 +544,7 @@ def sensor_options_for_data(
                         PERCENTAGE,
                         SensorStateClass.MEASUREMENT,
                     ),
-                    SemsInverterSensorType(
+                    sems_inverter_sensor_description(
                         device_info,
                         f"{serial_number}-{idx}-bms_temperature",
                         [*path_to_battery, "bms_temperature"],
@@ -563,7 +553,7 @@ def sensor_options_for_data(
                         UnitOfTemperature.CELSIUS,
                         SensorStateClass.MEASUREMENT,
                     ),
-                    SemsInverterSensorType(
+                    sems_inverter_sensor_description(
                         device_info,
                         f"{serial_number}-{idx}-bms_discharge_i_max",
                         [*path_to_battery, "bms_discharge_i_max"],
@@ -572,7 +562,7 @@ def sensor_options_for_data(
                         UnitOfElectricCurrent.AMPERE,
                         SensorStateClass.MEASUREMENT,
                     ),
-                    SemsInverterSensorType(
+                    sems_inverter_sensor_description(
                         device_info,
                         f"{serial_number}-{idx}-bms_charge_i_max",
                         [*path_to_battery, "bms_charge_i_max"],
@@ -588,7 +578,7 @@ def sensor_options_for_data(
             is not None
         ):
             sensors.append(
-                SemsInverterSensorType(
+                sems_inverter_sensor_description(
                     device_info,
                     f"{serial_number}-pmeter",
                     [*path_to_inverter, "pmeter"],
@@ -603,7 +593,7 @@ def sensor_options_for_data(
             is not None
         ):
             sensors.append(
-                SemsInverterSensorType(
+                sems_inverter_sensor_description(
                     device_info,
                     f"{serial_number}-eChargeDay",
                     [*path_to_inverter, "eChargeDay"],
@@ -618,7 +608,7 @@ def sensor_options_for_data(
             is not None
         ):
             sensors.append(
-                SemsInverterSensorType(
+                sems_inverter_sensor_description(
                     device_info,
                     f"{serial_number}-eDischargeDay",
                     [*path_to_inverter, "eDischargeDay"],
@@ -663,7 +653,7 @@ def sensor_options_for_data(
             return value_status_handler
 
         sensors += [
-            SemsLegacyPowerflowSensorType(
+            sems_legacy_powerflow_sensor_description(
                 device_info,
                 f"{homekit_sn}-homekit",  # backwards compatibility otherwise would be f"{serial_number}-load"
                 ["load"],
@@ -672,7 +662,7 @@ def sensor_options_for_data(
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
-            SemsHomekitSensorType(
+            sems_homekit_sensor_description(
                 device_info,
                 f"{homekit_sn}-load",
                 ["load"],
@@ -681,7 +671,7 @@ def sensor_options_for_data(
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
-            SemsHomekitSensorType(
+            sems_homekit_sensor_description(
                 device_info,
                 f"{homekit_sn}-pv",
                 ["pv"],
@@ -690,7 +680,7 @@ def sensor_options_for_data(
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
-            SemsHomekitSensorType(
+            sems_homekit_sensor_description(
                 device_info,
                 f"{homekit_sn}-grid",
                 ["grid"],
@@ -699,7 +689,7 @@ def sensor_options_for_data(
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
-            SemsHomekitSensorType(
+            sems_homekit_sensor_description(
                 device_info,
                 f"{homekit_sn}-load-status",
                 ["loadStatus"],
@@ -714,7 +704,7 @@ def sensor_options_for_data(
                 # the same import/export (sign) convention as the grid power sensor.
                 custom_value_handler=status_value_handler(["gridStatus"]),
             ),
-            SemsHomekitSensorType(
+            sems_homekit_sensor_description(
                 device_info,
                 f"{homekit_sn}-battery",
                 [GOODWE_SPELLING.battery],
@@ -726,7 +716,7 @@ def sensor_options_for_data(
                     [GOODWE_SPELLING.batteryStatus]
                 ),
             ),
-            SemsHomekitSensorType(
+            sems_homekit_sensor_description(
                 device_info,
                 f"{homekit_sn}-genset",
                 ["genset"],
@@ -735,7 +725,7 @@ def sensor_options_for_data(
                 UnitOfPower.WATT,
                 SensorStateClass.MEASUREMENT,
             ),
-            SemsHomekitSensorType(
+            sems_homekit_sensor_description(
                 device_info,
                 f"{homekit_sn}-soc",
                 ["soc"],
@@ -809,7 +799,7 @@ def sensor_options_for_data(
         ):
             if key in data.homekit:
                 sensors.append(
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-{key}",
                         [key],
@@ -824,7 +814,7 @@ def sensor_options_for_data(
                 "statistics" in data.unavailable_homekit_sources
             ):
                 sensors += [
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-import-energy",
                         ["Charts_buy"],
@@ -833,7 +823,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-export-energy",
                         ["Charts_sell"],
@@ -842,7 +832,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-daily-load-consumption",
                         ["Charts_consumptionOfLoad"],
@@ -851,7 +841,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-daily-self-use",
                         ["Charts_selfUseOfPv"],
@@ -860,7 +850,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-daily-battery-charge",
                         ["Charts_charge"],
@@ -869,7 +859,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-daily-battery-discharge",
                         ["Charts_disCharge"],
@@ -878,7 +868,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-daily-self-sufficiency-rate",
                         ["Charts_contributingRate"],
@@ -888,7 +878,7 @@ def sensor_options_for_data(
                         SensorStateClass.MEASUREMENT,
                         custom_value_handler=_percentage_handler,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-daily-self-use-rate",
                         ["Charts_selfUseRate"],
@@ -903,7 +893,7 @@ def sensor_options_for_data(
                 "statistics" in data.unavailable_homekit_sources
             ):
                 sensors += [
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-import-energy-total",
                         ["Totals_buy"],
@@ -912,7 +902,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-export-energy-total",
                         ["Totals_sell"],
@@ -921,7 +911,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-total-load-consumption",
                         ["Totals_consumptionOfLoad"],
@@ -930,7 +920,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-total-self-use",
                         ["Totals_selfUseOfPv"],
@@ -939,7 +929,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-total-battery-charge",
                         ["Totals_charge"],
@@ -948,7 +938,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-total-battery-discharge",
                         ["Totals_disCharge"],
@@ -957,7 +947,7 @@ def sensor_options_for_data(
                         UnitOfEnergy.KILO_WATT_HOUR,
                         SensorStateClass.TOTAL_INCREASING,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-total-self-sufficiency-rate",
                         ["Totals_contributingRate"],
@@ -967,7 +957,7 @@ def sensor_options_for_data(
                         SensorStateClass.MEASUREMENT,
                         custom_value_handler=_percentage_handler,
                     ),
-                    SemsHomekitSensorType(
+                    sems_homekit_sensor_description(
                         device_info,
                         f"{homekit_sn}-total-self-use-rate",
                         ["Totals_selfUseRate"],

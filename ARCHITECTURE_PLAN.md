@@ -35,8 +35,10 @@ current user-facing setup and control behavior is documented in
 4. **Sensor and switch platforms** consume coordinator data. Sensors are
    declared with value paths; controls call `SemsApi` and request a coordinator
    refresh after a successful command.
-\n+**Refactoring status (stacked implementation)**
-\n+- Numeric parsing, cache, and control helpers are centralized.
+
+**Refactoring status (stacked implementation)**
+
+- Numeric parsing, cache, and control helpers are centralized.
 - Sensor definitions use `SensorEntityDescription` subclasses and an explicit
   entity-class field.
 - The station refresh is split into fetch, parse, flow merge, cabinet merge,

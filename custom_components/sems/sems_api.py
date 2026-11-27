@@ -354,17 +354,17 @@ class SemsApi:
         """Bridge the compatibility caller to HA's injected aiohttp loop."""
         if self._aiohttp_transport is None or self._aiohttp_loop is None:
             raise requests.ConnectionError("aiohttp transport is unavailable")
-        future = asyncio.run_coroutine_threadsafe(
-            self._aiohttp_transport.request(
-                method,
-                url,
-                headers,
-                data,
-                json_data,
-            ),
-            self._aiohttp_loop,
-        )
         try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._aiohttp_transport.request(
+                    method,
+                    url,
+                    headers,
+                    data,
+                    json_data,
+                ),
+                self._aiohttp_loop,
+            )
             return future.result(timeout=_RequestTimeout + 5)
         except TimeoutError as err:
             raise requests.Timeout("SEMS aiohttp request timed out") from err
@@ -373,7 +373,7 @@ class SemsApi:
         except RuntimeError as err:
             raise requests.ConnectionError(str(err)) from err
 
-    def _make_http_request(
+    def _make_http_request(  # noqa: C901, PLR0912
         self,
         url: str,
         headers: dict[str, str],
@@ -1016,7 +1016,7 @@ class SemsApi:
         )
         return None
 
-    def _make_api_call(
+    def _make_api_call(  # noqa: C901
         self,
         url_part: str,
         data: str | None = None,
@@ -1177,7 +1177,7 @@ class SemsApi:
             include_last_month=include_last_month,
         )
 
-    def _get_web_statistics(
+    def _get_web_statistics(  # noqa: C901, PLR0912
         self,
         power_station_id: str,
         dimension: str,
@@ -1355,7 +1355,7 @@ class SemsApi:
         self._set_web_cache_entry(cache_key, (time.monotonic(), value))
         return value
 
-    def _get_web_energy_statistics(
+    def _get_web_energy_statistics(  # noqa: C901, PLR0912
         self,
         power_station_id: str,
         inverters: list[dict[str, Any]],
@@ -1640,7 +1640,7 @@ class SemsApi:
             _LOGGER.debug("SEMS station flow unavailable (%s)", type(err).__name__)
             return {}, True
 
-    def _parse_web_device(
+    def _parse_web_device(  # noqa: C901
         self,
         power_station_id: str,
         device: dict[str, Any],
@@ -2039,7 +2039,7 @@ class SemsApi:
         self._reset_cooldown_after_poll(cooldown_strikes)
         return result
 
-    def getWebEvCharger(
+    def getWebEvCharger(  # noqa: C901, PLR0912
         self,
         powerStationId: str,
         device: dict[str, Any],
@@ -2391,7 +2391,7 @@ class SemsApi:
         """Return a numeric SEMS+ factor, if present and valid."""
         return parse_float(factors.get(code))
 
-    def getWebInverterDevices(
+    def getWebInverterDevices(  # noqa: C901
         self, powerStationId: str, renewToken: bool = False, maxTokenRetries: int = 2
     ) -> list[dict[str, Any]]:
         """Discover inverter devices through the SEMS+ Web API."""
@@ -2435,7 +2435,7 @@ class SemsApi:
                         )
         return devices
 
-    def getWebInverterTelemetry(
+    def getWebInverterTelemetry(  # noqa: C901, PLR0912
         self,
         powerStationId: str,
         serialNumber: str,
@@ -2523,7 +2523,7 @@ class SemsApi:
                     telemetry[target] = value * multiplier
         return telemetry
 
-    def _fetch_web_telecounting_groups(
+    def _fetch_web_telecounting_groups(  # noqa: C901, PLR0912
         self,
         powerStationId: str,
         serialNumber: str,
@@ -2623,7 +2623,7 @@ class SemsApi:
             merged = [*cached_groups, *merged]
         return merged
 
-    def getWebInverterTelecounting(
+    def getWebInverterTelecounting(  # noqa: C901, PLR0912
         self,
         powerStationId: str,
         serialNumber: str,
@@ -3055,7 +3055,7 @@ class SemsApi:
         )
         return result if isinstance(result, dict) else {}
 
-    def getInverterControlFunctions(
+    def getInverterControlFunctions(  # noqa: C901
         self,
         serialNumber: str,
         renewToken: bool = False,

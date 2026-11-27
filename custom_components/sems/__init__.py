@@ -493,7 +493,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             for inverter in data_result.get("inverter", {})
         }
 
-    async def _async_get_battery_functions(
+    async def _async_get_battery_functions(  # noqa: C901, PLR0912
         self, energy_storage_cabinets: dict[str, list[dict[str, Any]]]
     ) -> dict[str, dict[str, dict[str, Any]]] | None:
         """Fetch and retain supported battery functions."""
@@ -614,7 +614,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         async with self._poll_lock:
             return await self._async_update_data_unlocked()
 
-    async def _async_update_data_unlocked(self) -> SemsData:
+    async def _async_update_data_unlocked(self) -> SemsData:  # noqa: C901, PLR0912
         """Fetch data from API endpoint.
 
         This is the place to pre-process the data to lookup tables

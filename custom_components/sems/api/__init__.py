@@ -1,7 +1,7 @@
 """Focused helpers for the SEMS API adapter."""
 
 from .async_transport import AioHttpResponseAdapter, AsyncSemsTransport
-from .auth import LoginHandler, TokenProfile, TokenType
+from .auth import LoginHandler, TokenType
 from .controls import find_control_function, parse_control_attributes
 from .transport import (
     is_web_statistics,
@@ -14,7 +14,6 @@ __all__ = [
     "AioHttpResponseAdapter",
     "AsyncSemsTransport",
     "LoginHandler",
-    "TokenProfile",
     "TokenType",
     "find_control_function",
     "is_web_statistics",
