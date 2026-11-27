@@ -35,6 +35,18 @@ current user-facing setup and control behavior is documented in
 4. **Sensor and switch platforms** consume coordinator data. Sensors are
    declared with value paths; controls call `SemsApi` and request a coordinator
    refresh after a successful command.
+\n+**Refactoring status (stacked implementation)**
+\n+- Numeric parsing, cache, and control helpers are centralized.
+- Sensor definitions use `SensorEntityDescription` subclasses and an explicit
+  entity-class field.
+- The station refresh is split into fetch, parse, flow merge, cabinet merge,
+  and statistics merge stages.
+- The API package contains focused auth, transport, control, and Web-adapter
+  helper modules.
+- Raw, parsed-device, parsed-station, and runtime `SemsData` records establish
+  typed boundaries before legacy envelope assembly.
+- Production API constructors prefer the Home Assistant-injected aiohttp
+  session; direct/test construction retains the `requests.Session` fallback.
 
 The SEMS+ Web adapter deliberately builds the legacy-compatible response
 envelope (`inverter[].invert_full`, power-flow, and statistics keys) so

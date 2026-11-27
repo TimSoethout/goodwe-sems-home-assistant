@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -14,11 +15,14 @@ from datetime import datetime, timedelta
 from typing import Any, NamedTuple, TypeVar, cast
 from urllib.parse import urlsplit
 
+import aiohttp
 import requests
 from homeassistant import exceptions
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
+from .api.async_transport import AioHttpResponseAdapter, AsyncSemsTransport
 from .api.auth import LoginHandler, TokenType
 from .api.controls import find_control_function, parse_control_attributes
 from .api.transport import (
@@ -239,7 +243,13 @@ _WEB_CACHE_PERSISTENT_PREFIXES = ("counters:",)
 class SemsApi:
     """Interface to the SEMS API."""
 
-    def __init__(self, hass: HomeAssistant, username: str, password: str) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        username: str,
+        password: str,
+        use_async_transport: bool = False,
+    ) -> None:
         """Init dummy hub."""
         self._hass = hass
         self._username = username
@@ -252,6 +262,18 @@ class SemsApi:
         self._web_cache_lock = threading.Lock()
         self._web_cache_pruned_at = time.monotonic()
         self._session = requests.Session()
+        self._aiohttp_transport: AsyncSemsTransport | None = None
+        self._aiohttp_loop: asyncio.AbstractEventLoop | None = None
+        if use_async_transport:
+            try:
+                loop = hass.loop
+                session = async_get_clientsession(hass)
+            except AttributeError, RuntimeError, TypeError:
+                pass
+            else:
+                if isinstance(loop, asyncio.AbstractEventLoop):
+                    self._aiohttp_transport = AsyncSemsTransport(session)
+                    self._aiohttp_loop = loop
         self._request_slots = threading.BoundedSemaphore(_MaxConcurrentRequests)
         # Logins are serialized. Each successful login bumps the generation of
         # its token type, so a request that was rejected with an older token
@@ -321,6 +343,36 @@ class SemsApi:
             return False
         raise SemsConnectionError("SEMS authentication failed to connect")
 
+    def _execute_async_http_request(
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        data: str | None,
+        json_data: dict[str, Any] | None,
+    ) -> AioHttpResponseAdapter:
+        """Bridge the compatibility caller to HA's injected aiohttp loop."""
+        if self._aiohttp_transport is None or self._aiohttp_loop is None:
+            raise requests.ConnectionError("aiohttp transport is unavailable")
+        future = asyncio.run_coroutine_threadsafe(
+            self._aiohttp_transport.request(
+                method,
+                url,
+                headers,
+                data,
+                json_data,
+            ),
+            self._aiohttp_loop,
+        )
+        try:
+            return future.result(timeout=_RequestTimeout + 5)
+        except TimeoutError as err:
+            raise requests.Timeout("SEMS aiohttp request timed out") from err
+        except aiohttp.ClientError as err:
+            raise requests.ConnectionError(str(err)) from err
+        except RuntimeError as err:
+            raise requests.ConnectionError(str(err)) from err
+
     def _make_http_request(
         self,
         url: str,
@@ -338,20 +390,36 @@ class SemsApi:
                 "SEMS - Making %s to %s", operation_name, _safe_url_for_log(url)
             )
             with self._request_slots:
-                response = self._session.request(
-                    method.upper(),
-                    url,
-                    headers={"User-Agent": _BrowserUserAgent, **headers},
-                    data=data,
-                    json=json_data,
-                    timeout=_RequestTimeout,
-                    allow_redirects=False,
-                )
+                request_headers = {"User-Agent": _BrowserUserAgent, **headers}
+                response: requests.Response | AioHttpResponseAdapter
+                if (
+                    self._aiohttp_transport is not None
+                    and self._aiohttp_loop is not None
+                ):
+                    response = self._execute_async_http_request(
+                        method,
+                        url,
+                        request_headers,
+                        data,
+                        json_data,
+                    )
+                else:
+                    response = self._session.request(
+                        method.upper(),
+                        url,
+                        headers=request_headers,
+                        data=data,
+                        json=json_data,
+                        timeout=_RequestTimeout,
+                        allow_redirects=False,
+                    )
 
             if response.status_code in (301, 302, 303, 307, 308):
                 raise requests.HTTPError(
                     f"{operation_name} returned an unexpected redirect",
-                    response=response,
+                    response=response
+                    if isinstance(response, requests.Response)
+                    else None,
                 )
 
             if response.status_code == 429:
@@ -443,16 +511,17 @@ class SemsApi:
             return json_response
 
         except requests.HTTPError as exception:
-            if (response := exception.response) is not None:
+            http_response = exception.response
+            if http_response is not None:
                 try:
-                    error_body: Any = response.json()
+                    error_body: Any = http_response.json()
                 except ValueError:
-                    error_body = response.text
+                    error_body = http_response.text
                 _LOGGER.error(
                     "Unable to complete %s: status=%s endpoint=%s body=%s",
                     operation_name,
-                    response.status_code,
-                    _safe_url_for_log(str(response.url)),
+                    http_response.status_code,
+                    _safe_url_for_log(str(http_response.url)),
                     redact_for_log(error_body),
                 )
             else:

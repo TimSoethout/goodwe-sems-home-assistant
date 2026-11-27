@@ -133,7 +133,12 @@ def _acquire_shared_api(hass: HomeAssistant, entry: ConfigEntry) -> _SharedApi:
     shared = clients.get(key)
     if shared is None:
         shared = clients[key] = _SharedApi(
-            api=SemsApi(hass, entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]),
+            api=SemsApi(
+                hass,
+                entry.data[CONF_USERNAME],
+                entry.data[CONF_PASSWORD],
+                use_async_transport=True,
+            ),
             entry_ids=set(),
         )
     else:

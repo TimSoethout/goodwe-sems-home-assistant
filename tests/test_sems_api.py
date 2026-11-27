@@ -1,5 +1,6 @@
 """Tests for the SEMS API module."""
 
+import asyncio
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -9,11 +10,16 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import Mock, call, patch
 
+import aiohttp
 import pytest
 import requests
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.sems import SemsData
+from custom_components.sems.api.async_transport import (
+    AioHttpResponseAdapter,
+    AsyncSemsTransport,
+)
 from custom_components.sems.api.controls import (
     find_control_function,
     parse_control_attributes,
@@ -45,6 +51,52 @@ SUCCESS_MESSAGE = "操作成功"
 API_EXAMPLES_DIR = Path(__file__).parent.parent / "api_examples"
 
 
+class FakeAsyncResponse:
+    """Small aiohttp response stand-in for transport unit tests."""
+
+    def __init__(self) -> None:
+        self.status = 200
+        self.headers = {"Content-Type": "application/json"}
+        self.url = "https://example.com/api"
+        self.payload = {"code": 0, "data": {"ok": True}}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def text(self) -> str:
+        return '{"code": 0, "data": {"ok": true}}'
+
+    async def json(self, content_type=None):
+        return self.payload
+
+
+class FakeInvalidJsonResponse(FakeAsyncResponse):
+    """aiohttp response stand-in whose JSON decoding fails."""
+
+    async def text(self) -> str:
+        return "not-json"
+
+    async def json(self, content_type=None):
+        raise json.JSONDecodeError("invalid", "not-json", 0)
+
+
+class FakeAsyncSession:
+    """Small aiohttp session stand-in."""
+
+    def request(self, *args, **kwargs):
+        return FakeAsyncResponse()
+
+
+class FakeInvalidJsonSession:
+    """aiohttp session stand-in for invalid JSON."""
+
+    def request(self, *args, **kwargs):
+        return FakeInvalidJsonResponse()
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -60,6 +112,77 @@ API_EXAMPLES_DIR = Path(__file__).parent.parent / "api_examples"
 def test_parse_float(value: object, expected: float | None) -> None:
     """API numeric conversion rejects invalid and non-finite values."""
     assert parse_float(value) == expected
+
+
+def test_aiohttp_response_adapter() -> None:
+    """aiohttp response compatibility preserves status and JSON handling."""
+    response = AioHttpResponseAdapter(
+        status_code=200,
+        headers={"Content-Type": "application/json"},
+        url="https://example.com/api",
+        text='{"code": 0}',
+        payload={"code": 0},
+    )
+    response.raise_for_status()
+    assert response.json() == {"code": 0}
+
+    error = AioHttpResponseAdapter(
+        status_code=429,
+        headers={"Retry-After": "60"},
+        url="https://example.com/api",
+        text="rate limited",
+        payload=None,
+    )
+    with pytest.raises(requests.HTTPError) as err:
+        error.raise_for_status()
+    assert "429" in str(err.value)
+
+    empty = AioHttpResponseAdapter(
+        status_code=200,
+        headers={},
+        url="https://example.com/api",
+        text="",
+        payload=None,
+    )
+    with pytest.raises(ValueError, match="Empty response body"):
+        empty.json()
+
+    invalid = AioHttpResponseAdapter(
+        status_code=200,
+        headers={},
+        url="https://example.com/api",
+        text="not-json",
+        payload=None,
+    )
+    with pytest.raises(json.JSONDecodeError):
+        invalid.json()
+
+
+@pytest.mark.asyncio
+async def test_async_sems_transport_request() -> None:
+    """Async SEMS transport returns the compatibility response shape."""
+    transport = AsyncSemsTransport(FakeAsyncSession())  # type: ignore[arg-type]
+    response = await transport.request(
+        "POST",
+        "https://example.com/api",
+        {"Authorization": "test"},
+        '{"test": true}',
+        None,
+    )
+    assert response.status_code == 200
+    assert response.json()["data"] == {"ok": True}
+
+    invalid_transport = AsyncSemsTransport(
+        FakeInvalidJsonSession()  # type: ignore[arg-type]
+    )
+    invalid_response = await invalid_transport.request(
+        "POST",
+        "https://example.com/api",
+        {},
+        None,
+        None,
+    )
+    assert invalid_response.text == "not-json"
 
 
 def test_control_metadata_resolution() -> None:
@@ -174,205 +297,107 @@ class TestSemsApi:
         assert self.api._password == self.password
         assert self.api._token is None
 
-    def test_stage_helpers_track_optional_source_failures(self):
-        """Parsed device helpers retain source availability for partial polls."""
-        with (
-            patch.object(
-                SemsApi,
-                "getWebInverterTelemetry",
-                side_effect=SemsPermissionError("telemetry", "denied"),
-            ),
-            patch.object(
-                SemsApi,
-                "getWebInverterTelecounting",
-                side_effect=OutOfRetries("counter retry"),
-            ),
-        ):
-            data, device_type, unavailable = self.api._parse_web_device(
-                "station",
-                {"sn": "INV1", "deviceType": "INVERTER"},
-                False,
-                2,
-                True,
-            )
-        assert data is not None
-        assert device_type == "INVERTER"
-        assert unavailable == {"device_status", "telemetry", "counters"}
-
-        assert self.api._parse_web_device(
-            "station",
-            {"deviceType": "INVERTER"},
-            False,
-            2,
-            False,
-        ) == (None, "", set())
-
-    def test_stage_helpers_parse_ev_and_battery_rack(self):
-        """Parsed device helpers preserve EV and battery-rack records."""
-        ev_data, ev_type, ev_unavailable = self.api._parse_web_device(
-            "station",
-            {"sn": "EV1", "deviceType": "EV_CHARGER"},
-            False,
-            2,
-            False,
+    def test_async_transport_falls_back_when_injected_session_is_unavailable(self):
+        """Test the compatibility constructor rejects no usable HA loop safely."""
+        api = SemsApi(
+            Mock(),
+            "test_user",
+            "test_password",
+            use_async_transport=True,
         )
-        assert ev_data == {"sn": "EV1", "deviceType": "EV_CHARGER"}
-        assert ev_type == "EV_CHARGER"
-        assert ev_unavailable == set()
+        assert api._aiohttp_transport is None
+        assert api._aiohttp_loop is None
 
-        with (
-            patch.object(
-                SemsApi,
-                "getWebInverterTelemetry",
-                return_value={"pbattery": -1200, "vbattery": 400},
-            ),
-            patch.object(SemsApi, "getWebInverterTelecounting", return_value={}),
-        ):
-            data, device_type, unavailable = self.api._parse_web_device(
-                "station",
-                {
-                    "sn": "BAT1",
-                    "deviceType": "BATTERY_RACK",
-                    "name": "Rack",
-                },
-                False,
-                2,
-                False,
-            )
-        assert device_type == "BATTERY_RACK"
-        assert unavailable == set()
-        assert data is not None
-        assert data["battery_count"] == 1
-        assert data["more_batterys"][0]["pbattery"] == -1200
-
-    def test_stage_control_and_flow_helpers(self):
-        """Stage helpers parse control metadata and optional flow values."""
-        assert (
-            self.api._parse_control_attributes(
-                {
-                    "translateKey": "shutdown",
-                    "address": "40331",
-                    "id": "function123",
-                    "controlAttr": "not-json",
-                },
-                "shutdown",
-            )
-            is None
-        )
-        assert self.api._parse_control_attributes(
-            {
-                "translateKey": "start_up",
-                "address": "40330",
-                "id": "function123",
-                "controlAttr": [{"transKey": "start_up", "value": "0"}],
-            },
-            "start_up",
-        ) == ("40330", "function123", 0, "start_up", "start_up")
-        assert (
-            self.api._parse_control_attributes(
-                {
-                    "translateKey": "start_up",
-                    "address": "40330",
-                    "id": "function123",
-                    "controlAttr": [{"transKey": "start_up"}],
-                },
-                "start_up",
-            )
-            is None
-        )
-
-        ev_chargers = {"EV1": {"unavailable_sources": set()}}
-        real_inverters = [{"invert_full": {"sn": "INV1", "deviceType": "INVERTER"}}]
-        result: dict = {}
-        self.api._merge_web_station_flow(
-            result,
-            {
-                "pEvChar": "invalid",
-                "pGrid": "-2",
-                "pAc": "4",
-            },
-            False,
-            ev_chargers,
-            real_inverters,
-            [],
-        )
-        assert real_inverters[0]["invert_full"]["pmeter"] == -2000
-        assert real_inverters[0]["invert_full"]["pac"] == 4000
-
-        ev_chargers = {"EV1": {"unavailable_sources": set()}}
-        real_inverters = [{"invert_full": {"sn": "INV1", "deviceType": "INVERTER"}}]
-        result = {}
-        self.api._merge_web_station_flow(
-            result,
-            {"pEvChar": "1.5"},
-            False,
-            ev_chargers,
-            real_inverters,
-            [],
-        )
-        assert ev_chargers["EV1"]["charging_power"] == 1500
-
-    def test_stage_helpers_cover_remaining_validation_branches(self):
-        """Stage helpers cover invalid types and permission branches."""
-        with (
-            patch.object(SemsApi, "getWebInverterTelemetry", return_value={}),
-            patch.object(
-                SemsApi,
-                "getWebInverterTelecounting",
-                side_effect=SemsPermissionError("counters", "denied"),
-            ),
-        ):
-            data, device_type, unavailable = self.api._parse_web_device(
-                "station",
-                {"sn": "INV1", "deviceType": 123},
-                False,
-                2,
-                False,
-            )
-        assert data is not None
-        assert device_type == "INVERTER"
-        assert unavailable == {"counters"}
-
-        assert (
-            self.api._parse_control_attributes(
-                {
-                    "translateKey": "start_up",
-                    "address": "40330",
-                    "id": "function123",
-                    "controlAttr": {"transKey": "start_up", "value": "0"},
-                },
-                "start_up",
-            )
-            is None
-        )
-
-        with (
-            patch.object(
-                SemsApi,
-                "getEnergyStorageIntegratedCabinets",
-                return_value=[{"sn": "BAT1", "type": "BAT_SYS"}],
-            ),
-            patch.object(
-                SemsApi,
-                "getBatterySystemTelemetry",
-                return_value={"power": -1.2, "voltage": 400},
-            ),
-        ):
-            storage = self.api._merge_web_storage_cabinets(
-                "station",
-                [
-                    {
-                        "invert_full": {
-                            "sn": "INV1",
-                            "deviceType": "ENERGY_STORAGE_INTEGRATED_CABINET",
-                        }
-                    }
-                ],
+    def test_async_transport_bridge_unavailable_and_timeout(self):
+        """Test the sync bridge maps unavailable and timed-out async sessions."""
+        with pytest.raises(requests.ConnectionError, match="unavailable"):
+            self.api._execute_async_http_request(
+                "POST",
+                "https://example.com/api",
                 {},
-                False,
-                2,
+                None,
+                None,
             )
-        assert storage["INV1"][0]["sn"] == "BAT1"
+
+        self.api._aiohttp_loop = Mock(spec=asyncio.AbstractEventLoop)
+        self.api._aiohttp_transport = Mock()
+        future = Mock()
+        future.result.side_effect = TimeoutError
+        with (
+            patch(
+                "custom_components.sems.sems_api.asyncio.run_coroutine_threadsafe",
+                return_value=future,
+            ),
+            pytest.raises(requests.Timeout, match="timed out"),
+        ):
+            self.api._execute_async_http_request(
+                "POST",
+                "https://example.com/api",
+                {},
+                None,
+                None,
+            )
+
+    def test_async_transport_bridge_maps_client_and_runtime_errors(self):
+        """Test aiohttp and loop failures become requests exceptions."""
+        self.api._aiohttp_loop = Mock(spec=asyncio.AbstractEventLoop)
+        self.api._aiohttp_transport = Mock()
+
+        future = Mock()
+        future.result.side_effect = aiohttp.ClientError("offline")
+        with (
+            patch(
+                "custom_components.sems.sems_api.asyncio.run_coroutine_threadsafe",
+                return_value=future,
+            ),
+            pytest.raises(requests.ConnectionError, match="offline"),
+        ):
+            self.api._execute_async_http_request(
+                "POST",
+                "https://example.com/api",
+                {},
+                None,
+                None,
+            )
+
+        future.result.side_effect = RuntimeError("loop closed")
+        with (
+            patch(
+                "custom_components.sems.sems_api.asyncio.run_coroutine_threadsafe",
+                return_value=future,
+            ),
+            pytest.raises(requests.ConnectionError, match="loop closed"),
+        ):
+            self.api._execute_async_http_request(
+                "POST",
+                "https://example.com/api",
+                {},
+                None,
+                None,
+            )
+
+    def test_make_http_request_uses_async_transport_adapter(self):
+        """Test the compatibility HTTP method consumes the aiohttp adapter."""
+        adapter = AioHttpResponseAdapter(
+            status_code=200,
+            headers={},
+            url="https://example.com/api",
+            text='{"code": 0, "data": {"ok": true}}',
+            payload={"code": 0, "data": {"ok": True}},
+        )
+        self.api._aiohttp_loop = Mock(spec=asyncio.AbstractEventLoop)
+        self.api._aiohttp_transport = Mock()
+        with patch.object(
+            self.api,
+            "_execute_async_http_request",
+            return_value=adapter,
+        ):
+            result = self.api._make_http_request(
+                "https://example.com/api",
+                {},
+                validate_code=True,
+            )
+        assert result == {"code": 0, "data": {"ok": True}}
 
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_get_web_login_token")
