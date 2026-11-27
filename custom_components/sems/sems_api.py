@@ -28,6 +28,7 @@ from .api.transport import (
 )
 from .api.web_adapter import normalize_battery_rack
 from .const import parse_float, redact_for_log, redact_sensitive_text, redact_value
+from .models import ParsedDeviceRecord, ParsedStationData, RawStationData
 
 _LOGGER = logging.getLogger(__name__)
 _CachedT = TypeVar("_CachedT")
@@ -1667,24 +1668,16 @@ class SemsApi:
     def _parse_web_devices(
         self,
         power_station_id: str,
-        devices: list[dict[str, Any]],
+        raw: RawStationData,
         renew_token: bool,
         max_token_retries: int,
-        inventory_unavailable: bool,
-    ) -> tuple[
-        list[dict[str, Any]],
-        list[dict[str, Any]],
-        dict[str, dict[str, Any]],
-        dict[str, set[str]],
-        set[str],
-    ]:
+    ) -> ParsedStationData:
         """Parse discovered devices into the legacy station result shape."""
-        inverters: list[dict[str, Any]] = []
-        smart_meters: list[dict[str, Any]] = []
+        devices: list[ParsedDeviceRecord] = []
         ev_chargers: dict[str, dict[str, Any]] = {}
         unavailable_inverter_sources: dict[str, set[str]] = {}
         unavailable_homekit_sources: set[str] = set()
-        for device in devices:
+        for device in raw.devices:
             serial_number = device.get("sn")
             if not isinstance(serial_number, str):
                 continue
@@ -1693,7 +1686,7 @@ class SemsApi:
                 device,
                 renew_token,
                 max_token_retries,
-                inventory_unavailable,
+                raw.device_inventory_unavailable,
             )
             if device_data is None:
                 continue
@@ -1712,16 +1705,19 @@ class SemsApi:
                     unavailable_inverter_sources.setdefault(
                         serial_number, set()
                     ).update(unavailable_sources)
-            if device_type == "SMART_METER":
-                smart_meters.append(device_data)
-            elif device_type in _WEB_INVERTER_ENTITY_TYPES:
-                inverters.append({"invert_full": device_data})
-        return (
-            inverters,
-            smart_meters,
-            ev_chargers,
-            unavailable_inverter_sources,
-            unavailable_homekit_sources,
+            devices.append(
+                ParsedDeviceRecord(
+                    serial_number=serial_number,
+                    device_type=device_type,
+                    data=device_data,
+                    unavailable_sources=frozenset(unavailable_sources),
+                )
+            )
+        return ParsedStationData(
+            devices=tuple(devices),
+            ev_chargers=ev_chargers,
+            unavailable_inverter_sources=unavailable_inverter_sources,
+            unavailable_homekit_sources=unavailable_homekit_sources,
         )
 
     def _merge_web_station_flow(
@@ -1905,19 +1901,31 @@ class SemsApi:
             renewToken,
             maxTokenRetries,
         )
-        (
-            inverters,
-            smart_meters,
-            ev_chargers,
-            unavailable_inverter_sources,
-            unavailable_homekit_sources,
-        ) = self._parse_web_devices(
+        raw = RawStationData(
+            devices=tuple(devices),
+            flow=flow,
+            flow_unavailable=flow_unavailable,
+            device_inventory_unavailable=inventory_unavailable,
+        )
+        parsed = self._parse_web_devices(
             powerStationId,
-            devices,
+            raw,
             renewToken,
             maxTokenRetries,
-            inventory_unavailable,
         )
+        inverters = [
+            {"invert_full": record.data}
+            for record in parsed.devices
+            if record.device_type in _WEB_INVERTER_ENTITY_TYPES
+        ]
+        smart_meters = [
+            record.data
+            for record in parsed.devices
+            if record.device_type == "SMART_METER"
+        ]
+        ev_chargers = parsed.ev_chargers
+        unavailable_inverter_sources = parsed.unavailable_inverter_sources
+        unavailable_homekit_sources = parsed.unavailable_homekit_sources
 
         real_inverters = [
             inverter
