@@ -1559,222 +1559,284 @@ class SemsApi:
             is_valid=lambda value: isinstance(value, dict),
         )
 
-    def getWebData(
+    def _fetch_web_station_devices(
         self,
-        powerStationId: str,
-        renewToken: bool = False,
-        maxTokenRetries: int = 2,
-        include_last_month: bool = False,
-    ) -> dict[str, Any]:
-        """Build the legacy coordinator shape from SEMS+ Web responses."""
-        self._prune_web_cache()
-        cooldown_strikes = self._cooldown_strikes
-        inverters: list[dict[str, Any]] = []
-        smart_meters: list[dict[str, Any]] = []
-        ev_chargers: dict[str, dict[str, Any]] = {}
-        unavailable_inverter_sources: dict[str, set[str]] = {}
-        unavailable_homekit_sources: set[str] = set()
-        device_cache_key = f"devices:{powerStationId}"
-        cached_devices = self._get_web_cache_entry(device_cache_key)
-        device_inventory_unavailable = False
+        power_station_id: str,
+        renew_token: bool,
+        max_token_retries: int,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Fetch the station device inventory, retaining a recent fallback."""
+        cache_key = f"devices:{power_station_id}"
+        cached = self._get_web_cache_entry(cache_key)
         try:
             devices = self.getWebInverterDevices(
-                powerStationId, renewToken, maxTokenRetries
+                power_station_id,
+                renew_token,
+                max_token_retries,
             )
         except OutOfRetries, SemsRateLimitedError:
             if (
-                cached_devices is None
-                or time.monotonic() - cached_devices[0]
-                >= _WEB_DEVICE_LIST_CACHE_SECONDS
-                or not isinstance(cached_devices[1], list)
-                or not cached_devices[1]
+                cached is None
+                or time.monotonic() - cached[0] >= _WEB_DEVICE_LIST_CACHE_SECONDS
+                or not isinstance(cached[1], list)
+                or not cached[1]
             ):
                 raise
             _LOGGER.debug("SEMS+ device discovery unavailable; using recent inventory")
             devices = [
                 {key: value for key, value in device.items() if key != "status"}
-                for device in cached_devices[1]
+                for device in cached[1]
                 if isinstance(device, dict)
             ]
-            device_inventory_unavailable = True
-        else:
-            self._set_web_cache_entry(device_cache_key, (time.monotonic(), devices))
+            return devices, True
+        self._set_web_cache_entry(cache_key, (time.monotonic(), devices))
+        return devices, False
 
-        flow_unavailable = False
+    def _fetch_optional_station_flow(
+        self,
+        power_station_id: str,
+        renew_token: bool,
+        max_token_retries: int,
+    ) -> tuple[dict[str, Any], bool]:
+        """Fetch station flow, marking it unavailable but not coordinator-critical."""
         try:
-            flow = self.getWebStationFlow(powerStationId, renewToken, maxTokenRetries)
+            return (
+                self.getWebStationFlow(
+                    power_station_id,
+                    renew_token,
+                    max_token_retries,
+                ),
+                False,
+            )
         except (OutOfRetries, SemsRateLimitedError, SemsPermissionError) as err:
             _LOGGER.debug("SEMS station flow unavailable (%s)", type(err).__name__)
-            flow = {}
-            flow_unavailable = True
+            return {}, True
 
+    def _parse_web_device(
+        self,
+        power_station_id: str,
+        device: dict[str, Any],
+        renew_token: bool,
+        max_token_retries: int,
+        inventory_unavailable: bool,
+    ) -> tuple[dict[str, Any] | None, str, set[str]]:
+        """Fetch optional telemetry for one discovered device."""
+        serial_number = device.get("sn")
+        if not isinstance(serial_number, str):
+            return None, "", set()
+        device_type = device.get("deviceType", "INVERTER")
+        if not isinstance(device_type, str):
+            device_type = "INVERTER"
+        device_data = dict(device)
+        unavailable_sources: set[str] = set()
+        if inventory_unavailable and device_type in _WEB_INVERTER_ENTITY_TYPES:
+            unavailable_sources.add("device_status")
+        if device_type == "EV_CHARGER":
+            return device_data, device_type, unavailable_sources
+        if device_type == "DONGLE":
+            return device_data, device_type, unavailable_sources
+
+        try:
+            telemetry = self.getWebInverterTelemetry(
+                power_station_id,
+                serial_number,
+                renew_token,
+                max_token_retries,
+                device_type=device_type,
+            )
+            device_data.update(telemetry)
+        except SemsPermissionError as err:
+            _LOGGER.warning(
+                "SEMS+ denied inverter telemetry access for %s (%s). "
+                "Check the GoodWe account or plant permissions.",
+                redact_value(serial_number),
+                type(err).__name__,
+            )
+            unavailable_sources.add("telemetry")
+        except (OutOfRetries, SemsRateLimitedError) as err:
+            _LOGGER.debug(
+                "SEMS+ inverter telemetry unavailable for %s (%s)",
+                redact_value(serial_number),
+                type(err).__name__,
+            )
+            unavailable_sources.add("telemetry")
+
+        if "pac" not in device_data and device_data.get("status") in (-1, 0):
+            device_data["pac"] = 0
+        try:
+            device_data.update(
+                self.getWebInverterTelecounting(
+                    power_station_id,
+                    serial_number,
+                    renew_token,
+                    max_token_retries,
+                    device_type=device_type,
+                )
+            )
+        except SemsPermissionError as err:
+            _LOGGER.warning(
+                "SEMS+ denied inverter counter access for %s (%s). "
+                "Check the GoodWe account or plant permissions.",
+                redact_value(serial_number),
+                type(err).__name__,
+            )
+            unavailable_sources.add("counters")
+        except (OutOfRetries, SemsRateLimitedError) as err:
+            _LOGGER.debug(
+                "SEMS+ inverter counters unavailable for %s (%s)",
+                redact_value(serial_number),
+                type(err).__name__,
+            )
+            unavailable_sources.add("counters")
+
+        if device_type == "BATTERY_RACK":
+            battery_data = {
+                key: device_data.pop(key)
+                for key in (
+                    "pbattery",
+                    "vbattery",
+                    "ibattery",
+                    "soc",
+                    "soh",
+                    "bms_temperature",
+                    "bms_charge_i_max",
+                    "bms_discharge_i_max",
+                )
+                if key in device_data
+            }
+            if battery_data:
+                device_data["battery_count"] = 1
+                device_data["more_batterys"] = [battery_data]
+        device_data.setdefault("powerstation_id", power_station_id)
+        if "model_type" not in device_data and device_type in (
+            "INVERTER",
+            "ENERGY_STORAGE_INTEGRATED_CABINET",
+            "BATTERY_RACK",
+        ):
+            name = device_data.get("name")
+            subtype = device_data.get("subtype")
+            device_data["model_type"] = (
+                f"{name} ({subtype})"
+                if name and subtype
+                else name or subtype or "unknown"
+            )
+        return device_data, device_type, unavailable_sources
+
+    def _parse_web_devices(
+        self,
+        power_station_id: str,
+        devices: list[dict[str, Any]],
+        renew_token: bool,
+        max_token_retries: int,
+        inventory_unavailable: bool,
+    ) -> tuple[
+        list[dict[str, Any]],
+        list[dict[str, Any]],
+        dict[str, dict[str, Any]],
+        dict[str, set[str]],
+        set[str],
+    ]:
+        """Parse discovered devices into the legacy station result shape."""
+        inverters: list[dict[str, Any]] = []
+        smart_meters: list[dict[str, Any]] = []
+        ev_chargers: dict[str, dict[str, Any]] = {}
+        unavailable_inverter_sources: dict[str, set[str]] = {}
+        unavailable_homekit_sources: set[str] = set()
         for device in devices:
             serial_number = device.get("sn")
             if not isinstance(serial_number, str):
                 continue
-            device_type = device.get("deviceType", "INVERTER")
-            if not isinstance(device_type, str):
-                device_type = "INVERTER"
-            device_data = dict(device)
+            device_data, device_type, unavailable_sources = self._parse_web_device(
+                power_station_id,
+                device,
+                renew_token,
+                max_token_retries,
+                inventory_unavailable,
+            )
+            if device_data is None:
+                continue
             if device_type == "EV_CHARGER":
                 ev_chargers[serial_number] = self.getWebEvCharger(
-                    powerStationId, device_data, renewToken, maxTokenRetries
+                    power_station_id,
+                    device_data,
+                    renew_token,
+                    max_token_retries,
                 )
                 continue
-            if (
-                device_inventory_unavailable
-                and device_type in _WEB_INVERTER_ENTITY_TYPES
-            ):
-                unavailable_inverter_sources.setdefault(serial_number, set()).add(
-                    "device_status"
-                )
-            # Dongles have status, but no useful telemetry or counters. Avoid
-            # making unsupported requests for them while preserving their
-            # device/entity entry.
-            if device_type != "DONGLE":
-                unavailable_sources: set[str] = set()
-                try:
-                    telemetry = self.getWebInverterTelemetry(
-                        powerStationId,
-                        serial_number,
-                        renewToken,
-                        maxTokenRetries,
-                        device_type=device_type,
-                    )
-                    device_data.update(telemetry)
-                except SemsPermissionError as err:
-                    _LOGGER.warning(
-                        "SEMS+ denied inverter telemetry access for %s (%s). "
-                        "Check the GoodWe account or plant permissions.",
-                        redact_value(serial_number),
-                        type(err).__name__,
-                    )
-                    unavailable_sources.add("telemetry")
-                except (OutOfRetries, SemsRateLimitedError) as err:
-                    _LOGGER.debug(
-                        "SEMS+ inverter telemetry unavailable for %s (%s)",
-                        redact_value(serial_number),
-                        type(err).__name__,
-                    )
-                    unavailable_sources.add("telemetry")
-                if "pac" not in device_data and device_data.get("status") in (-1, 0):
-                    device_data["pac"] = 0
-                try:
-                    device_data.update(
-                        self.getWebInverterTelecounting(
-                            powerStationId,
-                            serial_number,
-                            renewToken,
-                            maxTokenRetries,
-                            device_type=device_type,
-                        )
-                    )
-                except SemsPermissionError as err:
-                    _LOGGER.warning(
-                        "SEMS+ denied inverter counter access for %s (%s). "
-                        "Check the GoodWe account or plant permissions.",
-                        redact_value(serial_number),
-                        type(err).__name__,
-                    )
-                    unavailable_sources.add("counters")
-                except (OutOfRetries, SemsRateLimitedError) as err:
-                    _LOGGER.debug(
-                        "SEMS+ inverter counters unavailable for %s (%s)",
-                        redact_value(serial_number),
-                        type(err).__name__,
-                    )
-                    unavailable_sources.add("counters")
-                if unavailable_sources:
-                    if device_type == "SMART_METER":
-                        unavailable_homekit_sources.update(unavailable_sources)
-                    else:
-                        unavailable_inverter_sources.setdefault(
-                            serial_number, set()
-                        ).update(unavailable_sources)
-            if device_type == "BATTERY_RACK":
-                battery_data = {
-                    key: device_data.pop(key)
-                    for key in (
-                        "pbattery",
-                        "vbattery",
-                        "ibattery",
-                        "soc",
-                        "soh",
-                        "bms_temperature",
-                        "bms_charge_i_max",
-                        "bms_discharge_i_max",
-                    )
-                    if key in device_data
-                }
-                if battery_data:
-                    device_data["battery_count"] = 1
-                    device_data["more_batterys"] = [battery_data]
-            device_data.setdefault("powerstation_id", powerStationId)
+            if unavailable_sources:
+                if device_type == "SMART_METER":
+                    unavailable_homekit_sources.update(unavailable_sources)
+                else:
+                    unavailable_inverter_sources.setdefault(
+                        serial_number, set()
+                    ).update(unavailable_sources)
             if device_type == "SMART_METER":
                 smart_meters.append(device_data)
-                continue
-            if device_type not in _WEB_INVERTER_ENTITY_TYPES:
-                continue
-            if "model_type" not in device_data:
-                name = device_data.get("name")
-                subtype = device_data.get("subtype")
-                device_data["model_type"] = (
-                    f"{name} ({subtype})"
-                    if name and subtype
-                    else name or subtype or "unknown"
-                )
-            inverters.append({"invert_full": device_data})
+            elif device_type in _WEB_INVERTER_ENTITY_TYPES:
+                inverters.append({"invert_full": device_data})
+        return (
+            inverters,
+            smart_meters,
+            ev_chargers,
+            unavailable_inverter_sources,
+            unavailable_homekit_sources,
+        )
 
-        real_inverters = [
-            inverter
-            for inverter in inverters
-            if inverter["invert_full"].get("deviceType") in _WEB_REAL_INVERTER_TYPES
-        ]
-        result: dict[str, Any] = {"inverter": inverters}
-        if ev_chargers:
-            result["ev_chargers"] = ev_chargers
+    def _merge_web_station_flow(
+        self,
+        result: dict[str, Any],
+        flow: dict[str, Any],
+        flow_unavailable: bool,
+        ev_chargers: dict[str, dict[str, Any]],
+        real_inverters: list[dict[str, Any]],
+        smart_meters: list[dict[str, Any]],
+    ) -> None:
+        """Merge optional station-flow data into the legacy result."""
         if flow_unavailable:
             for charger in ev_chargers.values():
                 charger["unavailable_sources"].add("flow")
         if len(ev_chargers) == 1 and flow.get("pEvChar") is not None:
-            # Station flow reports the (total) EV charging power in kW; it can
-            # only be attributed to a charger when the station has one.
             if (ev_charger_power := parse_float(flow.get("pEvChar"))) is not None:
                 next(iter(ev_chargers.values()))["charging_power"] = (
                     abs(ev_charger_power) * 1000
                 )
             else:
                 _LOGGER.debug("SEMS station flow has an invalid pEvChar value")
-        if flow:
+        if not flow:
+            return
+        if (
+            not smart_meters
+            and len(real_inverters) == 1
+            and (grid_power := parse_float(flow.get("pGrid"))) is not None
+        ):
+            real_inverters[0]["invert_full"]["pmeter"] = grid_power * 1000
+        if len(real_inverters) == 1:
+            inverter_full = real_inverters[0]["invert_full"]
             if (
-                not smart_meters
-                and len(real_inverters) == 1
-                and (grid_power := flow.get("pGrid")) is not None
+                "pac" not in inverter_full
+                and (solar_power := parse_float(flow.get("pAc"))) is not None
             ):
-                if (grid_power_float := parse_float(grid_power)) is not None:
-                    for inverter in real_inverters:
-                        inverter["invert_full"]["pmeter"] = grid_power_float * 1000
-                else:
-                    _LOGGER.debug("SEMS station flow has an invalid pGrid value")
-            if len(real_inverters) == 1:
-                inverter_full = real_inverters[0]["invert_full"]
-                if (
-                    "pac" not in inverter_full
-                    and (solar_power := flow.get("pAc")) is not None
-                ):
-                    if (solar_power_float := parse_float(solar_power)) is not None:
-                        inverter_full["pac"] = solar_power_float * 1000
-                    else:
-                        _LOGGER.debug("SEMS station flow has an invalid pAc value")
-            result.update(
-                {
-                    "hasPowerflow": True,
-                    "powerflow": self._normalize_web_homekit_data(
-                        flow, smart_meters[0] if smart_meters else None
-                    ),
-                    "hasEnergeStatisticsCharts": True,
-                }
-            )
+                inverter_full["pac"] = solar_power * 1000
+        result.update(
+            {
+                "hasPowerflow": True,
+                "powerflow": self._normalize_web_homekit_data(
+                    flow,
+                    smart_meters[0] if smart_meters else None,
+                ),
+                "hasEnergeStatisticsCharts": True,
+            }
+        )
+
+    def _merge_web_storage_cabinets(
+        self,
+        power_station_id: str,
+        inverters: list[dict[str, Any]],
+        unavailable_inverter_sources: dict[str, set[str]],
+        renew_token: bool,
+        max_token_retries: int,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Fetch cabinet and battery enrichment into inverter records."""
         storage_cabinets: dict[str, list[dict[str, Any]]] = {}
         for inverter in inverters:
             inverter_full = inverter["invert_full"]
@@ -1784,7 +1846,7 @@ class SemsApi:
             ):
                 continue
             serial_number = inverter_full["sn"]
-            cache_key = f"cabinets:{powerStationId}:{serial_number}"
+            cache_key = f"cabinets:{power_station_id}:{serial_number}"
             cached = self._get_web_cache_entry(cache_key)
             if (
                 cached
@@ -1794,7 +1856,10 @@ class SemsApi:
             else:
                 try:
                     cabinets = self.getEnergyStorageIntegratedCabinets(
-                        powerStationId, serial_number, renewToken, maxTokenRetries
+                        power_station_id,
+                        serial_number,
+                        renew_token,
+                        max_token_retries,
                     )
                 except (
                     OutOfRetries,
@@ -1815,36 +1880,45 @@ class SemsApi:
                 elif cached:
                     cabinets = cached[1]
             storage_cabinets[serial_number] = cabinets
-            batteries = self._get_web_batteries(powerStationId, cabinets)
+            batteries = self._get_web_batteries(power_station_id, cabinets)
             if batteries:
                 inverter_full["battery_count"] = len(batteries)
                 inverter_full["more_batterys"] = batteries
-        if any(storage_cabinets.values()):
-            result["info"] = {"is_stored": True}
-            result["_energy_storage_cabinets"] = storage_cabinets
+        return storage_cabinets
+
+    def _merge_web_statistics(
+        self,
+        power_station_id: str,
+        inverters: list[dict[str, Any]],
+        smart_meters: list[dict[str, Any]],
+        real_inverters: list[dict[str, Any]],
+        include_last_month: bool,
+        unavailable_homekit_sources: set[str],
+        result: dict[str, Any],
+    ) -> None:
+        """Merge optional chart and lifetime statistics into the station result."""
         try:
             statistics = self._get_web_energy_statistics(
-                powerStationId,
+                power_station_id,
                 inverters,
                 include_last_month=include_last_month,
             )
         except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
             _LOGGER.debug(
-                "SEMS station statistics unavailable (%s)", type(err).__name__
+                "SEMS station statistics unavailable (%s)",
+                type(err).__name__,
             )
             statistics = None
             unavailable_homekit_sources.add("statistics")
         if statistics is None and self._recently_failed(
             "energy_statistics:"
-            f"{powerStationId}:{dt_util.now().date()}:{include_last_month}"
+            f"{power_station_id}:{dt_util.now().date()}:{include_last_month}"
         ):
             unavailable_homekit_sources.add("statistics")
         charts, totals, currency, last_month_pv = (
             statistics if statistics is not None else ({}, {}, None, None)
         )
         if smart_meters:
-            # The smart meter measures grid import/export directly; prefer its
-            # counters over station statistics, which may omit or zero them.
             for source, stats, target in (
                 ("proPurchaseStatsToday", charts, "buy"),
                 ("proGridStatsToday", charts, "sell"),
@@ -1868,6 +1942,76 @@ class SemsApi:
                 invert_full["lastmonthetotle"] = last_month_pv
         if currency is not None:
             result["kpi"] = {"currency": currency}
+
+    def getWebData(
+        self,
+        powerStationId: str,
+        renewToken: bool = False,
+        maxTokenRetries: int = 2,
+        include_last_month: bool = False,
+    ) -> dict[str, Any]:
+        """Build the legacy coordinator shape from SEMS+ Web responses."""
+        self._prune_web_cache()
+        cooldown_strikes = self._cooldown_strikes
+        devices, inventory_unavailable = self._fetch_web_station_devices(
+            powerStationId,
+            renewToken,
+            maxTokenRetries,
+        )
+        flow, flow_unavailable = self._fetch_optional_station_flow(
+            powerStationId,
+            renewToken,
+            maxTokenRetries,
+        )
+        (
+            inverters,
+            smart_meters,
+            ev_chargers,
+            unavailable_inverter_sources,
+            unavailable_homekit_sources,
+        ) = self._parse_web_devices(
+            powerStationId,
+            devices,
+            renewToken,
+            maxTokenRetries,
+            inventory_unavailable,
+        )
+
+        real_inverters = [
+            inverter
+            for inverter in inverters
+            if inverter["invert_full"].get("deviceType") in _WEB_REAL_INVERTER_TYPES
+        ]
+        result: dict[str, Any] = {"inverter": inverters}
+        if ev_chargers:
+            result["ev_chargers"] = ev_chargers
+        self._merge_web_station_flow(
+            result,
+            flow,
+            flow_unavailable,
+            ev_chargers,
+            real_inverters,
+            smart_meters,
+        )
+        storage_cabinets = self._merge_web_storage_cabinets(
+            powerStationId,
+            inverters,
+            unavailable_inverter_sources,
+            renewToken,
+            maxTokenRetries,
+        )
+        if any(storage_cabinets.values()):
+            result["info"] = {"is_stored": True}
+            result["_energy_storage_cabinets"] = storage_cabinets
+        self._merge_web_statistics(
+            powerStationId,
+            inverters,
+            smart_meters,
+            real_inverters,
+            include_last_month,
+            unavailable_homekit_sources,
+            result,
+        )
         if unavailable_inverter_sources or unavailable_homekit_sources:
             result["unavailable_data_sources"] = {
                 "inverters": unavailable_inverter_sources,
@@ -3217,6 +3361,139 @@ class SemsApi:
             )
             return False
 
+    @staticmethod
+    def _find_control_function(
+        function_menus: dict[str, Any],
+        function_name: str,
+    ) -> dict[str, Any] | None:
+        """Find a dedicated function or its shared status-setting fallback."""
+        functions = function_menus.get("functions")
+        if not isinstance(functions, list):
+            return None
+        dedicated = next(
+            (
+                item
+                for item in functions
+                if isinstance(item, dict) and item.get("translateKey") == function_name
+            ),
+            None,
+        )
+        if dedicated is not None:
+            return dedicated
+        return next(
+            (
+                item
+                for item in functions
+                if isinstance(item, dict)
+                and item.get("translateKey") == "status_setting"
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _parse_control_attributes(
+        function: dict[str, Any],
+        function_name: str,
+    ) -> tuple[str, str, int, str, str] | None:
+        """Parse one discovered write command into address/value metadata."""
+        address = function.get("address")
+        function_id = function.get("id")
+        control_attrs = function.get("controlAttr")
+        if isinstance(control_attrs, str):
+            try:
+                control_attrs = json.loads(control_attrs)
+            except json.JSONDecodeError:
+                control_attrs = []
+        if not isinstance(control_attrs, list):
+            return None
+        control_action = (
+            "stop"
+            if function.get("translateKey") == "status_setting"
+            and function_name == "shutdown"
+            else function_name
+        )
+        control_attr = next(
+            (
+                item
+                for item in control_attrs
+                if isinstance(item, dict) and item.get("transKey") == control_action
+            ),
+            None,
+        )
+        log_name = function.get("translateKey")
+        log_action = (
+            control_attr.get("transKey") if isinstance(control_attr, dict) else None
+        )
+        try:
+            if (
+                address is None
+                or function_id is None
+                or not str(address)
+                or not str(function_id)
+                or control_attr is None
+                or not isinstance(log_name, str)
+                or not isinstance(log_action, str)
+            ):
+                return None
+            value = int(control_attr["value"])
+        except KeyError, TypeError, ValueError:
+            return None
+        return str(address), str(function_id), value, log_name, log_action
+
+    def _try_web_change_status(
+        self,
+        inverter_sn: str,
+        plant_id: str,
+        device_name: str,
+        function_name: str,
+        renew_token: bool,
+        max_token_retries: int,
+    ) -> tuple[bool, bool]:
+        """Try one discovered command and report whether valid metadata existed."""
+        try:
+            function_menus = self.getInverterControlFunctions(
+                inverter_sn,
+                renewToken=renew_token,
+                maxTokenRetries=max_token_retries,
+            )
+        except (
+            OutOfRetries,
+            SemsConnectionError,
+            SemsPermissionError,
+            SemsRateLimitedError,
+        ):
+            function_menus = {}
+        function = self._find_control_function(function_menus, function_name)
+        if function is None:
+            return False, False
+        parsed = self._parse_control_attributes(function, function_name)
+        if parsed is None:
+            return False, False
+        address, function_id, value, log_name, log_action = parsed
+        _LOGGER.debug(
+            "SEMS+ Web inverter command for %s: %s -> %s (address %s, value %s)",
+            redact_value(device_name),
+            log_name,
+            log_action,
+            address,
+            value,
+        )
+        try:
+            succeeded = self.setDeviceFunctionParameters(
+                plant_id,
+                inverter_sn,
+                device_name,
+                {address: value},
+                {log_name: log_action},
+                {address: function_id},
+                renewToken=renew_token,
+                maxTokenRetries=max_token_retries,
+                virtual_sn=inverter_sn,
+            )
+        except OutOfRetries:
+            succeeded = False
+        return succeeded, True
+
     def change_status(
         self,
         inverterSn: str,
@@ -3227,136 +3504,39 @@ class SemsApi:
         maxTokenRetries: int = 2,
     ) -> None:
         """Change inverter status through SEMS+ Web, falling back to legacy API."""
+        web_status = str(status)
+        web_function_names = {
+            "1": "restart",
+            "2": "shutdown",
+            "4": "start_up",
+        }
         if plant_id is not None and device_name is not None:
-            web_status = str(status)
-            function_name = {
-                "1": "restart",
-                "2": "shutdown",
-                "4": "start_up",
-            }.get(web_status)
+            function_name = web_function_names.get(web_status)
             if function_name is not None:
-                restart_action_available = False
-                try:
-                    function_menus = self.getInverterControlFunctions(
-                        inverterSn,
-                        renewToken=renewToken,
-                        maxTokenRetries=maxTokenRetries,
-                    )
-                except OutOfRetries:
-                    function_menus = {}
-
-                functions = function_menus.get("functions")
-                if not isinstance(functions, list):
-                    functions = []
-                function = next(
-                    (
-                        item
-                        for item in functions
-                        if isinstance(item, dict)
-                        and item.get("translateKey") == function_name
-                    ),
-                    None,
+                web_succeeded, restart_action_discovered = self._try_web_change_status(
+                    inverterSn,
+                    plant_id,
+                    device_name,
+                    function_name,
+                    renewToken,
+                    maxTokenRetries,
                 )
-                if function is None:
-                    function = next(
-                        (
-                            item
-                            for item in functions
-                            if isinstance(item, dict)
-                            and item.get("translateKey") == "status_setting"
-                        ),
-                        None,
-                    )
-                if function is not None:
-                    address = function.get("address")
-                    function_id = function.get("id")
-                    control_attrs = function.get("controlAttr")
-                    if isinstance(control_attrs, str):
-                        try:
-                            control_attrs = json.loads(control_attrs)
-                        except json.JSONDecodeError:
-                            control_attrs = []
-                    control_action = (
-                        "stop"
-                        if function.get("translateKey") == "status_setting"
-                        and function_name == "shutdown"
-                        else function_name
-                    )
-                    control_attr = (
-                        next(
-                            (
-                                item
-                                for item in control_attrs
-                                if isinstance(item, dict)
-                                and item.get("transKey") == control_action
-                            ),
-                            None,
-                        )
-                        if isinstance(control_attrs, list)
-                        else None
-                    )
-                    log_name = function.get("translateKey")
-                    log_action = (
-                        control_attr.get("transKey")
-                        if isinstance(control_attr, dict)
-                        else None
-                    )
-                    try:
-                        if (
-                            address is None
-                            or function_id is None
-                            or not str(address)
-                            or not str(function_id)
-                            or control_attr is None
-                            or not isinstance(log_name, str)
-                            or not isinstance(log_action, str)
-                        ):
-                            raise ValueError
-                        address = str(address)
-                        function_id = str(function_id)
-                        value = int(control_attr["value"])
-                        if web_status == "1":
-                            restart_action_available = True
-                        _LOGGER.debug(
-                            "SEMS+ Web inverter command for %s: %s -> %s "
-                            "(address %s, value %s)",
-                            redact_value(device_name),
-                            log_name,
-                            log_action,
-                            address,
-                            value,
-                        )
-                        web_control_succeeded = self.setDeviceFunctionParameters(
-                            plant_id,
-                            inverterSn,
-                            device_name,
-                            {address: value},
-                            {log_name: log_action},
-                            {address: function_id},
-                            renewToken=renewToken,
-                            maxTokenRetries=maxTokenRetries,
-                            virtual_sn=inverterSn,
-                        )
-                    except KeyError, TypeError, ValueError:
-                        web_control_succeeded = False
-                    except OutOfRetries:
-                        web_control_succeeded = False
-                    if web_control_succeeded:
-                        return
-                if web_status == "1" and not restart_action_available:
-                    # The legacy API has no known restart command; Start up is
-                    # the closest equivalent when discovery has no usable action.
+                if web_succeeded:
+                    return
+                if web_status == "1" and not restart_action_discovered:
                     _LOGGER.warning(
                         "SEMS+ Web restart command unavailable; trying Start up"
                     )
-                    return self.change_status(
+                    start_succeeded, _ = self._try_web_change_status(
                         inverterSn,
-                        4,
                         plant_id,
                         device_name,
-                        renewToken=renewToken,
-                        maxTokenRetries=maxTokenRetries,
+                        "start_up",
+                        renewToken,
+                        maxTokenRetries,
                     )
+                    if start_succeeded:
+                        return
                 _LOGGER.warning(
                     "SEMS+ Web inverter status command failed; trying legacy API"
                 )
@@ -3375,9 +3555,7 @@ class SemsApi:
         )
 
         if not success:
-            action = {"1": "restart", "2": "stop", "4": "start"}.get(
-                str(status), "control"
-            )
+            action = {"2": "stop", "4": "start"}.get(str(status), "control")
             device = redact_value(device_name or inverterSn)
             serial = redact_value(inverterSn)
             station = f" at station {redact_value(plant_id)}" if plant_id else ""

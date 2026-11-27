@@ -74,6 +74,206 @@ class TestSemsApi:
         assert self.api._password == self.password
         assert self.api._token is None
 
+    def test_stage_helpers_track_optional_source_failures(self):
+        """Parsed device helpers retain source availability for partial polls."""
+        with (
+            patch.object(
+                SemsApi,
+                "getWebInverterTelemetry",
+                side_effect=SemsPermissionError("telemetry", "denied"),
+            ),
+            patch.object(
+                SemsApi,
+                "getWebInverterTelecounting",
+                side_effect=OutOfRetries("counter retry"),
+            ),
+        ):
+            data, device_type, unavailable = self.api._parse_web_device(
+                "station",
+                {"sn": "INV1", "deviceType": "INVERTER"},
+                False,
+                2,
+                True,
+            )
+        assert data is not None
+        assert device_type == "INVERTER"
+        assert unavailable == {"device_status", "telemetry", "counters"}
+
+        assert self.api._parse_web_device(
+            "station",
+            {"deviceType": "INVERTER"},
+            False,
+            2,
+            False,
+        ) == (None, "", set())
+
+    def test_stage_helpers_parse_ev_and_battery_rack(self):
+        """Parsed device helpers preserve EV and battery-rack records."""
+        ev_data, ev_type, ev_unavailable = self.api._parse_web_device(
+            "station",
+            {"sn": "EV1", "deviceType": "EV_CHARGER"},
+            False,
+            2,
+            False,
+        )
+        assert ev_data == {"sn": "EV1", "deviceType": "EV_CHARGER"}
+        assert ev_type == "EV_CHARGER"
+        assert ev_unavailable == set()
+
+        with (
+            patch.object(
+                SemsApi,
+                "getWebInverterTelemetry",
+                return_value={"pbattery": -1200, "vbattery": 400},
+            ),
+            patch.object(SemsApi, "getWebInverterTelecounting", return_value={}),
+        ):
+            data, device_type, unavailable = self.api._parse_web_device(
+                "station",
+                {
+                    "sn": "BAT1",
+                    "deviceType": "BATTERY_RACK",
+                    "name": "Rack",
+                },
+                False,
+                2,
+                False,
+            )
+        assert device_type == "BATTERY_RACK"
+        assert unavailable == set()
+        assert data is not None
+        assert data["battery_count"] == 1
+        assert data["more_batterys"][0]["pbattery"] == -1200
+
+    def test_stage_control_and_flow_helpers(self):
+        """Stage helpers parse control metadata and optional flow values."""
+        assert (
+            self.api._parse_control_attributes(
+                {
+                    "translateKey": "shutdown",
+                    "address": "40331",
+                    "id": "function123",
+                    "controlAttr": "not-json",
+                },
+                "shutdown",
+            )
+            is None
+        )
+        assert self.api._parse_control_attributes(
+            {
+                "translateKey": "start_up",
+                "address": "40330",
+                "id": "function123",
+                "controlAttr": [{"transKey": "start_up", "value": "0"}],
+            },
+            "start_up",
+        ) == ("40330", "function123", 0, "start_up", "start_up")
+        assert (
+            self.api._parse_control_attributes(
+                {
+                    "translateKey": "start_up",
+                    "address": "40330",
+                    "id": "function123",
+                    "controlAttr": [{"transKey": "start_up"}],
+                },
+                "start_up",
+            )
+            is None
+        )
+
+        ev_chargers = {"EV1": {"unavailable_sources": set()}}
+        real_inverters = [{"invert_full": {"sn": "INV1", "deviceType": "INVERTER"}}]
+        result: dict = {}
+        self.api._merge_web_station_flow(
+            result,
+            {
+                "pEvChar": "invalid",
+                "pGrid": "-2",
+                "pAc": "4",
+            },
+            False,
+            ev_chargers,
+            real_inverters,
+            [],
+        )
+        assert real_inverters[0]["invert_full"]["pmeter"] == -2000
+        assert real_inverters[0]["invert_full"]["pac"] == 4000
+
+        ev_chargers = {"EV1": {"unavailable_sources": set()}}
+        real_inverters = [{"invert_full": {"sn": "INV1", "deviceType": "INVERTER"}}]
+        result = {}
+        self.api._merge_web_station_flow(
+            result,
+            {"pEvChar": "1.5"},
+            False,
+            ev_chargers,
+            real_inverters,
+            [],
+        )
+        assert ev_chargers["EV1"]["charging_power"] == 1500
+
+    def test_stage_helpers_cover_remaining_validation_branches(self):
+        """Stage helpers cover invalid types and permission branches."""
+        with (
+            patch.object(SemsApi, "getWebInverterTelemetry", return_value={}),
+            patch.object(
+                SemsApi,
+                "getWebInverterTelecounting",
+                side_effect=SemsPermissionError("counters", "denied"),
+            ),
+        ):
+            data, device_type, unavailable = self.api._parse_web_device(
+                "station",
+                {"sn": "INV1", "deviceType": 123},
+                False,
+                2,
+                False,
+            )
+        assert data is not None
+        assert device_type == "INVERTER"
+        assert unavailable == {"counters"}
+
+        assert (
+            self.api._parse_control_attributes(
+                {
+                    "translateKey": "start_up",
+                    "address": "40330",
+                    "id": "function123",
+                    "controlAttr": {"transKey": "start_up", "value": "0"},
+                },
+                "start_up",
+            )
+            is None
+        )
+
+        with (
+            patch.object(
+                SemsApi,
+                "getEnergyStorageIntegratedCabinets",
+                return_value=[{"sn": "BAT1", "type": "BAT_SYS"}],
+            ),
+            patch.object(
+                SemsApi,
+                "getBatterySystemTelemetry",
+                return_value={"power": -1.2, "voltage": 400},
+            ),
+        ):
+            storage = self.api._merge_web_storage_cabinets(
+                "station",
+                [
+                    {
+                        "invert_full": {
+                            "sn": "INV1",
+                            "deviceType": "ENERGY_STORAGE_INTEGRATED_CABINET",
+                        }
+                    }
+                ],
+                {},
+                False,
+                2,
+            )
+        assert storage["INV1"][0]["sn"] == "BAT1"
+
     @patch.object(SemsApi, "getLoginToken")
     @patch.object(SemsApi, "_get_web_login_token")
     def test_authentication_reuses_web_token(
@@ -4020,11 +4220,12 @@ class TestSemsApi:
         station = "private-station-456"
         device = "private-device-name"
 
-        with pytest.raises(
-            HomeAssistantError,
-            match="Verify that the GoodWe account has remote-control permission",
-        ) as err:
-            self.api.change_status(serial, 3, station, device)
+        with patch.object(self.api, "getInverterControlFunctions", return_value={}):
+            with pytest.raises(
+                HomeAssistantError,
+                match="Verify that the GoodWe account has remote-control permission",
+            ) as err:
+                self.api.change_status(serial, 1, station, device)
 
         mock_control_call.assert_called_once()
         assert serial not in str(err.value)
