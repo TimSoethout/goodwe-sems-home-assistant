@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from typing import Any, Literal, NamedTuple, TypeGuard, TypeVar
+from typing import Any, Literal, NamedTuple, TypeGuard, TypeVar, cast
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 import requests
@@ -1310,19 +1310,20 @@ class SemsApi:
         """Return a fresh cached value or one bounded optional fetch."""
         cached = self._get_web_cache_entry(cache_key)
         if cached and time.monotonic() - cached[0] < ttl and cached[1] is not None:
-            if is_valid is None or is_valid(cached[1]):
-                return cached[1]
+            cached_value = cast(_CachedT, cached[1])
+            if is_valid is None or is_valid(cached_value):
+                return cached_value
         if self._recently_failed(cache_key):
-            return cached[1] if cached else None
+            return cast(_CachedT, cached[1]) if cached else None
 
         try:
             value = fetch()
         except OutOfRetries, SemsPermissionError, SemsRateLimitedError:
             self._remember_failure(cache_key)
-            return cached[1] if cached else None
+            return cast(_CachedT, cached[1]) if cached else None
         if value is None or (is_valid is not None and not is_valid(value)):
             self._remember_failure(cache_key)
-            return cached[1] if cached else None
+            return cast(_CachedT, cached[1]) if cached else None
         self._set_web_cache_entry(cache_key, (time.monotonic(), value))
         return value
 
