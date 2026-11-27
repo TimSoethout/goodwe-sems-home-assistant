@@ -3141,6 +3141,7 @@ class SemsApi:
                 "4": "start_up",
             }.get(web_status)
             if function_name is not None:
+                restart_action_available = False
                 try:
                     function_menus = self.getInverterControlFunctions(
                         inverterSn,
@@ -3220,6 +3221,8 @@ class SemsApi:
                         address = str(address)
                         function_id = str(function_id)
                         value = int(control_attr["value"])
+                        if web_status == "1":
+                            restart_action_available = True
                         _LOGGER.debug(
                             "SEMS+ Web inverter command for %s: %s -> %s "
                             "(address %s, value %s)",
@@ -3246,9 +3249,9 @@ class SemsApi:
                         web_control_succeeded = False
                     if web_control_succeeded:
                         return
-                if web_status == "1":
+                if web_status == "1" and not restart_action_available:
                     # The legacy API has no known restart command; Start up is
-                    # the closest equivalent when no restart was discovered.
+                    # the closest equivalent when discovery has no usable action.
                     _LOGGER.warning(
                         "SEMS+ Web restart command unavailable; trying Start up"
                     )

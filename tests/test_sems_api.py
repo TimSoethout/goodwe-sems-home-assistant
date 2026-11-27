@@ -3762,6 +3762,45 @@ class TestSemsApi:
         mock_control_call.assert_not_called()
 
     @patch.object(SemsApi, "_make_control_api_call", return_value=True)
+    @patch.object(SemsApi, "setDeviceFunctionParameters", return_value=False)
+    @patch.object(
+        SemsApi,
+        "getInverterControlFunctions",
+        return_value={
+            "functions": [
+                {
+                    "translateKey": "restart",
+                    "address": "40332",
+                    "id": "function123",
+                    "controlAttr": '[{"transKey":"restart","value":"1"}]',
+                }
+            ]
+        },
+    )
+    def test_change_status_failed_discovered_restart_does_not_try_start_up(
+        self, mock_functions, mock_set_parameters, mock_control_call
+    ):
+        self.api.change_status(
+            "inverter123",
+            1,
+            plant_id="station123",
+            device_name="Inverter",
+        )
+
+        mock_functions.assert_called_once()
+        mock_set_parameters.assert_called_once()
+        mock_control_call.assert_called_once_with(
+            {
+                "InverterSN": "inverter123",
+                "InverterStatusSettingMark": "1",
+                "InverterStatus": "1",
+            },
+            renewToken=False,
+            maxTokenRetries=2,
+            operation_name="legacy inverter power control API call",
+        )
+
+    @patch.object(SemsApi, "_make_control_api_call", return_value=True)
     @patch.object(SemsApi, "setDeviceFunctionParameters")
     @patch.object(
         SemsApi,
