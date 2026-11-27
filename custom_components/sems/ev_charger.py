@@ -35,7 +35,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import SemsCoordinator
-from .const import DOMAIN, redact_sensitive_text
+from .const import DOMAIN, parse_float, redact_sensitive_text
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -333,10 +333,7 @@ class EvChargerSessionSensor(_EvChargerEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         value = self._charger.get("charge_log", {}).get(self._field)
-        try:
-            return float(value)
-        except TypeError, ValueError:
-            return None
+        return parse_float(value)
 
 
 class EvChargerFactorSensor(_EvChargerEntity, SensorEntity):
@@ -523,10 +520,7 @@ class EvChargerConfigNumber(_EvChargerEntity, NumberEntity):
     def _range(self, range_key: str | None, unit: str) -> tuple[float, float]:
         """Return the allowed range like the Web UI does."""
         mode_info = self._charger.get("mode_info", {})
-        try:
-            rated = float(mode_info.get("ratedPower") or 0)
-        except TypeError, ValueError:
-            rated = 0.0
+        rated = parse_float(mode_info.get("ratedPower")) or 0.0
         if not rated:
             rated = 22.0
         if range_key is None:
@@ -535,18 +529,14 @@ class EvChargerConfigNumber(_EvChargerEntity, NumberEntity):
             return (1.4 if rated == 7 else 4.2 if rated in (11, 22) else 0.0), rated
         ranges = (mode_info.get("controlItemRanges") or {}).get(range_key) or {}
         default_max = 63.0 if unit == UnitOfElectricCurrent.AMPERE else max(rated, 22.0)
-        try:
-            return float(ranges.get("min", 0)), float(ranges.get("max", default_max))
-        except TypeError, ValueError:
-            return 0.0, default_max
+        min_value = parse_float(ranges.get("min")) or 0.0
+        max_value = parse_float(ranges.get("max")) or default_max
+        return min_value, max_value
 
     @property
     def native_value(self) -> float | None:
         value = self._charger.get("detail", {}).get(self._field)
-        try:
-            return float(value)
-        except TypeError, ValueError:
-            return None
+        return parse_float(value)
 
     async def async_set_native_value(self, value: float) -> None:
         await self._async_command(

@@ -8,18 +8,20 @@ trap 'rm -f "$mypy_output"' EXIT
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-if [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/mypy" ]]; then
-  mypy="${VIRTUAL_ENV}/bin/mypy"
+if [[ -n "${VIRTUAL_ENV:-}" && "${VIRTUAL_ENV}" != "$repo_root/.venv" && -x "${VIRTUAL_ENV}/bin/mypy" ]]; then
+  mypy=("${VIRTUAL_ENV}/bin/mypy")
+elif command -v uv >/dev/null 2>&1; then
+  mypy=(uv run --no-project --python 3.14 --with-requirements "$repo_root/requirements.lint.txt" mypy)
 elif [[ -x "$repo_root/.venv/bin/mypy" ]]; then
-  mypy="$repo_root/.venv/bin/mypy"
+  mypy=("$repo_root/.venv/bin/mypy")
 elif command -v mypy >/dev/null 2>&1; then
-  mypy="$(command -v mypy)"
+  mypy=("$(command -v mypy)")
 else
   printf '%s\n' "mypy was not found; activate the test environment or install mypy." >&2
   exit 127
 fi
 
-if "$mypy" custom_components/ --strict --python-version 3.14 >"$mypy_output" 2>&1; then
+if "${mypy[@]}" custom_components/ --strict --python-version 3.14 >"$mypy_output" 2>&1; then
   passed=true
   printf '## Home Assistant quality-scale checks\n\n- **Platinum: strict-typing:** PASS (`mypy --strict`).\n\n' >> "$summary_file"
 else
