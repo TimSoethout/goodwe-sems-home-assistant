@@ -14,6 +14,11 @@ import requests
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.sems import SemsData
+from custom_components.sems.api.controls import (
+    find_control_function,
+    parse_control_attributes,
+)
+from custom_components.sems.api.web_adapter import normalize_battery_rack
 from custom_components.sems.const import (
     parse_float,
     redact_for_log,
@@ -55,6 +60,101 @@ API_EXAMPLES_DIR = Path(__file__).parent.parent / "api_examples"
 def test_parse_float(value: object, expected: float | None) -> None:
     """API numeric conversion rejects invalid and non-finite values."""
     assert parse_float(value) == expected
+
+
+def test_control_metadata_resolution() -> None:
+    """Dedicated functions win over the shared status-setting fallback."""
+    functions = {
+        "functions": [
+            {"translateKey": "status_setting", "address": "80017", "id": "1"},
+            {"translateKey": "start_up", "address": "40330", "id": "2"},
+        ]
+    }
+    assert find_control_function(functions, "start_up") == functions["functions"][1]
+    assert find_control_function(functions, "restart") == functions["functions"][0]
+    assert parse_control_attributes(
+        {
+            "translateKey": "status_setting",
+            "address": "80017",
+            "id": "1",
+            "controlAttr": [{"transKey": "restart", "value": "1"}],
+        },
+        "restart",
+    ) == ("80017", "1", 1, "status_setting", "restart")
+    assert (
+        parse_control_attributes(
+            {
+                "translateKey": "status_setting",
+                "address": "80017",
+                "id": "1",
+                "controlAttr": "not-json",
+            },
+            "restart",
+        )
+        is None
+    )
+    assert (
+        parse_control_attributes(
+            {
+                "translateKey": "status_setting",
+                "address": None,
+                "id": "1",
+                "controlAttr": [{"transKey": "restart", "value": "1"}],
+            },
+            "restart",
+        )
+        is None
+    )
+    assert (
+        parse_control_attributes(
+            {
+                "translateKey": "start_up",
+                "address": "40330",
+                "id": "2",
+                "controlAttr": [{"transKey": "start_up"}],
+            },
+            "start_up",
+        )
+        is None
+    )
+    assert (
+        parse_control_attributes(
+            {
+                "translateKey": "start_up",
+                "address": "40330",
+                "id": "2",
+                "controlAttr": {"transKey": "start_up", "value": "0"},
+            },
+            "start_up",
+        )
+        is None
+    )
+    assert find_control_function({}, "restart") is None
+
+
+def test_battery_rack_normalization() -> None:
+    """Flat battery-rack factors become the existing legacy rollup shape."""
+    data = normalize_battery_rack(
+        {
+            "pbattery": 1200,
+            "vbattery": 400,
+            "ibattery": -3,
+            "soc": 85,
+            "soh": 98,
+            "bms_temperature": 24,
+        }
+    )
+    assert data["battery_count"] == 1
+    assert data["more_batterys"] == [
+        {
+            "pbattery": 1200,
+            "vbattery": 400,
+            "ibattery": -3,
+            "soc": 85,
+            "soh": 98,
+            "bms_temperature": 24,
+        }
+    ]
 
 
 class TestSemsApi:
