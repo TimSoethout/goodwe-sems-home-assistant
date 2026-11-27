@@ -15,6 +15,19 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+try:
+    if len(sys.argv) > 1:
+        core_dir = Path(sys.argv[1]).resolve()
+        site_packages = next(core_dir.glob(".venv/lib/python*/site-packages"), None)
+        if site_packages is not None:
+            sys.path.insert(0, str(site_packages))
+    import websockets
+except Exception as error:
+    websockets = None
+    WEBSOCKETS_IMPORT_ERROR = f"{type(error).__name__}: {error}"
+else:
+    WEBSOCKETS_IMPORT_ERROR = ""
+
 BASE_URL = os.environ.get("HA_BASE_URL", "http://localhost:8123").rstrip("/")
 CLIENT_ID = f"{BASE_URL}/"
 REQUEST_TIMEOUT = 5
@@ -161,80 +174,120 @@ def login(credentials: dict[str, str]) -> str:
 
 async def async_prepare_ha_mcp(session_token: str) -> str:
     """Mint an admin token and install HA-MCP through the Marketplace."""
-    import aiohttp
+    if websockets is None:
+        raise RuntimeError(
+            "websockets is required for HA-MCP Marketplace setup"
+            f"{': ' + WEBSOCKETS_IMPORT_ERROR if WEBSOCKETS_IMPORT_ERROR else ''}"
+        )
 
     ws_url = (
         f"{BASE_URL.replace('http://', 'ws://', 1).replace('https://', 'wss://', 1)}"
         "/api/websocket"
     )
 
-    async def receive_result(
-        websocket: aiohttp.ClientWebSocketResponse, message_id: int
-    ) -> dict[str, Any]:
+    async def receive_result(websocket: Any, message_id: int) -> dict[str, Any]:
         while True:
-            message = await asyncio.wait_for(websocket.receive_json(), REQUEST_TIMEOUT)
+            raw_message = await asyncio.wait_for(websocket.recv(), REQUEST_TIMEOUT)
+            message = json.loads(raw_message)
             if message.get("id") == message_id:
                 return message
 
-    async with aiohttp.ClientSession() as session:
-        async with session.ws_connect(ws_url, timeout=REQUEST_TIMEOUT) as websocket:
-            message = await asyncio.wait_for(websocket.receive_json(), REQUEST_TIMEOUT)
-            if message.get("type") != "auth_required":
-                raise RuntimeError(
-                    "Home Assistant did not start websocket authentication"
+    async def receive_message(websocket: Any) -> dict[str, Any]:
+        raw_message = await asyncio.wait_for(websocket.recv(), REQUEST_TIMEOUT)
+        return json.loads(raw_message)
+
+    async def send_command(websocket: Any, command: dict[str, Any]) -> None:
+        await websocket.send(json.dumps(command))
+
+    async with websockets.connect(
+        ws_url,
+        open_timeout=REQUEST_TIMEOUT,
+        max_size=None,
+    ) as websocket:
+        message = await receive_message(websocket)
+        if message.get("type") != "auth_required":
+            raise RuntimeError("Home Assistant did not start websocket authentication")
+
+        await send_command(websocket, {"type": "auth", "access_token": session_token})
+        message = await receive_message(websocket)
+        if message.get("type") != "auth_ok":
+            raise RuntimeError("Home Assistant websocket authentication failed")
+
+        await send_command(websocket, {"id": 1, "type": "marketplace/warning/accept"})
+        warning = await receive_result(websocket, 1)
+        if not warning.get("success"):
+            error = warning.get("error")
+            if isinstance(error, dict):
+                code = error.get("code")
+                message = error.get("message")
+                details = ": ".join(
+                    str(part)
+                    for part in (code, message)
+                    if isinstance(part, str) and part
                 )
+                if details:
+                    raise RuntimeError(
+                        f"Could not accept the Marketplace warning: {details}"
+                    )
+            raise RuntimeError("Could not accept the Marketplace warning")
 
-            await websocket.send_json({"type": "auth", "access_token": session_token})
-            message = await asyncio.wait_for(websocket.receive_json(), REQUEST_TIMEOUT)
-            if message.get("type") != "auth_ok":
-                raise RuntimeError("Home Assistant websocket authentication failed")
+        await send_command(
+            websocket,
+            {
+                "id": 2,
+                "type": "auth/long_lived_access_token",
+                "client_name": f"HA-MCP Devcontainer {secrets.token_hex(4)}",
+                "lifespan": 3650,
+            },
+        )
+        token_result = await receive_result(websocket, 2)
+        admin_token = token_result.get("result")
+        if not token_result.get("success") or not isinstance(admin_token, str):
+            error = token_result.get("error")
+            if isinstance(error, dict):
+                code = error.get("code")
+                message = error.get("message")
+                details = ": ".join(
+                    str(part)
+                    for part in (code, message)
+                    if isinstance(part, str) and part
+                )
+                if details:
+                    raise RuntimeError(
+                        f"Could not create the HA-MCP access token: {details}"
+                    )
+            raise RuntimeError("Could not create the HA-MCP access token")
 
-            await websocket.send_json({"id": 1, "type": "marketplace/warning/accept"})
-            warning = await receive_result(websocket, 1)
-            if not warning.get("success"):
-                raise RuntimeError("Could not accept the Marketplace warning")
+        await send_command(
+            websocket,
+            {
+                "id": 3,
+                "type": "marketplace/repositories/list",
+                "categories": ["integration"],
+            },
+        )
+        listed = await receive_result(websocket, 3)
+        if not listed.get("success") or not isinstance(listed.get("result"), list):
+            raise RuntimeError("Could not list the Marketplace repositories")
 
-            await websocket.send_json(
-                {
-                    "id": 2,
-                    "type": "auth/long_lived_access_token",
-                    "client_name": "HA-MCP Devcontainer",
-                    "lifespan": 3650,
-                }
-            )
-            token_result = await receive_result(websocket, 2)
-            admin_token = token_result.get("result")
-            if not token_result.get("success") or not isinstance(admin_token, str):
-                raise RuntimeError("Could not create the HA-MCP access token")
-
-            await websocket.send_json(
-                {
-                    "id": 3,
-                    "type": "marketplace/repositories/list",
-                    "categories": ["integration"],
-                }
-            )
-            listed = await receive_result(websocket, 3)
-            if not listed.get("success") or not isinstance(listed.get("result"), list):
-                raise RuntimeError("Could not list the Marketplace repositories")
-
-            for repository in listed["result"]:
-                if (
-                    isinstance(repository, dict)
-                    and repository.get("full_name") == "homeassistant-ai/ha-mcp"
-                ):
-                    if not repository.get("installed"):
-                        await websocket.send_json(
-                            {
-                                "id": 4,
-                                "type": "marketplace/repository/install",
-                                "repository": repository["id"],
-                            }
-                        )
-                        installed = await receive_result(websocket, 4)
-                        if not installed.get("success"):
-                            raise RuntimeError("Could not install HA-MCP")
-                    return admin_token
+        for repository in listed["result"]:
+            if (
+                isinstance(repository, dict)
+                and repository.get("full_name") == "homeassistant-ai/ha-mcp"
+            ):
+                if not repository.get("installed"):
+                    await send_command(
+                        websocket,
+                        {
+                            "id": 4,
+                            "type": "marketplace/repository/install",
+                            "repository": repository["id"],
+                        },
+                    )
+                    installed = await receive_result(websocket, 4)
+                    if not installed.get("success"):
+                        raise RuntimeError("Could not install HA-MCP")
+                return admin_token
 
     raise RuntimeError("HA-MCP was not found in the Marketplace catalog")
 

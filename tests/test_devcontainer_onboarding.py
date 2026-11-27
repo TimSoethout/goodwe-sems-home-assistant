@@ -1,11 +1,14 @@
 """Checks for the devcontainer's first-run onboarding helper."""
 
+import asyncio
 import importlib.util
 import io
 import json
 import stat
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.error import HTTPError
 
@@ -95,6 +98,72 @@ def test_request_json_sends_bearer_token() -> None:
 
     request = open_url.call_args.args[0]
     assert request.get_header("Authorization") == "Bearer secret"
+
+
+def test_prepare_ha_mcp_accepts_warning_and_installs_repository() -> None:
+    received = [
+        {"type": "auth_required"},
+        {"type": "auth_ok"},
+        {"id": 1, "type": "result", "success": True},
+        {"id": 2, "type": "result", "success": True, "result": "test-admin-token"},
+        {
+            "id": 3,
+            "type": "result",
+            "success": True,
+            "result": [
+                {
+                    "id": "ha-mcp",
+                    "full_name": "homeassistant-ai/ha-mcp",
+                    "installed": False,
+                }
+            ],
+        },
+        {"id": 4, "type": "result", "success": True},
+    ]
+
+    class FakeWebsocket:
+        def __init__(self) -> None:
+            self.sent: list[dict[str, object]] = []
+
+        async def recv(self) -> str:
+            return json.dumps(received.pop(0))
+
+        async def send(self, message: str) -> None:
+            self.sent.append(json.loads(message))
+
+    websocket = FakeWebsocket()
+
+    @asynccontextmanager
+    async def connect(url: str, **kwargs: object):
+        assert url.endswith("/api/websocket")
+        assert kwargs["max_size"] is None
+        yield websocket
+
+    fake_websockets = SimpleNamespace(connect=connect)
+    with patch.object(ONBOARDING, "websockets", fake_websockets):
+        token = asyncio.run(ONBOARDING.async_prepare_ha_mcp("test-session-token"))
+
+    assert token == "test-admin-token"
+    assert websocket.sent == [
+        {"type": "auth", "access_token": "test-session-token"},
+        {"id": 1, "type": "marketplace/warning/accept"},
+        {
+            "id": 2,
+            "type": "auth/long_lived_access_token",
+            "client_name": websocket.sent[2]["client_name"],
+            "lifespan": 3650,
+        },
+        {
+            "id": 3,
+            "type": "marketplace/repositories/list",
+            "categories": ["integration"],
+        },
+        {
+            "id": 4,
+            "type": "marketplace/repository/install",
+            "repository": "ha-mcp",
+        },
+    ]
 
 
 def test_configure_ha_mcp_is_idempotent() -> None:
