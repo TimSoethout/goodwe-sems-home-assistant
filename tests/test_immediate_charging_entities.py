@@ -568,8 +568,15 @@ async def test_entities_are_added_after_discovery(hass: HomeAssistant) -> None:
     )
 
 
-async def test_rate_limited_functions_keep_discovered_controls(
-    hass: HomeAssistant,
+@pytest.mark.parametrize(
+    "error",
+    [
+        SemsRateLimitedError(retry_after=60),
+        OutOfRetries("battery functions exhausted"),
+    ],
+)
+async def test_transient_functions_keep_discovered_controls(
+    hass: HomeAssistant, error: Exception
 ) -> None:
     """A temporary function lookup failure keeps existing capabilities."""
     entry = await _setup_entry(hass)
@@ -585,7 +592,7 @@ async def test_rate_limited_functions_keep_discovered_controls(
         ),
         patch(
             "custom_components.sems.sems_api.SemsApi.getBatteryGeneralFunctions",
-            side_effect=SemsRateLimitedError(retry_after=60),
+            side_effect=error,
         ),
         patch(
             "custom_components.sems.sems_api.SemsApi.getBatteryImmediateChargingStates",
