@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+## 11.13.5-beta.6 - 2026-11-28
+
+## Improve SEMS+ reliability and recovery
+
+- Preserve valid inverter and HomeKit data when optional battery, telemetry, or
+  control discovery requests fail after retries, permission denial, or rate
+  limiting.
+- Normalize station and battery-cabinet responses once before coordinator
+  entities consume them, retaining existing battery and entity behavior across
+  partial polling failures.
+- Restore the inverter Standby-to-Restart control path and strengthen
+  smart-meter rollover recovery.
+- Use the injected async transport for SEMS+ HTTP work while retaining bounded
+  compatibility retries and shared-account polling.
+
+### Compatibility and limitations
+
+- No configuration changes or entity migrations are required.
+- A live six-battery installation and additional device firmware remain
+  unverified; verify Start/Stop and battery controls for your hardware.
+- Optional data can remain unavailable on a refresh and recover on a later
+  successful poll.
+
+### Related
+
+- [#303](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/303) -
+  smart-meter rollover protection.
+- [#329](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/329) -
+  standby and rollover recovery.
+- [#334](https://github.com/TimSoethout/goodwe-sems-home-assistant/pull/334) -
+  async transport review fixes.
+
+### Contributors
+
+- [@TimSoethout](https://github.com/TimSoethout) - implementation, review,
+  captures, and release preparation.
+- [@Copilot](https://github.com/apps/copilot-swe-agent) - implementation,
+  regression coverage, and typed boundary refactor.
+
 ## 11.13.4 - 2026-11-24
 
 ## Recover entities after SEMS+ rate limits
