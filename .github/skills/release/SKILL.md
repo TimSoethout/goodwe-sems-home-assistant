@@ -10,7 +10,7 @@ description: "Use when preparing HACS releases, versions, tags, or release notes
 3. **Contributors:** Credit code authors and people who contributed information, testing, or troubleshooting. Verify GitHub handles; do not infer them from email addresses.
 4. **Publish:**
    - **Stable:** Prepare the manifest and stable notes in a PR to `master`. Merging it triggers `.github/workflows/stable-release.yml`, which extracts the matching stable notes and creates the GitHub Release. It uses `.github/scripts/upload_release_asset.py` to attach `custom_components/sems/sems.zip`. Do not manually tag or publish a stable release. After merge, verify the workflow completed and the ZIP is attached. The workflow skips prerelease versions and avoids re-creating existing releases.
-   - **Prerelease:** Continue to create and publish beta releases manually, mark them as prereleases, and use the matching beta notes. Publishing triggers `.github/workflows/release-assets.yml` to upload the ZIP; a tag alone is insufficient.
+   - **Prerelease:** Prepare the manifest and matching beta section, run `python3 .github/scripts/publish_prerelease.py --check`, then run `python3 .github/scripts/publish_prerelease.py --target master`. The script creates a numbered prerelease with the complete matching notes and refuses existing tags or releases. Publishing triggers `.github/workflows/release-assets.yml` to upload the ZIP; a tag alone is insufficient.
 
 For a stable release after betas, use the same version number and preserve the full beta history in its notes. HACS users must opt into prereleases to receive betas.
 
