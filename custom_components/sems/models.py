@@ -35,11 +35,24 @@ class ParsedStationData:
 
 
 @dataclass(frozen=True, slots=True)
+class BatteryCabinet:
+    """Normalized battery cabinet identity and discovery data."""
+
+    serial_number: str
+    index: int
+    cabinet_id: str
+    name: str
+    is_connected: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SemsData:
     """Runtime SEMS data returned by the coordinator."""
 
     inverters: dict[str, dict[str, Any]]
     batteries: dict[str, dict[str, dict[str, Any]]] | None = None
+    battery_cabinets: tuple[BatteryCabinet, ...] = ()
+    battery_storage_supported: bool = False
     immediate_charging: dict[str, dict[str, Any]] | None = None
     homekit: dict[str, Any] | None = None
     currency: str | None = None

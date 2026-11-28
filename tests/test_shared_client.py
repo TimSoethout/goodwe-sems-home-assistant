@@ -21,13 +21,19 @@ from pytest_homeassistant.common import MockConfigEntry
 from custom_components.sems import (
     SemsDataUpdateCoordinator,
     _device_config_entry_ids,
+    _normalize_battery_cabinets,
+    _normalize_cabinet_index,
+    _normalize_station_data,
+    _parse_battery_menu,
     _shared_clients,
 )
 from custom_components.sems.const import CONF_STATION_ID, DOMAIN, GOODWE_SPELLING
+from custom_components.sems.models import SemsData
 from custom_components.sems.sems_api import (
     OutOfRetries,
     SemsApi,
     SemsAuthError,
+    SemsPermissionError,
     SemsRateLimitedError,
 )
 
@@ -173,10 +179,120 @@ async def test_coordinator_requests_reauth(hass: HomeAssistant) -> None:
         await coordinator._async_update_data()
 
 
+def test_normalize_cabinet_index() -> None:
+    """Cabinet indices use an integer API contract."""
+    assert _normalize_cabinet_index(3) == 3
+    assert _normalize_cabinet_index("4") == 4
+    assert _normalize_cabinet_index("not-a-number") == 0
+    assert _normalize_cabinet_index(True) == 0
+
+
+def test_normalize_prefetched_battery_cabinets() -> None:
+    """Malformed cabinet records are skipped and valid records are typed."""
+    data = {
+        "_energy_storage_cabinets": {
+            "INV1": [
+                None,
+                {},
+                {"translateCode": "battery-1", "no": "2", "name": "Battery"},
+            ],
+            123: [{"translateCode": "ignored"}],
+        }
+    }
+
+    cabinets = _normalize_battery_cabinets(data)
+
+    assert len(cabinets) == 1
+    assert cabinets[0].serial_number == "INV1"
+    assert cabinets[0].cabinet_id == "battery-1"
+    assert cabinets[0].index == 2
+    assert cabinets[0].name == "Battery"
+
+
+def test_normalize_station_data_rejects_non_mapping() -> None:
+    """The API envelope itself must be a mapping."""
+    with pytest.raises(UpdateFailed, match="invalid station data"):
+        _normalize_station_data([], MOCK_STATION_ID_1, lambda current_sn: current_sn)
+
+
+def test_parse_battery_menu() -> None:
+    """Battery menu parsing ignores malformed and unsupported entries."""
+    assert _parse_battery_menu({}) == {}
+    assert _parse_battery_menu({"functionMenus": {"children": None}}) == {}
+    assert (
+        _parse_battery_menu({"functionMenus": {"children": [{"functions": None}]}})
+        == {}
+    )
+    assert (
+        _parse_battery_menu(
+            {"functionMenus": {"children": [None, {"functions": [None, {}]}]}}
+        )
+        == {}
+    )
+
+    parsed = _parse_battery_menu(
+        {
+            "functionMenus": {
+                "children": [
+                    {
+                        "functions": [
+                            {
+                                "translateKey": "immediate_charge",
+                                "address": "47545",
+                                "id": "1",
+                            },
+                            {"translateKey": "unused", "address": "1"},
+                        ]
+                    }
+                ]
+            }
+        }
+    )
+    assert parsed["immediate_charge"] == {"address": "47545", "id": "1"}
+
+
+def test_normalize_station_data_keeps_optional_shapes_typed() -> None:
+    """Station normalization retains valid EV, chart, and cabinet fields."""
+    data = {
+        "inverter": [
+            None,
+            {},
+            {"invert_full": None},
+            {"invert_full": {"sn": "INV1", "capacity": 5}},
+        ],
+        "kpi": {"currency": "EUR", "total_power": 12},
+        "hasPowerflow": True,
+        "powerflow": {"pGrid": -100},
+        GOODWE_SPELLING.hasEnergyStatisticsCharts: True,
+        GOODWE_SPELLING.energyStatisticsCharts: {"sum": 500},
+        GOODWE_SPELLING.energyStatisticsTotals: {"buy": 42},
+        "_energy_storage_cabinets": {
+            "INV1": [{"translateCode": "battery-1", "no": "1"}]
+        },
+        "ev_chargers": {"CHG1": {"sn": "CHG1"}},
+    }
+
+    normalized = _normalize_station_data(
+        data,
+        MOCK_STATION_ID_1,
+        lambda current_sn: current_sn,
+    )
+
+    assert normalized.inverters["INV1"]["sn"] == "INV1"
+    assert normalized.currency == "EUR"
+    assert normalized.battery_storage_supported
+    assert normalized.battery_cabinets[0].index == 1
+    assert normalized.ev_chargers == {"CHG1": {"sn": "CHG1"}}
+    assert normalized.homekit is not None
+    assert normalized.homekit["Charts_sum"] == 0.5
+    assert normalized.homekit["Totals_buy"] == 42
+
+
 @pytest.mark.parametrize(
     "data",
     [
         {"inverter": "not-a-list"},
+        {"inverter": {}},
         {"inverter": [], "unavailable_data_sources": []},
         {"inverter": [], "unavailable_data_sources": {"inverters": []}},
         {"inverter": [], "unavailable_data_sources": {"homekit": []}},
@@ -208,6 +324,87 @@ async def test_coordinator_rejects_malformed_normalized_data(
         await coordinator._async_update_data()
 
 
+async def test_malformed_cabinet_discovery_response_is_ignored(
+    hass: HomeAssistant,
+) -> None:
+    """A non-list cabinet response is not treated as discovered battery data."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(
+        hass, SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD), entry
+    )
+    data = SemsData(
+        inverters={"GW0000SN000TEST1": {"sn": "GW0000SN000TEST1"}},
+        battery_storage_supported=True,
+    )
+
+    with patch.object(
+        SemsApi,
+        "getEnergyStorageIntegratedCabinets",
+        return_value={"unexpected": "shape"},
+    ):
+        cabinets, discovery_failed = await coordinator._async_get_battery_cabinets(data)
+
+    assert cabinets == ()
+    assert not discovery_failed
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OutOfRetries("cabinet discovery exhausted"),
+        SemsPermissionError("cabinet discovery", "denied"),
+        SemsRateLimitedError(retry_after=60),
+    ],
+)
+async def test_optional_cabinet_failure_keeps_station_data(
+    hass: HomeAssistant, error: Exception
+) -> None:
+    """Cabinet discovery failures must not discard valid inverter data."""
+    entry = _entry(MOCK_STATION_ID_1)
+    entry.add_to_hass(hass)
+    coordinator = SemsDataUpdateCoordinator(
+        hass, SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD), entry
+    )
+    previous_batteries = {
+        "GW0000SN000TEST1": {"battery-1": {"name": "Existing battery", "functions": {}}}
+    }
+    coordinator.data = SemsData(
+        inverters={"GW0000SN000TEST1": {"sn": "GW0000SN000TEST1"}},
+        batteries=previous_batteries,
+    )
+    data = {
+        "info": {"is_stored": True},
+        "inverter": [
+            {
+                "invert_full": {
+                    "sn": "GW0000SN000TEST1",
+                    "name": "Test Inverter",
+                }
+            }
+        ],
+        "kpi": {},
+    }
+
+    with (
+        patch.object(SemsApi, "getData", return_value=data),
+        patch.object(
+            SemsApi,
+            "getEnergyStorageIntegratedCabinets",
+            side_effect=error,
+        ),
+        patch.object(
+            SemsApi,
+            "getBatteryImmediateChargingStates",
+            return_value={"data": {}},
+        ),
+    ):
+        result = await coordinator._async_update_data()
+
+    assert result.inverters["GW0000SN000TEST1"]["sn"] == "GW0000SN000TEST1"
+    assert result.batteries == previous_batteries
+
+
 async def test_coordinator_normalizes_optional_powerflow_data(
     hass: HomeAssistant,
 ) -> None:
@@ -218,6 +415,7 @@ async def test_coordinator_normalizes_optional_powerflow_data(
         hass, SemsApi(hass, MOCK_USERNAME, MOCK_PASSWORD), entry
     )
     data = {
+        "info": {"is_stored": True},
         "inverter": [
             {},
             {"invert_full": None},
@@ -231,9 +429,13 @@ async def test_coordinator_normalizes_optional_powerflow_data(
         GOODWE_SPELLING.energyStatisticsTotals: [],
     }
 
-    with patch.object(SemsApi, "getData", return_value=data):
+    with (
+        patch.object(SemsApi, "getData", return_value=data),
+        patch.object(SemsApi, "getEnergyStorageIntegratedCabinets") as mock_cabinets,
+    ):
         result = await coordinator._async_update_data()
 
+    mock_cabinets.assert_not_called()
     assert result.inverters == {}
     assert result.homekit is not None
     assert result.homekit["all_time_generation"] is None

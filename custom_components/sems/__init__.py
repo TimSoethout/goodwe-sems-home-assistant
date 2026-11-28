@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from functools import partial
 from typing import Any, TypeGuard
@@ -39,7 +39,7 @@ from .const import (
     redact_value,
     scan_interval_seconds,
 )
-from .models import SemsData
+from .models import BatteryCabinet, SemsData
 from .sems_api import (
     OutOfRetries,
     SemsApi,
@@ -185,6 +185,257 @@ def _normalize_energy_statistics_charts(
                 normalized[key],
             )
     return normalized
+
+
+def _normalize_unavailable_sources(
+    data_result: dict[str, Any],
+) -> tuple[dict[str, set[str]], set[str]]:
+    """Normalize and validate optional source availability."""
+    unavailable = data_result.get("unavailable_data_sources", {})
+    if not isinstance(unavailable, dict):
+        raise UpdateFailed("Error communicating with API: invalid source status.")
+
+    raw_inverter_sources = unavailable.get("inverters", {})
+    raw_homekit_sources = unavailable.get("homekit", set())
+    if not isinstance(raw_inverter_sources, dict) or not isinstance(
+        raw_homekit_sources, set
+    ):
+        raise UpdateFailed("Error communicating with API: invalid source status.")
+
+    inverter_sources: dict[str, set[str]] = {}
+    for serial_number, sources in raw_inverter_sources.items():
+        valid_sources = isinstance(sources, set) and all(
+            isinstance(source, str) for source in sources
+        )
+        if not isinstance(serial_number, str) or not valid_sources:
+            raise UpdateFailed("Error communicating with API: invalid source status.")
+        inverter_sources[serial_number] = sources
+    if any(not isinstance(source, str) for source in raw_homekit_sources):
+        raise UpdateFailed("Error communicating with API: invalid source status.")
+    return inverter_sources, raw_homekit_sources
+
+
+def _normalize_inverters(data_result: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Normalize valid inverter records and skip malformed optional entries."""
+    raw_inverters = data_result.get("inverter")
+    if raw_inverters is None:
+        raw_inverters = []
+    if not isinstance(raw_inverters, list):
+        raise UpdateFailed(
+            "Error communicating with API: invalid inverter data. See debug logs."
+        )
+
+    inverters: dict[str, dict[str, Any]] = {}
+    for inverter in raw_inverters:
+        if not isinstance(inverter, dict):
+            continue
+        invert_full = inverter.get("invert_full")
+        if not isinstance(invert_full, dict):
+            continue
+        serial_number = invert_full.get("sn")
+        if isinstance(serial_number, str):
+            inverters[serial_number] = invert_full
+    return inverters
+
+
+def _normalize_cabinet_index(value: Any) -> int:
+    """Normalize a cabinet index to the API method's integer contract."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            pass
+    return 0
+
+
+def _normalize_battery_cabinets(
+    data_result: dict[str, Any],
+) -> tuple[BatteryCabinet, ...]:
+    """Normalize prefetched battery cabinet discovery data."""
+    sources = data_result.get("_energy_storage_cabinets")
+    if not isinstance(sources, dict):
+        return ()
+
+    cabinets: list[BatteryCabinet] = []
+    for serial_number, records in sources.items():
+        if not isinstance(serial_number, str) or not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            cabinet_id = record.get("translateCode")
+            if not isinstance(cabinet_id, str):
+                continue
+            cabinet_name = record.get("name")
+            is_connected = record.get("isConnected")
+            cabinets.append(
+                BatteryCabinet(
+                    serial_number=serial_number,
+                    index=_normalize_cabinet_index(record.get("no")),
+                    cabinet_id=cabinet_id,
+                    name=cabinet_name if isinstance(cabinet_name, str) else "",
+                    is_connected=(
+                        is_connected if isinstance(is_connected, bool) else None
+                    ),
+                )
+            )
+    return tuple(cabinets)
+
+
+def _normalize_homekit(
+    data_result: dict[str, Any],
+    inverters: dict[str, dict[str, Any]],
+    kpi: dict[str, Any],
+    station_id: str,
+    registered_homekit_sn: Callable[[str | None], str | None],
+) -> dict[str, Any] | None:
+    """Normalize optional HomeKit/power-flow data."""
+    if not data_result.get("hasPowerflow"):
+        return None
+
+    powerflow = data_result.get("powerflow")
+    powerflow = powerflow if isinstance(powerflow, dict) else {}
+    has_energy_statistics = bool(
+        data_result.get(GOODWE_SPELLING.hasEnergyStatisticsCharts)
+    )
+    if has_energy_statistics:
+        charts = data_result.get(GOODWE_SPELLING.energyStatisticsCharts)
+        charts = charts if isinstance(charts, dict) else {}
+        capacities = [
+            float(inverter["capacity"])
+            for inverter in inverters.values()
+            if isinstance(inverter.get("capacity"), (int, float))
+            and not isinstance(inverter.get("capacity"), bool)
+        ]
+        charts = _normalize_energy_statistics_charts(
+            charts,
+            sum(capacities) if capacities else None,
+        )
+        totals = data_result.get(GOODWE_SPELLING.energyStatisticsTotals)
+        totals = totals if isinstance(totals, dict) else {}
+        powerflow = {
+            **powerflow,
+            **{f"Charts_{key}": value for key, value in charts.items()},
+            **{f"Totals_{key}": value for key, value in totals.items()},
+        }
+
+    powerflow[GOODWE_SPELLING.hasEnergyStatisticsCharts] = has_energy_statistics
+    homekit_data = data_result.get(GOODWE_SPELLING.homeKit)
+    homekit_data = homekit_data if isinstance(homekit_data, dict) else powerflow
+    homekit_serial = homekit_data.get("sn")
+    if not isinstance(homekit_serial, str):
+        homekit_serial = None
+    if GOODWE_SPELLING.homeKit not in data_result:
+        homekit_serial = registered_homekit_sn(homekit_serial) or homekit_serial
+    if homekit_serial is None:
+        homekit_serial = homekit_station_serial(station_id)
+    powerflow["sn"] = homekit_serial
+    powerflow["all_time_generation"] = kpi.get("total_power")
+    return powerflow
+
+
+def _normalize_station_data(
+    data_result: Any,
+    station_id: str,
+    registered_homekit_sn: Callable[[str | None], str | None],
+) -> SemsData:
+    """Validate and normalize the API envelope at the coordinator boundary."""
+    if not isinstance(data_result, dict):
+        raise UpdateFailed("Error communicating with API: invalid station data.")
+
+    inverters = _normalize_inverters(data_result)
+    unavailable_inverters, unavailable_homekit = _normalize_unavailable_sources(
+        data_result
+    )
+    kpi = data_result.get("kpi")
+    kpi = kpi if isinstance(kpi, dict) else {}
+    currency = kpi.get("currency")
+    currency = currency if isinstance(currency, str) else None
+    battery_cabinets = _normalize_battery_cabinets(data_result)
+    info = data_result.get("info")
+    battery_storage_supported = (
+        isinstance(info, dict) and info.get("is_stored") is True
+    ) or isinstance(data_result.get("_energy_storage_cabinets"), dict)
+    ev_chargers = data_result.get("ev_chargers")
+    homekit = _normalize_homekit(
+        data_result,
+        inverters,
+        kpi,
+        station_id,
+        registered_homekit_sn,
+    )
+    if not inverters and homekit is None:
+        raise UpdateFailed("No data available from API")
+
+    return SemsData(
+        inverters=inverters,
+        battery_cabinets=battery_cabinets,
+        battery_storage_supported=battery_storage_supported,
+        homekit=homekit,
+        currency=currency,
+        ev_chargers=ev_chargers if isinstance(ev_chargers, dict) else None,
+        unavailable_inverter_sources=unavailable_inverters,
+        unavailable_homekit_sources=unavailable_homekit,
+    )
+
+
+def _parse_battery_menu(functions: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Extract supported immediate-charging function metadata."""
+    parsed: dict[str, dict[str, Any]] = {}
+    function_menus = functions.get("functionMenus")
+    if not isinstance(function_menus, dict):
+        return parsed
+    children = function_menus.get("children")
+    if not isinstance(children, list):
+        return parsed
+    for child in children:
+        if not isinstance(child, dict):
+            continue
+        menu_functions = child.get("functions")
+        if not isinstance(menu_functions, list):
+            continue
+        for function in menu_functions:
+            if not isinstance(function, dict):
+                continue
+            function_key = function.get("translateKey")
+            if (
+                isinstance(function_key, str)
+                and function_key in _IMMEDIATE_CHARGING_FUNCTION_KEYS
+            ):
+                parsed[function_key] = {
+                    "address": function.get("address"),
+                    "id": function.get("id"),
+                }
+    return parsed
+
+
+def _parse_battery_functions(
+    function_responses: dict[str, dict[str, dict[str, Any]]],
+    battery_cabinets: tuple[BatteryCabinet, ...],
+) -> dict[str, dict[str, dict[str, Any]]] | None:
+    """Build the typed battery capability shape from API function responses."""
+    batteries: dict[str, dict[str, dict[str, Any]]] = {}
+    for serial_number, cabinets in function_responses.items():
+        for cabinet_id, functions in cabinets.items():
+            supported = _parse_battery_menu(functions)
+            if not supported:
+                continue
+            cabinet_name = next(
+                (
+                    cabinet.name
+                    for cabinet in battery_cabinets
+                    if cabinet.serial_number == serial_number
+                    and cabinet.cabinet_id == cabinet_id
+                ),
+                "",
+            )
+            batteries.setdefault(serial_number, {})[cabinet_id] = {
+                "name": cabinet_name,
+                "functions": supported,
+            }
+    return batteries or None
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -466,107 +717,100 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             )
         )
 
-    async def _async_get_energy_storage_cabinets(
-        self, data_result: dict[str, Any]
-    ) -> dict[str, list[dict[str, Any]]]:
-        """Fetch the energy storage cabinets when batteries are available."""
-        if not data_result.get("info", {}).get("is_stored", False):
-            return {}
-
-        prefetched = data_result.get("_energy_storage_cabinets")
-        if isinstance(prefetched, dict):
-            return {
-                serial_number: cabinets
-                for serial_number, cabinets in prefetched.items()
-                if isinstance(serial_number, str) and isinstance(cabinets, list)
-            }
+    async def _async_get_battery_cabinets(
+        self, data: SemsData
+    ) -> tuple[tuple[BatteryCabinet, ...], bool]:
+        """Fetch and normalize cabinet records not prefetched by the API."""
+        if data.battery_cabinets or not data.battery_storage_supported:
+            return data.battery_cabinets, False
 
         _LOGGER.debug("Getting energy storage integrated cabinets")
-        return {
-            inverter.get("invert_full", {}).get(
-                "sn"
-            ): await self.hass.async_add_executor_job(
-                self.sems_api.getEnergyStorageIntegratedCabinets,
-                self.station_id,
-                inverter.get("invert_full", {}).get("sn"),
-            )
-            for inverter in data_result.get("inverter", {})
-        }
+        cabinet_records: list[BatteryCabinet] = []
+        discovery_failed = False
+        for serial_number in data.inverters:
+            try:
+                cabinets = await self.hass.async_add_executor_job(
+                    self.sems_api.getEnergyStorageIntegratedCabinets,
+                    self.station_id,
+                    serial_number,
+                )
+            except (OutOfRetries, SemsPermissionError, SemsRateLimitedError) as err:
+                _LOGGER.debug(
+                    "Battery cabinet discovery failed for %s (%s)",
+                    redact_value(serial_number),
+                    type(err).__name__,
+                )
+                discovery_failed = True
+                continue
+            if not isinstance(cabinets, list):
+                continue
+            for cabinet in cabinets:
+                if not isinstance(cabinet, dict):
+                    continue
+                cabinet_id = cabinet.get("translateCode")
+                if not isinstance(cabinet_id, str):
+                    continue
+                cabinet_name = cabinet.get("name")
+                is_connected = cabinet.get("isConnected")
+                cabinet_records.append(
+                    BatteryCabinet(
+                        serial_number=serial_number,
+                        index=_normalize_cabinet_index(cabinet.get("no")),
+                        cabinet_id=cabinet_id,
+                        name=cabinet_name if isinstance(cabinet_name, str) else "",
+                        is_connected=(
+                            is_connected if isinstance(is_connected, bool) else None
+                        ),
+                    )
+                )
+        return tuple(cabinet_records), discovery_failed
 
-    async def _async_get_battery_functions(  # noqa: C901, PLR0912
-        self, energy_storage_cabinets: dict[str, list[dict[str, Any]]]
+    async def _async_get_battery_functions(
+        self, battery_cabinets: tuple[BatteryCabinet, ...]
     ) -> dict[str, dict[str, dict[str, Any]]] | None:
         """Fetch and retain supported battery functions."""
-        if energy_storage_cabinets:
+        if battery_cabinets:
             _LOGGER.debug("Getting battery general functions for each cabinet")
         battery_general_functions: dict[str, dict[Any, dict[str, Any]]] = {}
-        for sn, cabinets in energy_storage_cabinets.items():
-            battery_general_functions[sn] = {}
-            for bat in cabinets:
-                if not isinstance(bat, dict) or bat.get("translateCode") is None:
-                    continue
-                # SEMS+ lists an empty battery slot on a hybrid inverter and
-                # denies the function lookup for it.
-                if bat.get("isConnected") is False:
-                    continue
-                try:
-                    functions = await self.hass.async_add_executor_job(
-                        self.sems_api.getBatteryGeneralFunctions, sn, bat.get("no", 0)
-                    )
-                except SemsPermissionError as err:
-                    # Battery controls are optional; keep the station data.
-                    _LOGGER.debug(
-                        "Battery functions request denied for %s (%s)",
-                        redact_value(sn),
-                        type(err).__name__,
-                    )
-                    continue
-                except SemsRateLimitedError as err:
-                    _LOGGER.debug(
-                        "Battery functions request rate limited for %s (%s)",
-                        redact_value(sn),
-                        type(err).__name__,
-                    )
-                    return self.data.batteries if self.data is not None else None
-                battery_general_functions[sn][bat.get("translateCode")] = functions
+        for cabinet in battery_cabinets:
+            if cabinet.is_connected is False:
+                continue
+            try:
+                functions = await self.hass.async_add_executor_job(
+                    self.sems_api.getBatteryGeneralFunctions,
+                    cabinet.serial_number,
+                    cabinet.index,
+                )
+            except SemsPermissionError as err:
+                # Battery controls are optional; keep the station data.
+                _LOGGER.debug(
+                    "Battery functions request denied for %s (%s)",
+                    redact_value(cabinet.serial_number),
+                    type(err).__name__,
+                )
+                continue
+            except OutOfRetries as err:
+                _LOGGER.debug(
+                    "Battery functions request exhausted retries for %s (%s)",
+                    redact_value(cabinet.serial_number),
+                    type(err).__name__,
+                )
+                return self.data.batteries if self.data is not None else None
+            except SemsRateLimitedError as err:
+                _LOGGER.debug(
+                    "Battery functions request rate limited for %s (%s)",
+                    redact_value(cabinet.serial_number),
+                    type(err).__name__,
+                )
+                return self.data.batteries if self.data is not None else None
+            battery_general_functions.setdefault(cabinet.serial_number, {})[
+                cabinet.cabinet_id
+            ] = functions
 
-        batteries: dict[str, dict[str, dict[str, Any]]] = {}
-        for sn, bats in battery_general_functions.items():
-            for bat_id, bat in bats.items():
-                if not isinstance(bat_id, str):
-                    continue
-                for child in bat.get("functionMenus", {}).get("children", []):
-                    for func in child.get("functions", []):
-                        function_key = func.get("translateKey")
-                        if not isinstance(function_key, str):
-                            continue
-                        if function_key not in _IMMEDIATE_CHARGING_FUNCTION_KEYS:
-                            continue
-
-                        if sn not in batteries:
-                            batteries[sn] = {}
-                        if bat_id not in batteries[sn]:
-                            batteries[sn][bat_id] = {
-                                "name": next(
-                                    (
-                                        cabinet.get("name", "")
-                                        for cabinet in energy_storage_cabinets.get(
-                                            sn, []
-                                        )
-                                        if isinstance(cabinet, dict)
-                                        and cabinet.get("translateCode") == bat_id
-                                    ),
-                                    "",
-                                ),
-                                "functions": {},
-                            }
-
-                        batteries[sn][bat_id]["functions"][function_key] = {
-                            "address": func.get("address"),
-                            "id": func.get("id"),
-                        }
-
-        return batteries or None
+        return _parse_battery_functions(
+            battery_general_functions,
+            battery_cabinets,
+        )
 
     async def _async_get_immediate_charging(
         self, batteries: dict[str, dict[str, dict[str, Any]]] | None
@@ -614,7 +858,7 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
         async with self._poll_lock:
             return await self._async_update_data_unlocked()
 
-    async def _async_update_data_unlocked(self) -> SemsData:  # noqa: C901, PLR0912
+    async def _async_update_data_unlocked(self) -> SemsData:
         """Fetch data from API endpoint.
 
         This is the place to pre-process the data to lookup tables
@@ -631,36 +875,34 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
                     include_last_month=self._last_month_energy_requested(),
                 )
             )
+            data = _normalize_station_data(
+                data_result,
+                self.station_id,
+                self._registered_homekit_sn,
+            )
+            battery_cabinets, discovery_failed = await self._async_get_battery_cabinets(
+                data
+            )
+            data = replace(data, battery_cabinets=battery_cabinets)
 
-            energy_storage_cabinets = await self._async_get_energy_storage_cabinets(
-                data_result
-            )
-            unavailable_data_sources = data_result.get("unavailable_data_sources", {})
-            raw_unavailable_inverter_sources = (
-                unavailable_data_sources.get("inverters", {})
-                if isinstance(unavailable_data_sources, dict)
-                else {}
-            )
-            cabinets_unavailable = (
-                any(
-                    "cabinets" in sources
-                    for sources in raw_unavailable_inverter_sources.values()
-                    if isinstance(sources, set)
-                )
-                if isinstance(raw_unavailable_inverter_sources, dict)
-                else False
+            cabinet_source_unavailable = any(
+                "cabinets" in sources
+                for sources in data.unavailable_inverter_sources.values()
             )
             if (
-                cabinets_unavailable
-                and not energy_storage_cabinets
+                (cabinet_source_unavailable or discovery_failed)
+                and not battery_cabinets
                 and self.data is not None
             ):
                 batteries = self.data.batteries
             else:
-                batteries = await self._async_get_battery_functions(
-                    energy_storage_cabinets
-                )
+                batteries = await self._async_get_battery_functions(battery_cabinets)
             immediate_charging = await self._async_get_immediate_charging(batteries)
+            data = replace(
+                data,
+                batteries=batteries,
+                immediate_charging=immediate_charging,
+            )
 
         except SemsAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -678,147 +920,6 @@ class SemsDataUpdateCoordinator(DataUpdateCoordinator[SemsData]):
             ) from err
         else:
             _LOGGER.debug("semsApi.getData result: %s", redact_for_log(data_result))
-
-            inverters = data_result.get("inverter")
-            inverters_by_sn: dict[str, dict[str, Any]] = {}
-            if inverters is None:
-                inverters = []
-            elif not isinstance(inverters, list):
-                raise UpdateFailed(
-                    "Error communicating with API: invalid inverter data. See debug logs."
-                )
-
-            unavailable_data_sources = data_result.get("unavailable_data_sources", {})
-            if not isinstance(unavailable_data_sources, dict):
-                raise UpdateFailed(
-                    "Error communicating with API: invalid source status."
-                )
-            raw_inverter_sources = unavailable_data_sources.get("inverters", {})
-            raw_homekit_sources = unavailable_data_sources.get("homekit", set())
-            if not isinstance(raw_inverter_sources, dict) or not isinstance(
-                raw_homekit_sources, set
-            ):
-                raise UpdateFailed(
-                    "Error communicating with API: invalid source status."
-                )
-            unavailable_inverter_sources: dict[str, set[str]] = {}
-            for inverter_sn, sources in raw_inverter_sources.items():
-                if (
-                    not isinstance(inverter_sn, str)
-                    or not isinstance(sources, set)
-                    or any(not isinstance(source, str) for source in sources)
-                ):
-                    raise UpdateFailed(
-                        "Error communicating with API: invalid source status."
-                    )
-                unavailable_inverter_sources[inverter_sn] = sources
-            if any(not isinstance(source, str) for source in raw_homekit_sources):
-                raise UpdateFailed(
-                    "Error communicating with API: invalid source status."
-                )
-
-            # Get Inverter Data
-            for inverter in inverters:
-                inverter_full = inverter.get("invert_full")
-                if not isinstance(inverter_full, dict):
-                    continue
-
-                sn = inverter_full.get("sn")
-                if not isinstance(sn, str):
-                    continue
-
-                name = inverter_full.get("name")
-                _LOGGER.debug(
-                    "Found inverter attribute %s %s",
-                    name,
-                    redact_value(sn),
-                )
-                inverters_by_sn[sn] = inverter_full
-
-            # Add currency
-            kpi = data_result.get("kpi")
-            if not isinstance(kpi, dict):
-                kpi = {}
-            currency = kpi.get("currency")
-
-            has_powerflow = bool(data_result.get("hasPowerflow"))
-            has_energy_statistics_charts = bool(
-                data_result.get(GOODWE_SPELLING.hasEnergyStatisticsCharts)
-            )
-
-            homekit: dict[str, Any] | None = None
-
-            if has_powerflow:
-                _LOGGER.debug("Found powerflow data")
-                powerflow = data_result.get("powerflow")
-                if not isinstance(powerflow, dict):
-                    powerflow = {}
-
-                if has_energy_statistics_charts:
-                    charts = data_result.get(GOODWE_SPELLING.energyStatisticsCharts)
-                    if not isinstance(charts, dict):
-                        charts = {}
-                    else:
-                        capacities: list[float] = []
-                        for inverter in inverters_by_sn.values():
-                            capacity = inverter.get("capacity")
-                            if isinstance(capacity, (int, float)):
-                                capacities.append(float(capacity))
-                        inverter_capacity_kw = sum(capacities) if capacities else None
-                        charts = _normalize_energy_statistics_charts(
-                            charts, inverter_capacity_kw
-                        )
-                    totals = data_result.get(GOODWE_SPELLING.energyStatisticsTotals)
-                    if not isinstance(totals, dict):
-                        totals = {}
-
-                    powerflow = {
-                        **powerflow,
-                        **{f"Charts_{key}": val for key, val in charts.items()},
-                        **{f"Totals_{key}": val for key, val in totals.items()},
-                    }
-
-                # Add the flag so sensors can check if energy statistics are available
-                powerflow[GOODWE_SPELLING.hasEnergyStatisticsCharts] = (
-                    has_energy_statistics_charts
-                )
-
-                homekit_data = data_result.get(GOODWE_SPELLING.homeKit)
-                if not isinstance(homekit_data, dict):
-                    homekit_data = powerflow
-                powerflow["sn"] = homekit_data.get("sn")
-                if GOODWE_SPELLING.homeKit not in data_result:
-                    # SEMS+ Web data has no HomeKit serial; keep the serial of
-                    # previously registered HomeKit entities so their unique IDs
-                    # (and Energy dashboard history) keep receiving data.
-                    powerflow["sn"] = (
-                        self._registered_homekit_sn(powerflow["sn"]) or powerflow["sn"]
-                    )
-
-                # Goodwe 'Power Meter' (not HomeKit) and SEMS+ stations
-                # without a smart meter have no sn. Use a station-scoped one,
-                # otherwise the unique IDs collide across stations.
-                if powerflow["sn"] is None:
-                    powerflow["sn"] = homekit_station_serial(self.station_id)
-
-                # This seems more accurate than the Chart_sum
-                powerflow["all_time_generation"] = kpi.get("total_power")
-
-                homekit = powerflow
-
-            if not inverters_by_sn and homekit is None:
-                raise UpdateFailed("No data available from API")
-
-            data = SemsData(
-                inverters=inverters_by_sn,
-                batteries=batteries,
-                homekit=homekit,
-                currency=currency,
-                ev_chargers=data_result.get("ev_chargers") or None,
-                immediate_charging=immediate_charging,
-                unavailable_inverter_sources=unavailable_inverter_sources,
-                unavailable_homekit_sources=raw_homekit_sources,
-            )
             _LOGGER.debug(
                 "Resulting data: %s",
                 redact_for_log(data),
