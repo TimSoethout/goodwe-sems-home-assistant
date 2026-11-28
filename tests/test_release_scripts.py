@@ -24,6 +24,7 @@ def load_script(name: str):
 
 UPLOAD = load_script("upload_release_asset")
 PUBLISH = load_script("publish_stable_release")
+PRERELEASE = load_script("publish_prerelease")
 
 
 @pytest.fixture
@@ -87,6 +88,101 @@ def test_release_notes_require_exactly_one_section(
     )
     with pytest.raises(SystemExit, match=r"found 2"):
         PUBLISH.release_notes()
+
+
+def test_prerelease_notes_include_subsections_and_stop_at_next_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "RELEASE_NOTES.md").write_text(
+        "## 1.2.3-beta.1 - 2026-01-01\n\n"
+        "## Improve reliability\n\n"
+        "- Fixed the bug.\n\n"
+        "### Compatibility\n\n"
+        "- No migration.\n\n"
+        "## 1.2.2 - 2025-12-31\n\n"
+        "- Previous release.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(PRERELEASE, "ROOT", tmp_path)
+    monkeypatch.setattr(PRERELEASE, "VERSION", "1.2.3-beta.1")
+
+    assert PRERELEASE.release_notes() == (
+        "## 1.2.3-beta.1 - 2026-01-01\n\n"
+        "## Improve reliability\n\n"
+        "- Fixed the bug.\n\n"
+        "### Compatibility\n\n"
+        "- No migration.\n"
+    )
+
+
+def test_prerelease_publish_rejects_stable_and_existing_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(PRERELEASE, "VERSION", "1.2.3")
+    monkeypatch.setattr(sys, "argv", ["publish_prerelease.py"])
+    with pytest.raises(SystemExit, match=r"Unsupported prerelease version"):
+        PRERELEASE.main()
+
+    monkeypatch.setattr(PRERELEASE, "VERSION", "1.2.3-beta.1")
+    monkeypatch.setattr(PRERELEASE, "tag_exists", lambda: False)
+    monkeypatch.setattr(
+        PRERELEASE,
+        "get_release",
+        lambda *_args, **_kwargs: {"isPrerelease": True, "assets": []},
+    )
+    monkeypatch.setattr(
+        PRERELEASE,
+        "release_notes",
+        lambda: "## 1.2.3-beta.1 - 2026-01-01\n",
+    )
+    with pytest.raises(SystemExit, match=r"Release 1\.2\.3-beta\.1 already exists"):
+        PRERELEASE.main()
+
+
+def test_prerelease_publish_creates_release_with_complete_notes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notes = (
+        "## 1.2.3-beta.1 - 2026-01-01\n\n## Improve reliability\n\n- Fixed the bug.\n"
+    )
+    (tmp_path / "RELEASE_NOTES.md").write_text(
+        notes + "\n## 1.2.2 - 2025-12-31\n\n- Previous release.\n",
+        encoding="utf-8",
+    )
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append((command, kwargs))
+        notes_path = Path(command[command.index("--notes-file") + 1])
+        assert notes_path.read_text(encoding="utf-8") == notes
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(PRERELEASE, "ROOT", tmp_path)
+    monkeypatch.setattr(PRERELEASE, "VERSION", "1.2.3-beta.1")
+    monkeypatch.setattr(PRERELEASE, "tag_exists", lambda: False)
+    monkeypatch.setattr(PRERELEASE, "get_release", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(PRERELEASE.subprocess, "run", run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["publish_prerelease.py", "--target", "master"],
+    )
+
+    PRERELEASE.main()
+
+    command, kwargs = commands[0]
+    assert command[:8] == [
+        "gh",
+        "release",
+        "create",
+        "1.2.3-beta.1",
+        "--prerelease",
+        "--title",
+        "1.2.3-beta.1",
+        "--notes-file",
+    ]
+    assert command[9:] == ["--target", "master"]
+    assert kwargs == {"check": True}
 
 
 @pytest.mark.parametrize(
